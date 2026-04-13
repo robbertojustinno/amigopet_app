@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AmigoPet Pro</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    :root {
+      --bg: #eef4fb;
+      --panel: #ffffff;
+      --panel-2: #f7faff;
+      --border: #dbe6f3;
+      --text: #10233f;
+      --muted: #60708d;
+      --primary: #0f7bff;
+      --primary-2: #16b36d;
+      --danger: #d64545;
+      --warning: #c98a00;
+      --shadow: 0 18px 40px rgba(16, 35, 63, 0.10);
+      --radius: 22px;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(15, 123, 255, 0.10), transparent 28%),
+        radial-gradient(circle at top right, rgba(22, 179, 109, 0.10), transparent 30%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      box-shadow: 0 10px 25px rgba(15, 123, 255, 0.28);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 28px auto;
+      padding: 0 18px 40px;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-card {
+      padding: 28px;
+      min-height: 100%;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: #eaf7f0;
+      color: #0e8d53;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .hero-title {
+      margin: 0 0 10px;
+      font-size: 38px;
+      line-height: 1.1;
+    }
+
+    .hero-text {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 640px;
+    }
+
+    .hero-panel {
+      background: linear-gradient(135deg, #0d2a67, #1278f3 55%, #16b36d 100%);
+      color: #fff;
+      border-radius: 24px;
+      padding: 24px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .hero-panel h2 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .hero-panel p {
+      margin: 8px 0 0;
+      opacity: 0.92;
+      line-height: 1.5;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .stat {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 4px;
+    }
+
+    .stat span {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .form-card { padding: 24px; }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(90deg, var(--primary), var(--primary-2));
+      box-shadow: 0 8px 18px rgba(15, 123, 255, 0.18);
+    }
+
+    .section-title {
+      margin: 0 0 6px;
+      font-size: 28px;
+    }
+
+    .section-subtitle {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    form { display: block; }
+
+    .input-group { margin-bottom: 12px; }
+
+    .input-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 7px;
+    }
+
+    input, textarea, button {
+      font: inherit;
+    }
+
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 16px;
+      padding: 15px 16px;
+      color: var(--text);
+      outline: none;
+      transition: 0.2s ease;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    input:focus, textarea:focus {
+      border-color: #8dc2ff;
+      box-shadow: 0 0 0 4px rgba(15, 123, 255, 0.10);
+    }
+
+    .btn {
+      border: none;
+      cursor: pointer;
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-weight: 700;
+      transition: 0.2s ease;
+    }
+
+    .btn-primary {
+      width: 100%;
+      color: #fff;
+      background: linear-gradient(90deg, var(--primary), var(--primary-2));
+      box-shadow: 0 12px 28px rgba(15, 123, 255, 0.20);
+    }
+
+    .btn-primary:hover { transform: translateY(-1px); }
+
+    .btn-secondary {
+      background: #eff5ff;
+      color: #16345f;
+      border: 1px solid #dbe6f3;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: #26538d;
+      border: 1px solid var(--border);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .dashboard {
+      display: grid;
+      gap: 18px;
+    }
+
+    .dashboard-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .dashboard-title {
+      margin: 0;
+      font-size: 30px;
+    }
+
+    .dashboard-subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-weight: 700;
+      color: #21406f;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .panel { padding: 22px; }
+
+    .panel h3 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .panel p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .status-box {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: #28456f;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 58px;
+    }
+
+    .status-box.success {
+      background: #eaf8f0;
+      border-color: #bce6cb;
+      color: #117545;
+    }
+
+    .status-box.warning {
+      background: #fff8e7;
+      border-color: #f0dfa7;
+      color: #9b6a00;
+    }
+
+    .status-box.error {
+      background: #fff0f0;
+      border-color: #f0c8c8;
+      color: #a12e2e;
+    }
+
+    .qr-wrap {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 20px;
+      background: #fff;
+      border: 1px dashed #cfddee;
+      text-align: center;
+    }
+
+    .qr-wrap img {
+      max-width: 260px;
+      width: 100%;
+      border-radius: 18px;
+      background: #fff;
+    }
+
+    .copy-code {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #f7faff;
+      border: 1px solid var(--border);
+      color: #21406f;
+      font-size: 13px;
+      text-align: left;
+      word-break: break-all;
+    }
+
+    .orders-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .order-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .order-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+
+    .order-meta {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 960px) {
+      .hero-grid,
+      .dashboard-grid,
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-title {
+        font-size: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">AP</div>
+      <div>
+        <h1>AmigoPet Pro</h1>
+        <p>Passeios, pagamentos e operação profissional em um só lugar</p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="showWelcomeBtn" class="btn btn-ghost hidden" type="button">Voltar ao início</button>
+      <button id="logoutBtn" class="btn btn-ghost hidden" type="button">Sair</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="welcomeScreen" class="screen active">
+      <div class="hero-grid">
+        <div class="card hero-card">
+          <div class="badge">Versão monetizável ativa</div>
+          <h2 class="hero-title">Seu app pronto para vender passeios e receber por PIX.</h2>
+          <p class="hero-text">
+            Comece simples, cobrando de verdade. O sistema cria pedido, gera cobrança, acompanha o pagamento e deixa tudo mais organizado.
+          </p>
+
+          <div class="hero-panel">
+            <div>
+              <h2>Fluxo comercial simples</h2>
+              <p>
+                Cliente entra, cria pedido, paga o PIX e o sistema acompanha a aprovação automaticamente.
+              </p>
+            </div>
+
+            <div class="stats">
+              <div class="stat">
+                <strong>Pedido</strong>
+                <span>Registrado no sistema</span>
+              </div>
+              <div class="stat">
+                <strong>PIX</strong>
+                <span>Gerado e monitorado</span>
+              </div>
+              <div class="stat">
+                <strong>Histórico</strong>
+                <span>Pedidos visíveis na tela</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card form-card">
+          <div class="tabs">
+            <button id="tabLoginBtn" class="tab-btn active" type="button">Entrar</button>
+            <button id="tabRegisterBtn" class="tab-btn" type="button">Criar conta</button>
+          </div>
+
+          <div id="loginTab">
+            <h2 class="section-title">Entrar no sistema</h2>
+            <p class="section-subtitle">Acesse sua conta para começar a operar.</p>
+
+            <form id="loginForm" novalidate>
+              <div class="input-group">
+                <label class="input-label" for="login_email">E-mail</label>
+                <input id="login_email" type="email" placeholder="seuemail@exemplo.com" required />
+              </div>
+
+              <div class="input-group">
+                <label class="input-label" for="login_password">Senha</label>
+                <input id="login_password" type="password" placeholder="Sua senha" required />
+              </div>
+
+              <button id="loginSubmitBtn" class="btn btn-primary" type="submit">Entrar</button>
+            </form>
+          </div>
+
+          <div id="registerTab" class="hidden">
+            <h2 class="section-title">Criar nova conta</h2>
+            <p class="section-subtitle">Cadastre um cliente para iniciar pedidos e pagamentos.</p>
+
+            <form id="registerForm" novalidate>
+              <div class="input-group">
+                <label class="input-label" for="full_name">Nome completo</label>
+                <input id="full_name" type="text" placeholder="Nome completo" required />
+              </div>
+
+              <div class="input-group">
+                <label class="input-label" for="email">E-mail</label>
+                <input id="email" type="email" placeholder="email@exemplo.com" required />
+              </div>
+
+              <div class="input-group">
+                <label class="input-label" for="password">Senha</label>
+                <input id="password" type="password" placeholder="Crie uma senha" required />
+              </div>
+
+              <input id="role" type="hidden" value="client" />
+
+              <button id="registerSubmitBtn" class="btn btn-primary" type="submit">Criar conta</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="dashboardScreen" class="screen">
+      <div class="dashboard">
+        <div class="dashboard-head">
+          <div>
+            <h2 class="dashboard-title">Painel Simples Monetizável</h2>
+            <p class="dashboard-subtitle">Crie pedidos, gere PIX e acompanhe o histórico sem complicar.</p>
+          </div>
+
+          <div class="pill" id="sessionInfo">Nenhuma sessão ativa</div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="card panel">
+            <h3>Novo pedido</h3>
+            <p>Descreva o serviço, informe o valor e gere o pagamento.</p>
+
+            <div class="input-group">
+              <label class="input-label" for="orderDescription">Descrição do serviço</label>
+              <textarea id="orderDescription" placeholder="Ex.: Passeio de 30 minutos no bairro Piabetá."></textarea>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="paymentAmount">Valor do passeio</label>
+              <input id="paymentAmount" type="number" min="1" step="0.01" value="30" placeholder="30.00" />
+            </div>
+
+            <div class="actions">
+              <button id="payBtn" class="btn btn-primary" type="button">Criar pedido + gerar PIX</button>
+              <button id="checkStatusBtn" class="btn btn-secondary" type="button">Consultar status agora</button>
+              <button id="refreshOrdersBtn" class="btn btn-ghost" type="button">Atualizar histórico</button>
+            </div>
+
+            <div id="paymentStatusBox" class="status-box">Nenhum pagamento iniciado ainda.</div>
+
+            <div id="qrSection" class="qr-wrap hidden">
+              <img id="pixPreview" alt="QR Code PIX" />
+              <div id="pixCodeText" class="copy-code hidden"></div>
+            </div>
+          </div>
+
+          <div class="card panel">
+            <h3>Resumo atual</h3>
+            <p>Visual rápido do pedido e do status do pagamento.</p>
+
+            <div id="orderSummary" class="status-box">
+Nenhum pedido criado ainda.
+            </div>
+
+            <div class="status-box" id="appLog">
+Sistema pronto.
+            </div>
+          </div>
+        </div>
+
+        <div class="card panel">
+          <h3>Histórico de pedidos</h3>
+          <p>Veja os pedidos criados pela sessão atual.</p>
+
+          <div id="ordersList" class="orders-list">
+            <div class="order-card">
+              <strong>Nenhum pedido ainda</strong>
+              <div class="order-meta">Assim que você criar um pedido, ele aparecerá aqui.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=31"></script>
+</body>
+</html>

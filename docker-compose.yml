@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: amigopet_backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+
+  frontend:
+    image: nginx:alpine
+    container_name: amigopet_frontend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: amigopet_redis
+    ports:
+      - "6379:6379"

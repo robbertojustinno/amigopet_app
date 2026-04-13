@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: amigopet-v8
+    env: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./amigopet.db
+      - key: REDIS_URL
+        sync: false
+      - key: DEFAULT_ADDRESS
+        value: Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854
+      - key: MERCADO_PAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADO_PAGO_PUBLIC_KEY
+        sync: false

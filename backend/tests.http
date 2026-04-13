@@ -1,0 +1,31 @@
+### Health
+GET http://localhost:8000/api/health
+
+### Criar cliente
+POST http://localhost:8000/api/users/register
+Content-Type: application/json
+
+{
+  "full_name": "Cliente Exemplo",
+  "email": "cliente@teste.com",
+  "password": "1234",
+  "role": "client",
+  "neighborhood": "Piabetá",
+  "city": "Magé",
+  "address": "Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854"
+}
+
+### Criar passeador
+POST http://localhost:8000/api/users/register
+Content-Type: application/json
+
+{
+  "full_name": "Passeador Exemplo",
+  "email": "walker@teste.com",
+  "password": "1234",
+  "role": "walker",
+  "neighborhood": "Piabetá",
+  "city": "Magé",
+  "address": "Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854",
+  "profile_photo": "https://exemplo.com/foto.jpg"
+}
