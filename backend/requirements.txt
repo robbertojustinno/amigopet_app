@@ -4,3 +4,4 @@ sqlalchemy
 pydantic
 requests
 python-dotenv
+pydantic-settings
