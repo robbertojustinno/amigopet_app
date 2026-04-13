@@ -1,450 +1,764 @@
-const API = "/api";
-
+const API = window.API_BASE_URL || window.AMIGOPET_API_BASE || localStorage.getItem("AMIGOPET_API_BASE") || "/api";
 const byId = (id) => document.getElementById(id);
 
-let paymentId = null;
-let paymentCheckInterval = null;
-let currentOrderId = null;
-let currentOrderStatus = null;
+let currentAccessTab = "client";
 let currentUser = null;
+let currentCoords = null;
+let uploadedWalkerPhotoUrl = null;
+let uploadedPetPhotoUrl = null;
+let latestMercadoPagoLink = null;
+let activeChatRequestId = null;
+let activeWalkerChatRequestId = null;
 
-async function api(path, options = {}) {
-  const config = {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    },
-    ...options
-  };
+const PRICE_BY_DURATION = { 15: 20, 30: 35, 45: 50, 60: 65 };
 
-  const response = await fetch(`${API}${path}`, config);
+function normalizeLoggedUser(data, fallbackRole = null) {
+  if (!data || typeof data !== "object") return data;
+  const normalized = { ...data };
 
-  let data = null;
-  const contentType = response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    data = await response.json();
-  } else {
-    const text = await response.text();
-    data = text ? { detail: text } : null;
+  if (normalized.user && typeof normalized.user === "object") {
+    Object.assign(normalized, normalized.user);
   }
 
-  if (!response.ok) {
-    const message =
-      data?.detail ||
-      data?.message ||
-      `Erro HTTP ${response.status}`;
+  if (!normalized.role && fallbackRole) normalized.role = fallbackRole;
+  if (normalized.role === "administrator") normalized.role = "admin";
+  if (normalized.role === "dog_walker") normalized.role = "walker";
+  return normalized;
+}
 
-    throw new Error(
-      typeof message === "string" ? message : JSON.stringify(message)
-    );
+function showScreen(screenId) {
+  document.querySelectorAll(".screen").forEach((screen) => screen.classList.remove("active"));
+  byId(screenId)?.classList.add("active");
+}
+
+function setRoleChip(role) {
+  document.querySelectorAll(".role-chip").forEach((btn) => btn.classList.toggle("active", btn.dataset.role === role));
+}
+
+function setAccessTab(tab) {
+  currentAccessTab = tab;
+  setRoleChip(tab);
+  byId("goToRegisterBtn")?.classList.toggle("hidden", tab === "admin");
+  byId("walkerPhotoArea")?.classList.toggle("hidden", tab !== "walker");
+  if (byId("role")) byId("role").value = tab === "walker" ? "walker" : "client";
+
+  if (tab === "admin") {
+    if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Admin";
+    if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse o painel administrativo";
+    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Cadastro de Admin";
+    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Cadastro desabilitado nesta tela";
+  } else if (tab === "walker") {
+    if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Passeador";
+    if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse sua área de passeador";
+    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Criar conta de Passeador";
+    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Cadastre-se para receber solicitações";
+  } else {
+    if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Cliente";
+    if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse sua área de cliente";
+    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Criar conta de Cliente";
+    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Cadastre-se para pedir passeios";
+  }
+}
+
+function updateHeaderState() {
+  byId("logoutBtn")?.classList.toggle("hidden", !currentUser);
+}
+
+function renderSession(user) {
+  currentUser = user || null;
+  updateHeaderState();
+
+  if (!user) {
+    showScreen("welcomeScreen");
+    return;
+  }
+
+  if (user.role === "admin") {
+    if (byId("adminSessionInfo")) byId("adminSessionInfo").textContent = `${user.full_name || "Admin"} conectado`;
+    showScreen("adminDashboard");
+    loadAdminDashboard();
+    return;
+  }
+
+  if (user.role === "walker") {
+    if (byId("walkerSessionInfo")) byId("walkerSessionInfo").textContent = `${user.full_name || "Passeador"} conectado`;
+    showScreen("walkerDashboard");
+    loadRequests();
+    return;
+  }
+
+  if (byId("clientSessionInfo")) byId("clientSessionInfo").textContent = `${user.full_name || "Cliente"} conectado`;
+  showScreen("clientDashboard");
+  syncEstimatedPrice();
+  tryAutoLocate();
+  loadRequests();
+}
+
+function logout() {
+  localStorage.removeItem("session_user");
+  localStorage.removeItem("access_token");
+  currentUser = null;
+  activeChatRequestId = null;
+  activeWalkerChatRequestId = null;
+  latestMercadoPagoLink = null;
+  renderSession(null);
+  updatePaymentBoxDefault();
+}
+
+function base64Url(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const token = localStorage.getItem("access_token");
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API}${path}`, { ...options, headers });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.detail || data.message || "Erro na requisição");
   }
 
   return data;
 }
 
-function setActiveTab(tab) {
-  const loginTab = byId("loginTab");
-  const registerTab = byId("registerTab");
-  const tabLoginBtn = byId("tabLoginBtn");
-  const tabRegisterBtn = byId("tabRegisterBtn");
-
-  if (tab === "register") {
-    loginTab?.classList.add("hidden");
-    registerTab?.classList.remove("hidden");
-    tabLoginBtn?.classList.remove("active");
-    tabRegisterBtn?.classList.add("active");
-  } else {
-    registerTab?.classList.add("hidden");
-    loginTab?.classList.remove("hidden");
-    tabRegisterBtn?.classList.remove("active");
-    tabLoginBtn?.classList.add("active");
-  }
+function buildMapUrl(address) {
+  const q = encodeURIComponent(address);
+  return `https://www.openstreetmap.org/export/embed.html?search=${q}&marker=1&query=${q}`;
 }
 
-function showScreen(screenId) {
-  document.querySelectorAll(".screen").forEach((screen) => {
-    screen.classList.remove("active");
+function buildCoordsMapUrl(lat, lng) {
+  const delta = 0.01;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - delta}%2C${lat - delta}%2C${lng + delta}%2C${lat + delta}&layer=mapnik&marker=${lat}%2C${lng}`;
+}
+
+function applyDetectedLocation(lat, lng) {
+  currentCoords = { lat, lng };
+  const label = `Localização atual (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+
+  ["address", "mapAddress", "pickup_address"].forEach((id) => {
+    if (byId(id)) byId(id).value = label;
   });
 
-  byId(screenId)?.classList.add("active");
-
-  const onDashboard = screenId === "dashboardScreen";
-  byId("logoutBtn")?.classList.toggle("hidden", !onDashboard);
-  byId("showWelcomeBtn")?.classList.toggle("hidden", !onDashboard);
+  if (byId("mapFrame")) byId("mapFrame").src = buildCoordsMapUrl(lat, lng);
 }
 
-function updateSessionInfo() {
-  const box = byId("sessionInfo");
+function loadMap() {
+  const mapAddress = byId("mapAddress");
+  const mapFrame = byId("mapFrame");
+  if (!mapAddress || !mapFrame) return;
+
+  const address = mapAddress.value.trim();
+
+  if (currentCoords && (!address || address.startsWith("Localização atual"))) {
+    mapFrame.src = buildCoordsMapUrl(currentCoords.lat, currentCoords.lng);
+    return;
+  }
+
+  if (address) mapFrame.src = buildMapUrl(address);
+}
+
+function tryAutoLocate() {
+  if (!navigator.geolocation) return loadMap();
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => applyDetectedLocation(position.coords.latitude, position.coords.longitude),
+    () => loadMap(),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+  );
+}
+
+function syncEstimatedPrice() {
+  const duration = Number(byId("duration_minutes")?.value || 30);
+  const dogCount = Number(byId("dog_count")?.value || 1);
+  const base = PRICE_BY_DURATION[duration] ?? 35;
+  const multiplier = 1 + (dogCount - 1) * 0.6;
+  const price = Math.round(base * multiplier);
+  if (byId("price")) byId("price").value = price;
+}
+
+function setPhotoPreview(wrapId, imgId, src) {
+  const wrap = byId(wrapId);
+  const img = byId(imgId);
+  if (!wrap || !img) return;
+
+  if (!src) {
+    wrap.classList.add("hidden");
+    img.removeAttribute("src");
+    return;
+  }
+
+  img.src = src;
+  wrap.classList.remove("hidden");
+}
+
+function updatePaymentBoxDefault() {
+  const box = byId("paymentStatusBox");
   if (!box) return;
 
-  if (!currentUser) {
-    box.textContent = "Nenhuma sessão ativa";
-    return;
-  }
-
-  box.textContent = `Sessão ativa: ${currentUser.email || "sem e-mail"} • ${currentUser.role || "user"}`;
+  box.innerHTML = `
+    <div class="payment-status-title">Nenhum pagamento gerado ainda.</div>
+    <div class="payment-status-subtitle">Toque em “Gerar pagamento” no card da solicitação.</div>
+  `;
 }
 
-function setStatusBox(id, message, variant = "") {
-  const el = byId(id);
-  if (!el) return;
+function renderPaymentBox(data) {
+  const box = byId("paymentStatusBox");
+  if (!box) return;
 
-  el.className = "status-box";
-  if (variant) el.classList.add(variant);
-  el.textContent = message;
+  latestMercadoPagoLink = data.sandbox_link || data.link_pagamento || null;
+
+  box.innerHTML = `
+    <div class="payment-status-title">Pagamento gerado com sucesso</div>
+    <div class="payment-status-subtitle">Valor: R$ ${Number(data.amount || 0).toFixed(2)}</div>
+    <div class="payment-status-subtitle">Status: ${data.status || "created"}</div>
+    <div class="payment-status-subtitle">Solicitação: ${data.request_id ?? "não vinculada"}</div>
+    <div class="request-actions"><button type="button" class="card-action-btn" id="openPaymentInlineBtn">Abrir pagamento</button></div>
+  `;
+
+  byId("openPaymentInlineBtn")?.addEventListener("click", () => {
+    if (latestMercadoPagoLink) window.open(latestMercadoPagoLink, "_blank");
+  });
 }
 
-function appendLog(message, variant = "") {
-  setStatusBox("appLog", message, variant);
+function avatarHtml(src, alt) {
+  return src ? `<img class="avatar" src="${src}" alt="${alt}">` : `<div class="avatar"></div>`;
 }
 
-function renderOrderSummary() {
-  const lines = [];
+function renderAdminUsers(items) {
+  const box = byId("adminUsersList");
+  if (!box) return;
 
-  if (!currentUser) {
-    lines.push("Usuário: não autenticado");
+  box.innerHTML = !items?.length ? `<div class="item">Sem registros.</div>` : "";
+
+  items?.forEach((item) => {
+    const div = document.createElement("div");
+    div.className = "request-card";
+    div.innerHTML = `
+      <div class="person-row">
+        ${avatarHtml(item.profile_photo, item.full_name)}
+        <div>
+          <div class="request-card-title">${item.full_name}</div>
+          <div class="request-meta"><span>${item.email}</span><span>${item.city || "-"} / ${item.neighborhood || "-"}</span><span class="tag">${item.role}</span></div>
+        </div>
+      </div>`;
+    box.appendChild(div);
+  });
+}
+
+function requestTitleForUser(item) {
+  if (currentUser?.role === "walker") return item.client_name || `Cliente ${item.client_id}`;
+  return item.walker_name || "Passeador a definir";
+}
+
+function requestPhotoForUser(item) {
+  if (currentUser?.role === "walker") return item.client_photo;
+  return item.walker_photo;
+}
+
+function renderClientRequests(items) {
+  const box = byId("requestList");
+  if (!box) return;
+
+  box.innerHTML = !items?.length ? `<div class="item">Sem solicitações.</div>` : "";
+
+  items?.forEach((item) => {
+    const div = document.createElement("div");
+    div.className = "request-card";
+    div.innerHTML = `
+      <div class="person-row">
+        ${avatarHtml(requestPhotoForUser(item), requestTitleForUser(item))}
+        <div>
+          <div class="request-card-title">${requestTitleForUser(item)}</div>
+          <div class="request-meta">
+            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status}</span></span>
+            <span>${item.pickup_address || "-"}</span>
+            <span>${item.city || "-"} / ${item.neighborhood || "-"}</span>
+            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="request-actions">
+        <button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 35}">Gerar pagamento</button>
+        <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Abrir chat</button>
+      </div>`;
+    box.appendChild(div);
+  });
+
+  box.querySelectorAll(".pay-btn").forEach((btn) => {
+    btn.addEventListener("click", () => generateMercadoPagoPayment(btn.dataset.requestId, btn.dataset.amount));
+  });
+
+  box.querySelectorAll(".open-chat-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, false));
+  });
+}
+
+function renderWalkerRequests(items) {
+  const box = byId("walkerRequestsInfo");
+  if (!box) return;
+
+  box.innerHTML = !items?.length ? `<div class="item">Sem solicitações para exibir.</div>` : "";
+
+  items?.forEach((item) => {
+    const div = document.createElement("div");
+    div.className = "request-card";
+    div.innerHTML = `
+      <div class="person-row">
+        ${avatarHtml(item.client_photo, item.client_name || `Cliente ${item.client_id}`)}
+        <div>
+          <div class="request-card-title">${item.client_name || `Cliente ${item.client_id}`}</div>
+          <div class="request-meta">
+            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status}</span></span>
+            <span>${item.pickup_address || "-"}</span>
+            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="request-actions">
+        <button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button>
+        <button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>
+        <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${item.client_name || `Cliente ${item.client_id}`}">Abrir chat</button>
+      </div>`;
+    box.appendChild(div);
+  });
+
+  box.querySelectorAll(".walker-action-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/walk-requests/${btn.dataset.requestId}/${btn.dataset.action}`, {
+          method: "POST",
+          body: JSON.stringify({ actor_id: currentUser.id })
+        });
+        loadRequests();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  });
+
+  box.querySelectorAll(".open-chat-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, true));
+  });
+}
+
+function renderMessages(targetId, messages) {
+  const box = byId(targetId);
+  if (!box) return;
+
+  box.innerHTML = !messages?.length ? `<div class="item">Sem mensagens.</div>` : "";
+
+  messages?.forEach((item) => {
+    const div = document.createElement("div");
+    div.className = "chat-bubble";
+    div.innerHTML = `<strong>${item.sender_name}${item.sender_role ? ` • ${item.sender_role === "walker" ? "Passeador" : "Cliente"}` : ""}</strong>${item.text}`;
+    box.appendChild(div);
+  });
+}
+
+async function openChat(requestId, label, isWalker) {
+  if (isWalker) {
+    activeWalkerChatRequestId = Number(requestId);
+    if (byId("walkerChatHeaderLabel")) byId("walkerChatHeaderLabel").textContent = `Conversa com ${label}`;
+    const messages = await api(`/messages/${requestId}`);
+    renderMessages("walkerChatList", messages);
   } else {
-    lines.push(`Usuário: ${currentUser.email || "sem e-mail"}`);
-    lines.push(`Perfil: ${currentUser.role || "user"}`);
-  }
-
-  lines.push(`Pedido atual: ${currentOrderId ?? "nenhum"}`);
-  lines.push(`Status do pedido: ${currentOrderStatus ?? "nenhum"}`);
-  lines.push(`Payment ID: ${paymentId ?? "nenhum"}`);
-
-  setStatusBox("orderSummary", lines.join("\n"));
-}
-
-function stopPaymentMonitoring() {
-  if (paymentCheckInterval) {
-    clearInterval(paymentCheckInterval);
-    paymentCheckInterval = null;
+    activeChatRequestId = Number(requestId);
+    if (byId("chatHeaderLabel")) byId("chatHeaderLabel").textContent = `Conversa com ${label}`;
+    const messages = await api(`/messages/${requestId}`);
+    renderMessages("chatList", messages);
   }
 }
 
-function renderPixQrCode(base64, pixCode = "") {
-  const qrSection = byId("qrSection");
-  const img = byId("pixPreview");
-  const codeBox = byId("pixCodeText");
-
-  if (!qrSection || !img || !codeBox) return;
-
-  if (base64) {
-    img.src = `data:image/png;base64,${base64}`;
-    qrSection.classList.remove("hidden");
-  }
-
-  if (pixCode) {
-    codeBox.textContent = pixCode;
-    codeBox.classList.remove("hidden");
-  } else {
-    codeBox.textContent = "";
-    codeBox.classList.add("hidden");
+async function loadAdminDashboard() {
+  try {
+    const data = await api("/admin/dashboard");
+    if (byId("metricTotalUsers")) byId("metricTotalUsers").textContent = data.total_users ?? 0;
+    if (byId("metricClients")) byId("metricClients").textContent = data.total_clients ?? 0;
+    if (byId("metricWalkers")) byId("metricWalkers").textContent = data.total_walkers ?? 0;
+    if (byId("metricRevenue")) byId("metricRevenue").textContent = `R$ ${Number(data.total_revenue || 0).toFixed(2)}`;
+    if (byId("metricRequests")) byId("metricRequests").textContent = data.total_requests ?? 0;
+    if (byId("metricCompleted")) byId("metricCompleted").textContent = data.total_completed ?? 0;
+    if (byId("metricPaid")) byId("metricPaid").textContent = data.total_paid ?? 0;
+    renderAdminUsers(await api("/admin/users"));
+  } catch (err) {
+    alert(err.message);
   }
 }
 
-function clearPixDisplay() {
-  const qrSection = byId("qrSection");
-  const img = byId("pixPreview");
-  const codeBox = byId("pixCodeText");
-
-  if (img) img.removeAttribute("src");
-  if (codeBox) {
-    codeBox.textContent = "";
-    codeBox.classList.add("hidden");
+async function loadRequests() {
+  try {
+    let path = "/walk-requests";
+    if (currentUser?.id && currentUser.role !== "admin") {
+      path += `?user_id=${encodeURIComponent(currentUser.id)}`;
+    }
+    const data = await api(path);
+    renderClientRequests(currentUser?.role === "client" ? data : []);
+    renderWalkerRequests(currentUser?.role === "walker" ? data : []);
+  } catch (err) {
+    console.log(err.message);
   }
-  qrSection?.classList.add("hidden");
 }
 
-function getLoginPayload() {
-  return {
-    email: byId("login_email")?.value?.trim() || "",
-    password: byId("login_password")?.value || ""
-  };
+async function generateMercadoPagoPayment(requestId = "", amount = "") {
+  try {
+    const query = new URLSearchParams();
+    if (requestId) query.set("request_id", requestId);
+    if (amount) query.set("amount", amount);
+    const data = await api(`/pagamento?${query.toString()}`, { method: "GET" });
+    renderPaymentBox(data);
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
-function getRegisterPayload() {
-  return {
-    full_name: byId("full_name")?.value?.trim() || "",
-    email: byId("email")?.value?.trim() || "",
-    password: byId("password")?.value || "",
-    role: byId("role")?.value || "client",
-    neighborhood: "",
-    city: "",
-    address: "",
-    photo: ""
-  };
-}
+async function handleLoginSubmit(e) {
+  if (e) e.preventDefault();
 
-async function handleLogin(event) {
-  event.preventDefault();
+  const email = byId("login_email")?.value.trim();
+  const password = byId("login_password")?.value;
+
+  if (!email || !password) return alert("Preencha e-mail e senha.");
 
   try {
-    const payload = getLoginPayload();
+    let data;
 
-    const data = await api("/users/login", {
+    if (currentAccessTab === "admin") {
+      data = await api("/admin/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+      data = normalizeLoggedUser(data, "admin");
+      data.role = "admin";
+    } else {
+      data = await api("/users/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+
+      if (data?.access_token) {
+        localStorage.setItem("access_token", data.access_token);
+      }
+
+      data = normalizeLoggedUser(data, currentAccessTab);
+
+      if (currentAccessTab === "client" && data.role !== "client") {
+        return alert("Esse login não pertence a um cliente.");
+      }
+
+      if (currentAccessTab === "walker" && data.role !== "walker") {
+        return alert("Esse login não pertence a um passeador.");
+      }
+    }
+
+    localStorage.setItem("session_user", JSON.stringify(data));
+    renderSession(data);
+  } catch (err) {
+    alert(err.message);
+  }
+
+  return false;
+}
+
+async function handleRegisterSubmit(e) {
+  if (e) e.preventDefault();
+
+  if (currentAccessTab === "admin") return alert("Cadastro de admin não está habilitado.");
+
+  const forcedRole = currentAccessTab === "walker" ? "walker" : "client";
+
+  if (forcedRole === "walker" && !byId("profile_photo")?.value.trim()) {
+    return alert("A foto do passeador é obrigatória.");
+  }
+
+  try {
+    const payload = {
+      full_name: byId("full_name")?.value || "",
+      email: byId("email")?.value || "",
+      password: byId("password")?.value || "",
+      role: forcedRole,
+      neighborhood: byId("neighborhood")?.value || "",
+      city: byId("city")?.value || "",
+      address: byId("address")?.value || "",
+      profile_photo: byId("profile_photo")?.value.trim() || null
+    };
+
+    let data = await api("/users/register", {
       method: "POST",
       body: JSON.stringify(payload)
     });
 
-    currentUser = data;
-    localStorage.setItem("amigopet_user", JSON.stringify(data));
+    data = normalizeLoggedUser(data, forcedRole);
 
-    updateSessionInfo();
-    renderOrderSummary();
-    showScreen("dashboardScreen");
-    setStatusBox("paymentStatusBox", "Login realizado com sucesso. Sistema pronto para criar pedido e gerar PIX.", "success");
-    appendLog("Login realizado com sucesso.", "success");
-    await carregarHistoricoPedidos();
-  } catch (error) {
-    appendLog(`Erro no login: ${error.message}`, "error");
-    alert(`Erro no login: ${error.message}`);
-  }
-}
-
-async function handleRegister(event) {
-  event.preventDefault();
-
-  try {
-    const payload = getRegisterPayload();
-
-    const data = await api("/users/register", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-
-    appendLog(`Conta criada com sucesso! ID: ${data.id ?? "sem retorno de ID"}`, "success");
-    alert(`Conta criada com sucesso! ID: ${data.id ?? "sem retorno de ID"}`);
+    alert(data?.id ? `Conta criada com ID ${data.id}` : "Conta criada com sucesso");
 
     byId("registerForm")?.reset();
-    if (byId("role")) byId("role").value = "client";
-    setActiveTab("login");
-  } catch (error) {
-    appendLog(`Erro ao criar conta: ${error.message}`, "error");
-    alert(`Erro ao criar conta: ${error.message}`);
+    uploadedWalkerPhotoUrl = null;
+    setPhotoPreview("photoPreviewWrap", "photoPreview", null);
+    setAccessTab(forcedRole);
+    localStorage.setItem("session_user", JSON.stringify(data));
+    renderSession(data);
+  } catch (err) {
+    alert(err.message);
   }
+
+  return false;
 }
 
-async function consultarStatusAgora() {
-  if (!paymentId) {
-    appendLog("Nenhum pagamento ativo para consultar.", "warning");
-    return;
+async function handlePetSubmit(e) {
+  if (e) e.preventDefault();
+
+  if (!currentUser?.id) return alert("Sessão do cliente não encontrada.");
+  if (!byId("pet_photo")?.value.trim()) return alert("A foto do animal é obrigatória.");
+
+  try {
+    const payload = {
+      owner_id: Number(currentUser.id),
+      name: byId("pet_name")?.value || "",
+      breed: byId("pet_breed")?.value || "",
+      size: byId("pet_size")?.value || "medio",
+      notes: `${byId("pet_notes")?.value || ""} [FOTO:${byId("pet_photo")?.value.trim()}]`
+    };
+
+    const data = await api("/pets", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    alert(`Pet salvo com ID ${data.id}`);
+    byId("petForm")?.reset();
+    uploadedPetPhotoUrl = null;
+    setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
+    if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
+  } catch (err) {
+    alert(err.message);
+  }
+
+  return false;
+}
+
+async function handleWalkSubmit(e) {
+  if (e) e.preventDefault();
+
+  if (!currentUser || currentUser.role !== "client") {
+    return alert("Sessão do cliente não encontrada.");
   }
 
   try {
-    const data = await api(`/payment/status/${paymentId}`, { method: "GET" });
+    const dogCount = Number(byId("dog_count")?.value || 1);
+    const notes = `${byId("walk_notes")?.value || ""} [DOG_COUNT:${dogCount}]`;
 
-    if (data.approved) {
-      currentOrderStatus = "paid";
-      renderOrderSummary();
-      setStatusBox("paymentStatusBox", `Pagamento confirmado.\nStatus: ${data.status}\nPedido liberado.`, "success");
-      appendLog("Pagamento confirmado manualmente.", "success");
-    } else {
-      setStatusBox("paymentStatusBox", `Pagamento ainda não aprovado.\nStatus atual: ${data.status || "desconhecido"}`, "warning");
-      appendLog(`Consulta manual de status: ${data.status || "desconhecido"}`, "warning");
-    }
+    const payload = {
+      client_id: Number(currentUser.id),
+      walker_id: null,
+      pet_id: null,
+      pickup_address: byId("pickup_address")?.value || byId("mapAddress")?.value || "",
+      neighborhood: byId("walk_neighborhood")?.value || "",
+      city: byId("walk_city")?.value || "",
+      scheduled_at: byId("scheduled_at")?.value || null,
+      duration_minutes: Number(byId("duration_minutes")?.value || 30),
+      price: Number(byId("price")?.value || 0),
+      notes
+    };
 
-    await carregarHistoricoPedidos();
-  } catch (error) {
-    appendLog(`Erro ao consultar status: ${error.message}`, "error");
-    alert(`Erro ao consultar status: ${error.message}`);
+    const data = await api("/walk-requests", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    alert(`Solicitação criada com ID ${data.id}`);
+    loadRequests();
+  } catch (err) {
+    alert(err.message);
   }
+
+  return false;
 }
 
-function monitorarPagamento() {
-  stopPaymentMonitoring();
+async function handleMessageSubmit(e) {
+  if (e) e.preventDefault();
 
-  paymentCheckInterval = setInterval(async () => {
-    if (!paymentId) return;
+  if (!activeChatRequestId) return alert("Abra o chat de uma solicitação primeiro.");
 
+  try {
+    await api("/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        walk_request_id: activeChatRequestId,
+        sender_id: currentUser.id,
+        text: byId("chat_text")?.value || ""
+      })
+    });
+
+    if (byId("chat_text")) byId("chat_text").value = "";
+    openChat(activeChatRequestId, byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", false);
+  } catch (err) {
+    alert(err.message);
+  }
+
+  return false;
+}
+
+async function handleWalkerMessageSubmit(e) {
+  if (e) e.preventDefault();
+
+  if (!activeWalkerChatRequestId) return alert("Abra o chat de uma solicitação primeiro.");
+
+  try {
+    await api("/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        walk_request_id: activeWalkerChatRequestId,
+        sender_id: currentUser.id,
+        text: byId("walker_chat_text")?.value || ""
+      })
+    });
+
+    if (byId("walker_chat_text")) byId("walker_chat_text").value = "";
+    openChat(activeWalkerChatRequestId, byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", true);
+  } catch (err) {
+    alert(err.message);
+  }
+
+  return false;
+}
+
+function attachMainEvents() {
+  byId("logoutBtn")?.addEventListener("click", logout);
+
+  byId("goToRegisterBtn")?.addEventListener("click", () => {
+    if (currentAccessTab === "admin") return alert("Cadastro de admin não está habilitado nesta tela.");
+    showScreen("registerScreen");
+  });
+
+  byId("backToWelcomeBtn")?.addEventListener("click", () => showScreen("welcomeScreen"));
+  byId("refreshAdminBtn")?.addEventListener("click", loadAdminDashboard);
+  byId("loadRequestsBtn")?.addEventListener("click", loadRequests);
+  byId("refreshWalkerBtn")?.addEventListener("click", loadRequests);
+  byId("loadMapBtn")?.addEventListener("click", loadMap);
+  byId("duration_minutes")?.addEventListener("change", syncEstimatedPrice);
+  byId("dog_count")?.addEventListener("change", syncEstimatedPrice);
+
+  document.querySelectorAll(".role-chip").forEach((btn) => {
+    btn.addEventListener("click", () => setAccessTab(btn.dataset.role));
+  });
+
+  byId("choosePhotoBtn")?.addEventListener("click", () => byId("profile_photo_file")?.click());
+
+  byId("clearPhotoBtn")?.addEventListener("click", () => {
+    uploadedWalkerPhotoUrl = null;
+    if (byId("profile_photo")) byId("profile_photo").value = "";
+    if (byId("profile_photo_file")) byId("profile_photo_file").value = "";
+    setPhotoPreview("photoPreviewWrap", "photoPreview", null);
+    if (byId("photoUploadStatus")) byId("photoUploadStatus").textContent = "Nenhuma foto selecionada.";
+  });
+
+  byId("profile_photo_file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    uploadedWalkerPhotoUrl = await base64Url(file);
+    if (byId("profile_photo")) byId("profile_photo").value = uploadedWalkerPhotoUrl;
+    setPhotoPreview("photoPreviewWrap", "photoPreview", uploadedWalkerPhotoUrl);
+    if (byId("photoUploadStatus")) byId("photoUploadStatus").textContent = `Foto carregada: ${file.name}`;
+  });
+
+  byId("choosePetPhotoBtn")?.addEventListener("click", () => byId("pet_photo_file")?.click());
+
+  byId("clearPetPhotoBtn")?.addEventListener("click", () => {
+    uploadedPetPhotoUrl = null;
+    if (byId("pet_photo")) byId("pet_photo").value = "";
+    if (byId("pet_photo_file")) byId("pet_photo_file").value = "";
+    setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
+    if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
+  });
+
+  byId("pet_photo_file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    uploadedPetPhotoUrl = await base64Url(file);
+    if (byId("pet_photo")) byId("pet_photo").value = uploadedPetPhotoUrl;
+    setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", uploadedPetPhotoUrl);
+    if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = `Foto carregada: ${file.name}`;
+  });
+
+  byId("loginForm")?.addEventListener("submit", handleLoginSubmit);
+  byId("loginSubmitBtn")?.addEventListener("click", handleLoginSubmit);
+
+  byId("registerForm")?.addEventListener("submit", handleRegisterSubmit);
+  byId("registerSubmitBtn")?.addEventListener("click", handleRegisterSubmit);
+
+  byId("petForm")?.addEventListener("submit", handlePetSubmit);
+  byId("petSubmitBtn")?.addEventListener("click", handlePetSubmit);
+
+  byId("walkForm")?.addEventListener("submit", handleWalkSubmit);
+  byId("walkSubmitBtn")?.addEventListener("click", handleWalkSubmit);
+
+  byId("messageForm")?.addEventListener("submit", handleMessageSubmit);
+  byId("messageSubmitBtn")?.addEventListener("click", handleMessageSubmit);
+
+  byId("walkerMessageForm")?.addEventListener("submit", handleWalkerMessageSubmit);
+  byId("walkerMessageSubmitBtn")?.addEventListener("click", handleWalkerMessageSubmit);
+
+  byId("expireBtn")?.addEventListener("click", async () => {
     try {
-      const data = await api(`/payment/status/${paymentId}`, { method: "GET" });
-
-      if (data.approved) {
-        currentOrderStatus = "paid";
-        renderOrderSummary();
-        setStatusBox("paymentStatusBox", `✅ Pagamento confirmado!\nStatus: ${data.status}\nPedido liberado.`, "success");
-        appendLog("Pagamento confirmado automaticamente.", "success");
-        stopPaymentMonitoring();
-        await carregarHistoricoPedidos();
-      } else {
-        currentOrderStatus = "pending_payment";
-        renderOrderSummary();
-        setStatusBox("paymentStatusBox", `Aguardando pagamento.\nStatus atual: ${data.status || "desconhecido"}`, "warning");
-      }
-    } catch (error) {
-      appendLog(`Erro ao verificar pagamento: ${error.message}`, "error");
+      await api("/maintenance/expire-invites", { method: "POST" });
+      loadRequests();
+    } catch (err) {
+      alert(err.message);
     }
-  }, 5000);
+  });
 }
 
-async function carregarHistoricoPedidos() {
-  const listEl = byId("ordersList");
-  if (!listEl || !currentUser?.email) return;
+window.addEventListener("load", () => {
+  setAccessTab("client");
+  updatePaymentBoxDefault();
+  updateHeaderState();
+  syncEstimatedPrice();
+  attachMainEvents();
+  tryAutoLocate();
 
-  try {
-    const orders = await api(`/orders?user_email=${encodeURIComponent(currentUser.email)}`, {
-      method: "GET"
-    });
-
-    if (!Array.isArray(orders) || orders.length === 0) {
-      listEl.innerHTML = `
-        <div class="order-card">
-          <strong>Nenhum pedido ainda</strong>
-          <div class="order-meta">Assim que você criar um pedido, ele aparecerá aqui.</div>
-        </div>
-      `;
-      return;
+  const session = localStorage.getItem("session_user");
+  if (session) {
+    try {
+      renderSession(JSON.parse(session));
+    } catch {
+      renderSession(null);
     }
-
-    listEl.innerHTML = orders.map((order) => `
-      <div class="order-card">
-        <strong>Pedido #${order.id}</strong>
-        <div class="order-meta">
-          <div><b>Status:</b> ${order.status}</div>
-          <div><b>Valor:</b> R$ ${Number(order.amount || 0).toFixed(2)}</div>
-          <div><b>Descrição:</b> ${order.description || "Passeio AmigoPet"}</div>
-          <div><b>Payment ID:</b> ${order.payment_id ?? "não gerado"}</div>
-        </div>
-      </div>
-    `).join("");
-  } catch (error) {
-    listEl.innerHTML = `
-      <div class="order-card">
-        <strong>Erro ao carregar histórico</strong>
-        <div class="order-meta">${error.message}</div>
-      </div>
-    `;
+  } else {
+    renderSession(null);
   }
-}
+});
 
-async function pagar(event) {
-  if (event) event.preventDefault();
-
-  try {
-    if (!currentUser) {
-      alert("Faça login antes de criar pedido e gerar o pagamento.");
-      return;
-    }
-
-    const amount = Number(String(byId("paymentAmount")?.value || "30").replace(",", "."));
-    const description = (byId("orderDescription")?.value || "").trim() || "Passeio AmigoPet";
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert("Digite um valor válido maior que zero.");
-      return;
-    }
-
-    clearPixDisplay();
-    stopPaymentMonitoring();
-
-    setStatusBox("paymentStatusBox", "Criando pedido...", "warning");
-    appendLog("Criando pedido comercial...", "warning");
-
-    const order = await api("/orders/create", {
-      method: "POST",
-      body: JSON.stringify({
-        user_email: currentUser.email,
-        amount,
-        description
-      })
-    });
-
-    currentOrderId = order.order_id;
-    currentOrderStatus = order.status || "pending_payment";
-    renderOrderSummary();
-
-    setStatusBox("paymentStatusBox", "Pedido criado. Gerando PIX...", "warning");
-    appendLog(`Pedido #${currentOrderId} criado.`, "warning");
-
-    const payment = await api("/payment/pay", {
-      method: "POST",
-      body: JSON.stringify({
-        amount,
-        email: currentUser.email,
-        order_id: currentOrderId
-      })
-    });
-
-    paymentId = payment.payment_id || payment.id || null;
-    renderOrderSummary();
-
-    renderPixQrCode(payment.qr_code_base64 || "", payment.qr_code || "");
-
-    setStatusBox(
-      "paymentStatusBox",
-      `PIX gerado com sucesso.\nPedido #${currentOrderId}\nPayment ID: ${paymentId ?? "não retornado"}\nAguardando pagamento...`,
-      "warning"
+setInterval(() => {
+  if (activeChatRequestId) {
+    openChat(
+      activeChatRequestId,
+      byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
+      false
     );
-
-    appendLog("PIX gerado com sucesso e monitoramento iniciado.", "success");
-    await carregarHistoricoPedidos();
-    monitorarPagamento();
-  } catch (error) {
-    appendLog(`Erro ao gerar pedido/pagamento: ${error.message}`, "error");
-    setStatusBox("paymentStatusBox", `Erro ao gerar pagamento.\n${error.message}`, "error");
-    alert(`Erro: ${error.message}`);
-  }
-}
-
-function handleLogout() {
-  stopPaymentMonitoring();
-  localStorage.removeItem("amigopet_user");
-  currentUser = null;
-  paymentId = null;
-  currentOrderId = null;
-  currentOrderStatus = null;
-
-  updateSessionInfo();
-  renderOrderSummary();
-  clearPixDisplay();
-  setStatusBox("paymentStatusBox", "Sessão encerrada.", "warning");
-  appendLog("Usuário saiu da sessão.", "warning");
-
-  const listEl = byId("ordersList");
-  if (listEl) {
-    listEl.innerHTML = `
-      <div class="order-card">
-        <strong>Nenhum pedido ainda</strong>
-        <div class="order-meta">Assim que você criar um pedido, ele aparecerá aqui.</div>
-      </div>
-    `;
   }
 
-  showScreen("welcomeScreen");
-}
-
-function restoreSession() {
-  try {
-    const raw = localStorage.getItem("amigopet_user");
-    if (!raw) return;
-
-    currentUser = JSON.parse(raw);
-    updateSessionInfo();
-    renderOrderSummary();
-    showScreen("dashboardScreen");
-    appendLog("Sessão restaurada.", "success");
-    carregarHistoricoPedidos();
-  } catch (_) {
-    localStorage.removeItem("amigopet_user");
+  if (activeWalkerChatRequestId) {
+    openChat(
+      activeWalkerChatRequestId,
+      byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
+      true
+    );
   }
-}
-
-function init() {
-  byId("loginForm")?.addEventListener("submit", handleLogin);
-  byId("registerForm")?.addEventListener("submit", handleRegister);
-  byId("payBtn")?.addEventListener("click", pagar);
-  byId("checkStatusBtn")?.addEventListener("click", consultarStatusAgora);
-  byId("refreshOrdersBtn")?.addEventListener("click", carregarHistoricoPedidos);
-  byId("logoutBtn")?.addEventListener("click", handleLogout);
-  byId("showWelcomeBtn")?.addEventListener("click", () => showScreen("welcomeScreen"));
-  byId("tabLoginBtn")?.addEventListener("click", () => setActiveTab("login"));
-  byId("tabRegisterBtn")?.addEventListener("click", () => setActiveTab("register"));
-
-  updateSessionInfo();
-  renderOrderSummary();
-  restoreSession();
-}
-
-document.addEventListener("DOMContentLoaded", init);
+}, 3000);
