@@ -10,6 +10,10 @@ let latestMercadoPagoLink = null;
 let activeChatRequestId = null;
 let activeWalkerChatRequestId = null;
 
+let isClientChatLoading = false;
+let isWalkerChatLoading = false;
+let chatPollingHandle = null;
+
 const PRICE_BY_DURATION = { 15: 20, 30: 35, 45: 50, 60: 65 };
 
 function normalizeLoggedUser(data, fallbackRole = null) {
@@ -64,16 +68,53 @@ function updateHeaderState() {
   byId("logoutBtn")?.classList.toggle("hidden", !currentUser);
 }
 
+function startChatPolling() {
+  stopChatPolling();
+
+  chatPollingHandle = setInterval(async () => {
+    if (activeChatRequestId) {
+      await openChat(
+        activeChatRequestId,
+        byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
+        false,
+        true
+      );
+    }
+
+    if (activeWalkerChatRequestId) {
+      await openChat(
+        activeWalkerChatRequestId,
+        byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
+        true,
+        true
+      );
+    }
+  }, 3000);
+}
+
+function stopChatPolling() {
+  if (chatPollingHandle) {
+    clearInterval(chatPollingHandle);
+    chatPollingHandle = null;
+  }
+}
+
 function renderSession(user) {
   currentUser = user || null;
   updateHeaderState();
 
   if (!user) {
+    activeChatRequestId = null;
+    activeWalkerChatRequestId = null;
+    stopChatPolling();
     showScreen("welcomeScreen");
     return;
   }
 
   if (user.role === "admin") {
+    activeChatRequestId = null;
+    activeWalkerChatRequestId = null;
+    stopChatPolling();
     if (byId("adminSessionInfo")) byId("adminSessionInfo").textContent = `${user.full_name || "Admin"} conectado`;
     showScreen("adminDashboard");
     loadAdminDashboard();
@@ -81,17 +122,21 @@ function renderSession(user) {
   }
 
   if (user.role === "walker") {
+    activeChatRequestId = null;
     if (byId("walkerSessionInfo")) byId("walkerSessionInfo").textContent = `${user.full_name || "Passeador"} conectado`;
     showScreen("walkerDashboard");
     loadRequests();
+    startChatPolling();
     return;
   }
 
+  activeWalkerChatRequestId = null;
   if (byId("clientSessionInfo")) byId("clientSessionInfo").textContent = `${user.full_name || "Cliente"} conectado`;
   showScreen("clientDashboard");
   syncEstimatedPrice();
   tryAutoLocate();
   loadRequests();
+  startChatPolling();
 }
 
 function logout() {
@@ -101,6 +146,7 @@ function logout() {
   activeChatRequestId = null;
   activeWalkerChatRequestId = null;
   latestMercadoPagoLink = null;
+  stopChatPolling();
   renderSession(null);
   updatePaymentBoxDefault();
 }
@@ -117,7 +163,7 @@ function base64Url(file) {
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
 
-  if (!(options.body instanceof FormData)) {
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -370,17 +416,35 @@ function renderMessages(targetId, messages) {
   });
 }
 
-async function openChat(requestId, label, isWalker) {
+async function openChat(requestId, label, isWalker, silent = false) {
   if (isWalker) {
-    activeWalkerChatRequestId = Number(requestId);
-    if (byId("walkerChatHeaderLabel")) byId("walkerChatHeaderLabel").textContent = `Conversa com ${label}`;
-    const messages = await api(`/messages/${requestId}`);
-    renderMessages("walkerChatList", messages);
+    if (isWalkerChatLoading) return;
+    isWalkerChatLoading = true;
+
+    try {
+      activeWalkerChatRequestId = Number(requestId);
+      if (byId("walkerChatHeaderLabel")) byId("walkerChatHeaderLabel").textContent = `Conversa com ${label}`;
+      const messages = await api(`/messages/${requestId}`);
+      renderMessages("walkerChatList", messages);
+    } catch (err) {
+      if (!silent) alert(err.message);
+    } finally {
+      isWalkerChatLoading = false;
+    }
   } else {
-    activeChatRequestId = Number(requestId);
-    if (byId("chatHeaderLabel")) byId("chatHeaderLabel").textContent = `Conversa com ${label}`;
-    const messages = await api(`/messages/${requestId}`);
-    renderMessages("chatList", messages);
+    if (isClientChatLoading) return;
+    isClientChatLoading = true;
+
+    try {
+      activeChatRequestId = Number(requestId);
+      if (byId("chatHeaderLabel")) byId("chatHeaderLabel").textContent = `Conversa com ${label}`;
+      const messages = await api(`/messages/${requestId}`);
+      renderMessages("chatList", messages);
+    } catch (err) {
+      if (!silent) alert(err.message);
+    } finally {
+      isClientChatLoading = false;
+    }
   }
 }
 
@@ -432,7 +496,10 @@ async function handleLoginSubmit(e) {
   const email = byId("login_email")?.value.trim();
   const password = byId("login_password")?.value;
 
-  if (!email || !password) return alert("Preencha e-mail e senha.");
+  if (!email || !password) {
+    alert("Preencha e-mail e senha.");
+    return false;
+  }
 
   try {
     let data;
@@ -457,11 +524,13 @@ async function handleLoginSubmit(e) {
       data = normalizeLoggedUser(data, currentAccessTab);
 
       if (currentAccessTab === "client" && data.role !== "client") {
-        return alert("Esse login não pertence a um cliente.");
+        alert("Esse login não pertence a um cliente.");
+        return false;
       }
 
       if (currentAccessTab === "walker" && data.role !== "walker") {
-        return alert("Esse login não pertence a um passeador.");
+        alert("Esse login não pertence a um passeador.");
+        return false;
       }
     }
 
@@ -477,12 +546,16 @@ async function handleLoginSubmit(e) {
 async function handleRegisterSubmit(e) {
   if (e) e.preventDefault();
 
-  if (currentAccessTab === "admin") return alert("Cadastro de admin não está habilitado.");
+  if (currentAccessTab === "admin") {
+    alert("Cadastro de admin não está habilitado.");
+    return false;
+  }
 
   const forcedRole = currentAccessTab === "walker" ? "walker" : "client";
 
   if (forcedRole === "walker" && !byId("profile_photo")?.value.trim()) {
-    return alert("A foto do passeador é obrigatória.");
+    alert("A foto do passeador é obrigatória.");
+    return false;
   }
 
   try {
@@ -522,8 +595,15 @@ async function handleRegisterSubmit(e) {
 async function handlePetSubmit(e) {
   if (e) e.preventDefault();
 
-  if (!currentUser?.id) return alert("Sessão do cliente não encontrada.");
-  if (!byId("pet_photo")?.value.trim()) return alert("A foto do animal é obrigatória.");
+  if (!currentUser?.id) {
+    alert("Sessão do cliente não encontrada.");
+    return false;
+  }
+
+  if (!byId("pet_photo")?.value.trim()) {
+    alert("A foto do animal é obrigatória.");
+    return false;
+  }
 
   try {
     const payload = {
@@ -555,7 +635,8 @@ async function handleWalkSubmit(e) {
   if (e) e.preventDefault();
 
   if (!currentUser || currentUser.role !== "client") {
-    return alert("Sessão do cliente não encontrada.");
+    alert("Sessão do cliente não encontrada.");
+    return false;
   }
 
   try {
@@ -592,7 +673,10 @@ async function handleWalkSubmit(e) {
 async function handleMessageSubmit(e) {
   if (e) e.preventDefault();
 
-  if (!activeChatRequestId) return alert("Abra o chat de uma solicitação primeiro.");
+  if (!activeChatRequestId) {
+    alert("Abra o chat de uma solicitação primeiro.");
+    return false;
+  }
 
   try {
     await api("/messages", {
@@ -605,7 +689,7 @@ async function handleMessageSubmit(e) {
     });
 
     if (byId("chat_text")) byId("chat_text").value = "";
-    openChat(activeChatRequestId, byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", false);
+    await openChat(activeChatRequestId, byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", false);
   } catch (err) {
     alert(err.message);
   }
@@ -616,7 +700,10 @@ async function handleMessageSubmit(e) {
 async function handleWalkerMessageSubmit(e) {
   if (e) e.preventDefault();
 
-  if (!activeWalkerChatRequestId) return alert("Abra o chat de uma solicitação primeiro.");
+  if (!activeWalkerChatRequestId) {
+    alert("Abra o chat de uma solicitação primeiro.");
+    return false;
+  }
 
   try {
     await api("/messages", {
@@ -629,7 +716,7 @@ async function handleWalkerMessageSubmit(e) {
     });
 
     if (byId("walker_chat_text")) byId("walker_chat_text").value = "";
-    openChat(activeWalkerChatRequestId, byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", true);
+    await openChat(activeWalkerChatRequestId, byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", true);
   } catch (err) {
     alert(err.message);
   }
@@ -641,7 +728,10 @@ function attachMainEvents() {
   byId("logoutBtn")?.addEventListener("click", logout);
 
   byId("goToRegisterBtn")?.addEventListener("click", () => {
-    if (currentAccessTab === "admin") return alert("Cadastro de admin não está habilitado nesta tela.");
+    if (currentAccessTab === "admin") {
+      alert("Cadastro de admin não está habilitado nesta tela.");
+      return;
+    }
     showScreen("registerScreen");
   });
 
@@ -698,22 +788,11 @@ function attachMainEvents() {
   });
 
   byId("loginForm")?.addEventListener("submit", handleLoginSubmit);
-  byId("loginSubmitBtn")?.addEventListener("click", handleLoginSubmit);
-
   byId("registerForm")?.addEventListener("submit", handleRegisterSubmit);
-  byId("registerSubmitBtn")?.addEventListener("click", handleRegisterSubmit);
-
   byId("petForm")?.addEventListener("submit", handlePetSubmit);
-  byId("petSubmitBtn")?.addEventListener("click", handlePetSubmit);
-
   byId("walkForm")?.addEventListener("submit", handleWalkSubmit);
-  byId("walkSubmitBtn")?.addEventListener("click", handleWalkSubmit);
-
   byId("messageForm")?.addEventListener("submit", handleMessageSubmit);
-  byId("messageSubmitBtn")?.addEventListener("click", handleMessageSubmit);
-
   byId("walkerMessageForm")?.addEventListener("submit", handleWalkerMessageSubmit);
-  byId("walkerMessageSubmitBtn")?.addEventListener("click", handleWalkerMessageSubmit);
 
   byId("expireBtn")?.addEventListener("click", async () => {
     try {
@@ -744,21 +823,3 @@ window.addEventListener("load", () => {
     renderSession(null);
   }
 });
-
-setInterval(() => {
-  if (activeChatRequestId) {
-    openChat(
-      activeChatRequestId,
-      byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
-      false
-    );
-  }
-
-  if (activeWalkerChatRequestId) {
-    openChat(
-      activeWalkerChatRequestId,
-      byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
-      true
-    );
-  }
-}, 3000);
