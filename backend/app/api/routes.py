@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 import os
 import requests
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -31,10 +31,7 @@ ALLOWED_IMAGE_TYPES = {
 }
 
 
-
-
 def _db_safe_now() -> datetime:
-    # SQLite costuma devolver datetimes sem timezone; usar naive evita erro de comparação.
     return datetime.utcnow()
 
 
@@ -44,6 +41,35 @@ def _normalize_email(value: str) -> str:
 
 def _normalize_password(value: str) -> str:
     return (value or "").strip()
+
+
+def _mercado_pago_token() -> str:
+    token = (settings.MERCADO_PAGO_ACCESS_TOKEN or os.getenv("MERCADO_PAGO_ACCESS_TOKEN") or "").strip()
+    if not token:
+        raise HTTPException(status_code=500, detail="MERCADO_PAGO_ACCESS_TOKEN não configurado.")
+    return token
+
+
+def _mercado_pago_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {_mercado_pago_token()}",
+        "Content-Type": "application/json",
+    }
+
+
+def _payment_status_map(status: str | None) -> str:
+    mapping = {
+        "approved": "paid",
+        "pending": "pending",
+        "in_process": "processing",
+        "authorized": "processing",
+        "rejected": "failed",
+        "cancelled": "cancelled",
+        "refunded": "refunded",
+        "charged_back": "charged_back",
+    }
+    return mapping.get((status or "").lower(), status or "unknown")
+
 
 def _serialize_walk_request(db: Session, walk: WalkRequest) -> dict:
     client = db.get(User, walk.client_id) if walk.client_id else None
@@ -69,6 +95,12 @@ def _serialize_walk_request(db: Session, walk: WalkRequest) -> dict:
         "price": float(walk.price or 0),
         "status": walk.status,
         "payment_status": walk.payment_status,
+        "payment_id": walk.payment_id,
+        "payment_preference_id": walk.payment_preference_id,
+        "payment_provider": walk.payment_provider,
+        "payment_link": walk.payment_link,
+        "paid_at": walk.paid_at.isoformat() if walk.paid_at else None,
+        "payment_updated_at": walk.payment_updated_at.isoformat() if walk.payment_updated_at else None,
         "notes": walk.notes,
         "created_at": walk.created_at.isoformat() if walk.created_at else None,
     }
@@ -86,6 +118,45 @@ def _serialize_message(db: Session, msg: Message) -> dict:
         "text": msg.text,
         "created_at": msg.created_at.isoformat() if msg.created_at else None,
     }
+
+
+def _extract_walk_id_from_payment(data: dict) -> int | None:
+    external_reference = data.get("external_reference")
+    if external_reference:
+        try:
+            return int(str(external_reference))
+        except Exception:
+            pass
+
+    metadata = data.get("metadata") or {}
+    for key in ("request_id", "walk_request_id"):
+        if metadata.get(key) is not None:
+            try:
+                return int(str(metadata.get(key)))
+            except Exception:
+                pass
+
+    return None
+
+
+def _apply_payment_to_walk(db: Session, walk: WalkRequest, payment_data: dict) -> WalkRequest:
+    mp_status = (payment_data.get("status") or "").lower()
+    normalized_status = _payment_status_map(mp_status)
+
+    walk.payment_id = str(payment_data.get("id")) if payment_data.get("id") else walk.payment_id
+    walk.payment_status = normalized_status
+    walk.payment_provider = "mercado_pago"
+    walk.payment_updated_at = _db_safe_now()
+
+    if normalized_status == "paid":
+        walk.paid_at = walk.paid_at or _db_safe_now()
+        if walk.status != "completed":
+            walk.status = "paid"
+
+    db.add(walk)
+    db.commit()
+    db.refresh(walk)
+    return walk
 
 
 @router.post("/uploads/profile-photo")
@@ -312,6 +383,7 @@ def create_walk_request(payload: WalkRequestCreate, db: Session = Depends(get_db
         status=status,
         invite_expires_at=expires_at,
         payment_status="unpaid",
+        payment_provider="mercado_pago",
     )
     db.add(walk)
     db.commit()
@@ -385,6 +457,7 @@ def pay_walk_request(request_id: int, payload: WalkRequestPay, db: Session = Dep
 
     checkout = payment_service.create_fake_checkout(request_id=walk.id, amount=payload.amount)
     walk.payment_status = "processing"
+    walk.payment_updated_at = _db_safe_now()
     db.commit()
     return {"message": "Checkout gerado.", "checkout": checkout}
 
@@ -399,6 +472,8 @@ def confirm_payment(request_id: int, payload: WalkRequestAction, db: Session = D
 
     walk.payment_status = "paid"
     walk.status = "paid"
+    walk.paid_at = _db_safe_now()
+    walk.payment_updated_at = _db_safe_now()
     db.commit()
     db.refresh(walk)
 
@@ -432,7 +507,12 @@ def send_message(payload: MessageCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Somente cliente ou passeador desta solicitação podem enviar mensagens.")
 
     sender = db.get(User, payload.sender_id)
-    msg = Message(**payload.model_dump(), sender_name=(sender.full_name if sender else None), sender_role=(sender.role if sender else None), sender_photo=(sender.profile_photo if sender else None))
+    msg = Message(
+        **payload.model_dump(),
+        sender_name=(sender.full_name if sender else None),
+        sender_role=(sender.role if sender else None),
+        sender_photo=(sender.profile_photo if sender else None),
+    )
     db.add(msg)
     db.commit()
     db.refresh(msg)
@@ -467,28 +547,62 @@ def expire_invites(db: Session = Depends(get_db)):
 
 
 @router.get("/pagamento")
-def criar_pagamento(request_id: int | None = Query(default=None), amount: float = Query(default=20.0)):
-    access_token = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
-    webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "").rstrip("/")
+def criar_pagamento(
+    request: Request,
+    request_id: int = Query(...),
+    amount: float = Query(default=20.0),
+    db: Session = Depends(get_db),
+):
+    walk = db.get(WalkRequest, request_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
 
-    if not access_token:
-        raise HTTPException(status_code=500, detail="MERCADO_PAGO_ACCESS_TOKEN não configurado.")
+    webhook_base_url = (settings.WEBHOOK_BASE_URL or "").strip().rstrip("/")
+    if not webhook_base_url:
+        webhook_base_url = str(request.base_url).rstrip("/")
 
-    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     payload = {
-        "items": [{"title": f"Passeio com Pet{f' #{request_id}' if request_id else ''}", "quantity": 1, "currency_id": "BRL", "unit_price": float(amount)}]
+        "items": [
+            {
+                "title": f"Passeio com Pet #{request_id}",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": float(amount),
+            }
+        ],
+        "external_reference": str(request_id),
+        "notification_url": f"{webhook_base_url}/api/webhooks/mercado-pago",
+        "metadata": {"request_id": request_id},
+        "statement_descriptor": "AMIGOPET",
     }
-    if webhook_base_url:
-        payload["notification_url"] = f"{webhook_base_url}/api/webhooks/mercado-pago"
 
-    response = requests.post("https://api.mercadopago.com/checkout/preferences", json=payload, headers=headers, timeout=30)
+    response = requests.post(
+        "https://api.mercadopago.com/checkout/preferences",
+        json=payload,
+        headers=_mercado_pago_headers(),
+        timeout=30,
+    )
+
     try:
         data = response.json()
     except Exception:
         raise HTTPException(status_code=500, detail="Resposta inválida do Mercado Pago.")
 
     if response.status_code >= 400:
-        raise HTTPException(status_code=400, detail=data.get("message") or data.get("error") or "Erro ao criar pagamento no Mercado Pago.")
+        raise HTTPException(
+            status_code=400,
+            detail=data.get("message") or data.get("error") or "Erro ao criar pagamento no Mercado Pago.",
+        )
+
+    walk.payment_preference_id = data.get("id")
+    walk.payment_provider = "mercado_pago"
+    walk.payment_link = data.get("init_point") or data.get("sandbox_init_point")
+    walk.payment_status = "pending"
+    walk.payment_updated_at = _db_safe_now()
+
+    db.add(walk)
+    db.commit()
+    db.refresh(walk)
 
     return {
         "request_id": request_id,
@@ -496,10 +610,75 @@ def criar_pagamento(request_id: int | None = Query(default=None), amount: float 
         "preference_id": data.get("id"),
         "link_pagamento": data.get("init_point"),
         "sandbox_link": data.get("sandbox_init_point"),
-        "status": "created",
+        "status": walk.payment_status,
     }
 
 
 @router.post("/webhooks/mercado-pago")
-async def mercado_pago_webhook():
-    return {"ok": True, "message": "Webhook recebido."}
+async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    query = request.query_params
+    payment_id = None
+
+    if isinstance(body, dict):
+        payment_id = (
+            body.get("data", {}).get("id")
+            or body.get("id")
+            or body.get("resource", {}).get("id") if isinstance(body.get("resource"), dict) else None
+        )
+
+    payment_id = payment_id or query.get("data.id") or query.get("id")
+
+    if not payment_id:
+        return {"ok": True, "message": "Webhook recebido sem payment_id."}
+
+    payment_response = requests.get(
+        f"https://api.mercadopago.com/v1/payments/{payment_id}",
+        headers=_mercado_pago_headers(),
+        timeout=30,
+    )
+
+    try:
+        payment_data = payment_response.json()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Resposta inválida ao consultar pagamento.")
+
+    if payment_response.status_code >= 400:
+        raise HTTPException(
+            status_code=400,
+            detail=payment_data.get("message") or payment_data.get("error") or "Erro ao consultar pagamento.",
+        )
+
+    walk_id = _extract_walk_id_from_payment(payment_data)
+    if not walk_id:
+        return {"ok": True, "message": "Pagamento localizado, mas sem request_id vinculado."}
+
+    walk = db.get(WalkRequest, walk_id)
+    if not walk:
+        return {"ok": True, "message": f"WalkRequest {walk_id} não encontrado."}
+
+    walk = _apply_payment_to_walk(db, walk, payment_data)
+
+    if walk.payment_status == "paid":
+        redis_service.publish(
+            f"client:{walk.client_id}",
+            {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
+        )
+        if walk.walker_id:
+            redis_service.publish(
+                f"walker:{walk.walker_id}",
+                {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
+            )
+
+    return {
+        "ok": True,
+        "request_id": walk.id,
+        "payment_id": walk.payment_id,
+        "payment_status": walk.payment_status,
+        "status": walk.status,
+    }

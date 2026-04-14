@@ -6,13 +6,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
-from app.api.payment import router as payment_router
-from app.api.orders import router as orders_router
 from app.core.config import settings
 from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, engine
 
-app = FastAPI(title=settings.APP_NAME, version="8.0.3")
+app = FastAPI(title=settings.APP_NAME, version="9.0.0")
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_columns()
@@ -30,8 +28,6 @@ storage_dir.mkdir(exist_ok=True)
 app.mount("/storage", StaticFiles(directory=str(storage_dir)), name="storage")
 
 app.include_router(router, prefix="/api")
-app.include_router(payment_router, prefix="/api/payment")
-app.include_router(orders_router, prefix="/api/orders")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
