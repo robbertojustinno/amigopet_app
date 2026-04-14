@@ -7,613 +7,660 @@
   <style>
     * { box-sizing: border-box; }
 
-    :root {
-      --bg: #eef4fb;
-      --panel: #ffffff;
-      --panel-2: #f7faff;
-      --border: #dbe6f3;
-      --text: #10233f;
-      --muted: #60708d;
-      --primary: #0f7bff;
-      --primary-2: #16b36d;
-      --danger: #d64545;
-      --warning: #c98a00;
-      --shadow: 0 18px 40px rgba(16, 35, 63, 0.10);
-      --radius: 22px;
-    }
-
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(15, 123, 255, 0.10), transparent 28%),
-        radial-gradient(circle at top right, rgba(22, 179, 109, 0.10), transparent 30%),
-        var(--bg);
-      color: var(--text);
+      background: #eef3fb;
+      color: #0d1b3e;
     }
 
     .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 18px 24px;
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
+      gap: 12px;
+      padding: 14px 22px;
+      background: #fff;
+      border-bottom: 1px solid #dbe4f3;
     }
 
     .logo {
-      width: 48px;
-      height: 48px;
-      border-radius: 16px;
-      display: grid;
-      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0f8f4d, #1f8de7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       color: #fff;
-      font-weight: 800;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      box-shadow: 0 10px 25px rgba(15, 123, 255, 0.28);
+      font-weight: 700;
+      font-size: 18px;
     }
 
-    .brand h1 {
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
       margin: 0;
-      font-size: 20px;
     }
 
-    .brand p {
-      margin: 3px 0 0;
-      color: var(--muted);
+    .brand-subtitle {
       font-size: 13px;
+      color: #5a6b8a;
+      margin: 2px 0 0;
     }
 
-    .container {
-      max-width: 1240px;
-      margin: 28px auto;
-      padding: 0 18px 40px;
+    .page {
+      max-width: 1180px;
+      margin: 20px auto;
+      padding: 0 18px 32px;
     }
 
     .screen { display: none; }
     .screen.active { display: block; }
 
-    .hero-grid {
+    .hero {
       display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
+      grid-template-columns: 1.05fr 0.95fr;
       gap: 24px;
-      align-items: stretch;
+      align-items: start;
     }
 
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .hero-card {
-      padding: 28px;
-      min-height: 100%;
+    .panel {
+      background: #fff;
+      border: 1px solid #d6dfef;
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 12px 35px rgba(25, 55, 110, 0.08);
     }
 
     .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 9px 14px;
+      display: inline-block;
+      background: #dff5e8;
+      color: #0f8f4d;
       border-radius: 999px;
-      background: #eaf7f0;
-      color: #0e8d53;
-      font-size: 13px;
+      padding: 8px 14px;
+      font-size: 14px;
       font-weight: 700;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
-    .hero-title {
-      margin: 0 0 10px;
-      font-size: 38px;
-      line-height: 1.1;
+    h1, h2, h3, h4, p { margin-top: 0; }
+
+    .preview-box {
+      margin-top: 16px;
+      border: 1px solid #dce5f4;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #f9fbff;
     }
 
-    .hero-text {
-      margin: 0 0 22px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.6;
-      max-width: 640px;
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e4ebf7;
+      background: #fff;
+      font-size: 12px;
+      color: #5d7090;
     }
 
-    .hero-panel {
-      background: linear-gradient(135deg, #0d2a67, #1278f3 55%, #16b36d 100%);
+    .preview-content { padding: 16px; }
+
+    .preview-card {
+      background: linear-gradient(135deg, #0f2b8a, #15b86a);
       color: #fff;
-      border-radius: 24px;
-      padding: 24px;
-      min-height: 280px;
+      border-radius: 16px;
+      padding: 18px;
+      min-height: 140px;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: center;
+      text-align: center;
+      font-weight: 700;
     }
 
-    .hero-panel h2 {
-      margin: 0;
-      font-size: 28px;
-    }
-
-    .hero-panel p {
-      margin: 8px 0 0;
-      opacity: 0.92;
-      line-height: 1.5;
-    }
-
-    .stats {
+    .preview-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 12px;
-      margin-top: 18px;
+      margin-top: 12px;
     }
 
-    .stat {
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 18px;
-      padding: 16px;
-    }
-
-    .stat strong {
-      display: block;
-      font-size: 22px;
-      margin-bottom: 4px;
-    }
-
-    .stat span {
+    .preview-mini {
+      background: #fff;
+      border: 1px solid #e3eaf6;
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 74px;
       font-size: 13px;
-      opacity: 0.9;
+      color: #536583;
     }
 
-    .form-card { padding: 24px; }
+    .right-title {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
 
-    .tabs {
+    .muted {
+      color: #617392;
+      margin-bottom: 18px;
+    }
+
+    .role-switch {
       display: flex;
       gap: 10px;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
       flex-wrap: wrap;
     }
 
-    .tab-btn {
-      border: 1px solid var(--border);
+    .role-chip {
+      border: 1px solid #c8d5ec;
       background: #fff;
-      color: var(--text);
+      color: #16325f;
       border-radius: 999px;
       padding: 10px 16px;
       font-weight: 700;
       cursor: pointer;
-      transition: 0.2s ease;
     }
 
-    .tab-btn.active {
+    .role-chip.active {
+      background: linear-gradient(90deg, #128b49, #1f8de7);
       color: #fff;
       border-color: transparent;
-      background: linear-gradient(90deg, var(--primary), var(--primary-2));
-      box-shadow: 0 8px 18px rgba(15, 123, 255, 0.18);
-    }
-
-    .section-title {
-      margin: 0 0 6px;
-      font-size: 28px;
-    }
-
-    .section-subtitle {
-      margin: 0 0 18px;
-      color: var(--muted);
-      line-height: 1.5;
     }
 
     form { display: block; }
 
-    .input-group { margin-bottom: 12px; }
-
-    .input-label {
-      display: block;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--muted);
-      margin-bottom: 7px;
-    }
-
-    input, textarea, button {
+    input, select, textarea, button {
       font: inherit;
     }
 
-    input, textarea {
+    input, select, textarea {
       width: 100%;
-      border: 1px solid var(--border);
+      padding: 14px 15px;
+      border-radius: 14px;
+      border: 1px solid #cfd9ea;
       background: #fff;
-      border-radius: 16px;
-      padding: 15px 16px;
-      color: var(--text);
       outline: none;
-      transition: 0.2s ease;
+      margin-bottom: 12px;
     }
 
     textarea {
-      min-height: 110px;
+      min-height: 90px;
       resize: vertical;
     }
 
-    input:focus, textarea:focus {
-      border-color: #8dc2ff;
-      box-shadow: 0 0 0 4px rgba(15, 123, 255, 0.10);
-    }
-
-    .btn {
+    .primary-btn, .secondary-btn, .ghost-btn, .card-action-btn {
       border: none;
-      cursor: pointer;
-      border-radius: 16px;
+      border-radius: 14px;
       padding: 14px 16px;
+      cursor: pointer;
       font-weight: 700;
-      transition: 0.2s ease;
     }
 
-    .btn-primary {
+    .primary-btn {
       width: 100%;
+      background: linear-gradient(90deg, #108742, #0d72db);
       color: #fff;
-      background: linear-gradient(90deg, var(--primary), var(--primary-2));
-      box-shadow: 0 12px 28px rgba(15, 123, 255, 0.20);
     }
 
-    .btn-primary:hover { transform: translateY(-1px); }
-
-    .btn-secondary {
-      background: #eff5ff;
-      color: #16345f;
-      border: 1px solid #dbe6f3;
+    .secondary-btn {
+      background: #eef4ff;
+      color: #18335f;
     }
 
-    .btn-ghost {
+    .ghost-btn {
       background: transparent;
-      color: #26538d;
-      border: 1px solid var(--border);
+      color: #0d4ea8;
+      border: 1px solid #c4d3ec;
     }
 
-    .actions {
+    .card-action-btn {
+      background: linear-gradient(90deg, #108742, #0d72db);
+      color: #fff;
+    }
+
+    .hidden { display: none !important; }
+
+    .actions-row {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
-      margin-top: 12px;
     }
 
-    .dashboard {
-      display: grid;
-      gap: 18px;
-    }
-
-    .dashboard-head {
+    .dashboard-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
+      margin-bottom: 18px;
       flex-wrap: wrap;
     }
 
     .dashboard-title {
+      font-size: 28px;
+      font-weight: 800;
       margin: 0;
-      font-size: 30px;
     }
 
-    .dashboard-subtitle {
-      margin: 6px 0 0;
-      color: var(--muted);
-    }
-
-    .pill {
+    .session-pill {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       background: #fff;
-      border: 1px solid var(--border);
+      border: 1px solid #d7e0ef;
       border-radius: 999px;
-      padding: 10px 14px;
+      padding: 10px 16px;
+      color: #17345d;
       font-weight: 700;
-      color: #21406f;
     }
 
-    .dashboard-grid {
+    .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 18px;
     }
 
-    .panel { padding: 22px; }
-
-    .panel h3 {
-      margin: 0 0 8px;
-      font-size: 20px;
-    }
-
-    .panel p {
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .status-box {
-      margin-top: 14px;
-      padding: 14px 16px;
-      border-radius: 16px;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      color: #28456f;
-      white-space: pre-wrap;
-      word-break: break-word;
-      min-height: 58px;
-    }
-
-    .status-box.success {
-      background: #eaf8f0;
-      border-color: #bce6cb;
-      color: #117545;
-    }
-
-    .status-box.warning {
-      background: #fff8e7;
-      border-color: #f0dfa7;
-      color: #9b6a00;
-    }
-
-    .status-box.error {
-      background: #fff0f0;
-      border-color: #f0c8c8;
-      color: #a12e2e;
-    }
-
-    .qr-wrap {
-      margin-top: 18px;
-      padding: 18px;
-      border-radius: 20px;
-      background: #fff;
-      border: 1px dashed #cfddee;
-      text-align: center;
-    }
-
-    .qr-wrap img {
-      max-width: 260px;
-      width: 100%;
-      border-radius: 18px;
-      background: #fff;
-    }
-
-    .copy-code {
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: #f7faff;
-      border: 1px solid var(--border);
-      color: #21406f;
-      font-size: 13px;
-      text-align: left;
-      word-break: break-all;
-    }
-
-    .orders-list {
+    .grid-3 {
       display: grid;
-      gap: 12px;
-      margin-top: 14px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
     }
 
-    .order-card {
+    .metric {
       background: #fff;
-      border: 1px solid var(--border);
+      border: 1px solid #d7e0ef;
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .metric-label {
+      color: #607391;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 26px;
+      font-weight: 800;
+    }
+
+    .request-card, .item {
+      background: #fff;
+      border: 1px solid #d7e0ef;
       border-radius: 18px;
       padding: 16px;
+      margin-bottom: 12px;
     }
 
-    .order-card strong {
-      display: block;
+    .request-card-title {
+      font-size: 18px;
+      font-weight: 800;
       margin-bottom: 6px;
-      font-size: 16px;
     }
 
-    .order-meta {
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.6;
+    .request-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: #5e7191;
+      font-size: 13px;
     }
 
-    .hidden { display: none !important; }
+    .request-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
 
-    @media (max-width: 960px) {
-      .hero-grid,
-      .dashboard-grid,
-      .stats {
+    .tag {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #19416e;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .person-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #dce6f7;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .chat-box {
+      background: #f9fbff;
+      border: 1px solid #d9e3f2;
+      border-radius: 18px;
+      padding: 14px;
+      min-height: 220px;
+      max-height: 360px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+    }
+
+    .chat-bubble {
+      background: #fff;
+      border: 1px solid #dbe4f3;
+      border-radius: 14px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      color: #1d3059;
+    }
+
+    .chat-bubble strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 14px;
+    }
+
+    .inline-note {
+      color: #607391;
+      font-size: 13px;
+      margin-top: -4px;
+      margin-bottom: 12px;
+    }
+
+    .payment-status-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .payment-status-subtitle {
+      color: #617392;
+      margin-bottom: 6px;
+    }
+
+    iframe {
+      width: 100%;
+      border: 0;
+      border-radius: 16px;
+      min-height: 260px;
+      background: #edf3fc;
+    }
+
+    @media (max-width: 980px) {
+      .hero, .grid-2, .grid-3 {
         grid-template-columns: 1fr;
-      }
-
-      .hero-title {
-        font-size: 30px;
       }
     }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <div class="logo">AP</div>
-      <div>
-        <h1>AmigoPet Pro</h1>
-        <p>Passeios, pagamentos e operação profissional em um só lugar</p>
-      </div>
+    <div class="logo">AP</div>
+    <div>
+      <p class="brand-title">AmigoPet Pro</p>
+      <p class="brand-subtitle">Seu pet bem cuidado, seu negócio pronto para crescer</p>
     </div>
-
-    <div class="actions">
-      <button id="showWelcomeBtn" class="btn btn-ghost hidden" type="button">Voltar ao início</button>
-      <button id="logoutBtn" class="btn btn-ghost hidden" type="button">Sair</button>
+    <div style="margin-left:auto;">
+      <button id="logoutBtn" class="ghost-btn hidden" type="button">Sair</button>
     </div>
   </header>
 
-  <main class="container">
+  <main class="page">
     <section id="welcomeScreen" class="screen active">
-      <div class="hero-grid">
-        <div class="card hero-card">
-          <div class="badge">Versão monetizável ativa</div>
-          <h2 class="hero-title">Seu app pronto para vender passeios e receber por PIX.</h2>
-          <p class="hero-text">
-            Comece simples, cobrando de verdade. O sistema cria pedido, gera cobrança, acompanha o pagamento e deixa tudo mais organizado.
-          </p>
+      <div class="hero">
+        <div class="panel">
+          <div class="badge">Base profissional em evolução</div>
+          <h1>Entre na sua conta</h1>
+          <p class="muted">Cliente, passeador e admin usando o mesmo backend central e o mesmo banco.</p>
 
-          <div class="hero-panel">
-            <div>
-              <h2>Fluxo comercial simples</h2>
-              <p>
-                Cliente entra, cria pedido, paga o PIX e o sistema acompanha a aprovação automaticamente.
-              </p>
+          <div class="preview-box">
+            <div class="preview-header">
+              <span>AmigoPet Pro</span>
+              <span>Planos • Entrar • Criar conta</span>
             </div>
+            <div class="preview-content">
+              <div class="preview-card">
+                <div style="font-size:40px; margin-bottom:8px;">🐶 💚</div>
+                <div style="font-size:28px;">AmigoPet Pro</div>
+                <div style="font-size:14px; opacity:.9; margin-top:8px;">Passeios, confiança e cuidado em cada rota</div>
+              </div>
 
-            <div class="stats">
-              <div class="stat">
-                <strong>Pedido</strong>
-                <span>Registrado no sistema</span>
-              </div>
-              <div class="stat">
-                <strong>PIX</strong>
-                <span>Gerado e monitorado</span>
-              </div>
-              <div class="stat">
-                <strong>Histórico</strong>
-                <span>Pedidos visíveis na tela</span>
+              <div class="preview-grid">
+                <div class="preview-mini"><strong>24h</strong><br>Pronto para evoluir aos poucos</div>
+                <div class="preview-mini"><strong>3</strong><br>Planos comerciais iniciais</div>
+                <div class="preview-mini"><strong>5★</strong><br>Sistema de reputação para passeadores</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="card form-card">
-          <div class="tabs">
-            <button id="tabLoginBtn" class="tab-btn active" type="button">Entrar</button>
-            <button id="tabRegisterBtn" class="tab-btn" type="button">Criar conta</button>
+        <div class="panel">
+          <div class="role-switch">
+            <button type="button" class="role-chip active" data-role="client">Cliente</button>
+            <button type="button" class="role-chip" data-role="walker">Passeador</button>
+            <button type="button" class="role-chip" data-role="admin">Admin</button>
           </div>
 
-          <div id="loginTab">
-            <h2 class="section-title">Entrar no sistema</h2>
-            <p class="section-subtitle">Acesse sua conta para começar a operar.</p>
+          <h2 id="loginScreenTitle" class="right-title">Entrar como Cliente</h2>
+          <p id="loginScreenSubtitle" class="muted">Acesse sua área de cliente</p>
 
-            <form id="loginForm" novalidate>
-              <div class="input-group">
-                <label class="input-label" for="login_email">E-mail</label>
-                <input id="login_email" type="email" placeholder="seuemail@exemplo.com" required />
-              </div>
+          <form id="loginForm" novalidate>
+            <input id="login_email" name="login_email" type="email" autocomplete="username" placeholder="E-mail" required />
+            <input id="login_password" name="login_password" type="password" autocomplete="current-password" placeholder="Senha" required />
+            <button class="primary-btn" id="loginSubmitBtn" type="submit">Entrar</button>
+          </form>
 
-              <div class="input-group">
-                <label class="input-label" for="login_password">Senha</label>
-                <input id="login_password" type="password" placeholder="Sua senha" required />
-              </div>
-
-              <button id="loginSubmitBtn" class="btn btn-primary" type="submit">Entrar</button>
-            </form>
-          </div>
-
-          <div id="registerTab" class="hidden">
-            <h2 class="section-title">Criar nova conta</h2>
-            <p class="section-subtitle">Cadastre um cliente para iniciar pedidos e pagamentos.</p>
-
-            <form id="registerForm" novalidate>
-              <div class="input-group">
-                <label class="input-label" for="full_name">Nome completo</label>
-                <input id="full_name" type="text" placeholder="Nome completo" required />
-              </div>
-
-              <div class="input-group">
-                <label class="input-label" for="email">E-mail</label>
-                <input id="email" type="email" placeholder="email@exemplo.com" required />
-              </div>
-
-              <div class="input-group">
-                <label class="input-label" for="password">Senha</label>
-                <input id="password" type="password" placeholder="Crie uma senha" required />
-              </div>
-
-              <input id="role" type="hidden" value="client" />
-
-              <button id="registerSubmitBtn" class="btn btn-primary" type="submit">Criar conta</button>
-            </form>
+          <div class="actions-row" style="margin-top:8px;">
+            <button id="goToRegisterBtn" type="button" class="ghost-btn">Criar conta</button>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="dashboardScreen" class="screen">
-      <div class="dashboard">
-        <div class="dashboard-head">
+    <section id="registerScreen" class="screen">
+      <div class="panel">
+        <div class="dashboard-header">
           <div>
-            <h2 class="dashboard-title">Painel Simples Monetizável</h2>
-            <p class="dashboard-subtitle">Crie pedidos, gere PIX e acompanhe o histórico sem complicar.</p>
+            <h2 id="registerScreenTitle" class="dashboard-title">Criar conta de Cliente</h2>
+            <p id="registerScreenSubtitle" class="muted">Cadastre-se para pedir passeios</p>
           </div>
-
-          <div class="pill" id="sessionInfo">Nenhuma sessão ativa</div>
+          <button id="backToWelcomeBtn" type="button" class="ghost-btn">Voltar</button>
         </div>
 
-        <div class="dashboard-grid">
-          <div class="card panel">
-            <h3>Novo pedido</h3>
-            <p>Descreva o serviço, informe o valor e gere o pagamento.</p>
-
-            <div class="input-group">
-              <label class="input-label" for="orderDescription">Descrição do serviço</label>
-              <textarea id="orderDescription" placeholder="Ex.: Passeio de 30 minutos no bairro Piabetá."></textarea>
+        <form id="registerForm" novalidate>
+          <div class="grid-2">
+            <div>
+              <input id="full_name" type="text" placeholder="Nome completo" required />
+              <input id="email" type="email" placeholder="E-mail" required />
+              <input id="password" type="password" placeholder="Senha" required />
+              <input id="neighborhood" type="text" placeholder="Bairro" />
+              <input id="city" type="text" placeholder="Cidade" />
+              <input id="address" type="text" placeholder="Endereço" />
+              <input id="role" type="hidden" value="client" />
             </div>
 
-            <div class="input-group">
-              <label class="input-label" for="paymentAmount">Valor do passeio</label>
-              <input id="paymentAmount" type="number" min="1" step="0.01" value="30" placeholder="30.00" />
-            </div>
-
-            <div class="actions">
-              <button id="payBtn" class="btn btn-primary" type="button">Criar pedido + gerar PIX</button>
-              <button id="checkStatusBtn" class="btn btn-secondary" type="button">Consultar status agora</button>
-              <button id="refreshOrdersBtn" class="btn btn-ghost" type="button">Atualizar histórico</button>
-            </div>
-
-            <div id="paymentStatusBox" class="status-box">Nenhum pagamento iniciado ainda.</div>
-
-            <div id="qrSection" class="qr-wrap hidden">
-              <img id="pixPreview" alt="QR Code PIX" />
-              <div id="pixCodeText" class="copy-code hidden"></div>
-            </div>
-          </div>
-
-          <div class="card panel">
-            <h3>Resumo atual</h3>
-            <p>Visual rápido do pedido e do status do pagamento.</p>
-
-            <div id="orderSummary" class="status-box">
-Nenhum pedido criado ainda.
-            </div>
-
-            <div class="status-box" id="appLog">
-Sistema pronto.
+            <div>
+              <div id="walkerPhotoArea" class="hidden">
+                <div class="section-title">Foto do passeador</div>
+                <div class="actions-row">
+                  <button id="choosePhotoBtn" type="button" class="secondary-btn">Escolher foto</button>
+                  <button id="clearPhotoBtn" type="button" class="ghost-btn">Limpar</button>
+                </div>
+                <input id="profile_photo_file" type="file" accept="image/*" class="hidden" />
+                <input id="profile_photo" type="hidden" />
+                <p id="photoUploadStatus" class="inline-note">Nenhuma foto selecionada.</p>
+                <div id="photoPreviewWrap" class="hidden">
+                  <img id="photoPreview" class="avatar" alt="Foto do passeador" />
+                </div>
+              </div>
             </div>
           </div>
+
+          <button class="primary-btn" id="registerSubmitBtn" type="submit">Criar conta</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="clientDashboard" class="screen">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-title">Painel do Cliente</h2>
+          <div id="clientSessionInfo" class="session-pill">Cliente conectado</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="section-title">Cadastrar pet</div>
+          <form id="petForm" novalidate>
+            <input id="pet_name" type="text" placeholder="Nome do pet" required />
+            <input id="pet_breed" type="text" placeholder="Raça" />
+            <select id="pet_size">
+              <option value="pequeno">Pequeno</option>
+              <option value="medio" selected>Médio</option>
+              <option value="grande">Grande</option>
+            </select>
+            <textarea id="pet_notes" placeholder="Observações"></textarea>
+
+            <div class="actions-row">
+              <button id="choosePetPhotoBtn" type="button" class="secondary-btn">Escolher foto do pet</button>
+              <button id="clearPetPhotoBtn" type="button" class="ghost-btn">Limpar</button>
+            </div>
+            <input id="pet_photo_file" type="file" accept="image/*" class="hidden" />
+            <input id="pet_photo" type="hidden" />
+            <p id="petPhotoUploadStatus" class="inline-note">Nenhuma foto selecionada.</p>
+            <div id="petPhotoPreviewWrap" class="hidden">
+              <img id="petPhotoPreview" class="avatar" alt="Foto do pet" />
+            </div>
+
+            <button class="primary-btn" id="petSubmitBtn" type="submit">Salvar pet</button>
+          </form>
         </div>
 
-        <div class="card panel">
-          <h3>Histórico de pedidos</h3>
-          <p>Veja os pedidos criados pela sessão atual.</p>
-
-          <div id="ordersList" class="orders-list">
-            <div class="order-card">
-              <strong>Nenhum pedido ainda</strong>
-              <div class="order-meta">Assim que você criar um pedido, ele aparecerá aqui.</div>
+        <div class="panel">
+          <div class="section-title">Criar solicitação de passeio</div>
+          <form id="walkForm" novalidate>
+            <input id="pickup_address" type="text" placeholder="Endereço de retirada" />
+            <input id="mapAddress" type="text" placeholder="Endereço para o mapa" />
+            <div class="actions-row">
+              <button id="loadMapBtn" type="button" class="secondary-btn">Carregar mapa</button>
             </div>
-          </div>
+            <iframe id="mapFrame" title="Mapa"></iframe>
+
+            <input id="walk_neighborhood" type="text" placeholder="Bairro" />
+            <input id="walk_city" type="text" placeholder="Cidade" />
+            <input id="scheduled_at" type="datetime-local" />
+            <select id="duration_minutes">
+              <option value="15">15 minutos</option>
+              <option value="30" selected>30 minutos</option>
+              <option value="45">45 minutos</option>
+              <option value="60">60 minutos</option>
+            </select>
+            <input id="dog_count" type="number" min="1" value="1" placeholder="Quantidade de cães" />
+            <input id="price" type="number" readonly placeholder="Preço estimado" />
+            <textarea id="walk_notes" placeholder="Observações do passeio"></textarea>
+
+            <button class="primary-btn" id="walkSubmitBtn" type="submit">Criar solicitação</button>
+          </form>
         </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:18px;">
+        <div class="panel">
+          <div class="dashboard-header">
+            <div class="section-title" style="margin:0;">Minhas solicitações</div>
+            <button id="loadRequestsBtn" type="button" class="secondary-btn">Atualizar</button>
+          </div>
+          <div id="requestList"></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Chat do cliente</div>
+          <p id="chatHeaderLabel" class="inline-note">Abra o chat de uma solicitação.</p>
+          <div id="chatList" class="chat-box"></div>
+          <form id="messageForm" novalidate>
+            <textarea id="chat_text" placeholder="Digite sua mensagem"></textarea>
+            <button class="primary-btn" id="messageSubmitBtn" type="submit">Enviar mensagem</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="section-title">Pagamento</div>
+        <div id="paymentStatusBox"></div>
+      </div>
+    </section>
+
+    <section id="walkerDashboard" class="screen">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-title">Painel do Passeador</h2>
+          <div id="walkerSessionInfo" class="session-pill">Passeador conectado</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="dashboard-header">
+            <div class="section-title" style="margin:0;">Solicitações disponíveis</div>
+            <button id="refreshWalkerBtn" type="button" class="secondary-btn">Atualizar tela</button>
+          </div>
+          <div id="walkerRequestsInfo"></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Chat do passeador</div>
+          <p id="walkerChatHeaderLabel" class="inline-note">Abra o chat de uma solicitação.</p>
+          <div id="walkerChatList" class="chat-box"></div>
+          <form id="walkerMessageForm" novalidate>
+            <textarea id="walker_chat_text" placeholder="Digite sua mensagem"></textarea>
+            <button class="primary-btn" id="walkerMessageSubmitBtn" type="submit">Enviar mensagem</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section id="adminDashboard" class="screen">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-title">Painel Administrativo</h2>
+          <div id="adminSessionInfo" class="session-pill">Admin conectado</div>
+        </div>
+        <div class="actions-row">
+          <button id="refreshAdminBtn" type="button" class="secondary-btn">Atualizar dashboard</button>
+          <button id="expireBtn" type="button" class="ghost-btn">Expirar convites</button>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <div class="metric"><div class="metric-label">Total de usuários</div><div id="metricTotalUsers" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Clientes</div><div id="metricClients" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Passeadores</div><div id="metricWalkers" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Receita</div><div id="metricRevenue" class="metric-value">R$ 0,00</div></div>
+        <div class="metric"><div class="metric-label">Solicitações</div><div id="metricRequests" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Concluídas</div><div id="metricCompleted" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Pagas</div><div id="metricPaid" class="metric-value">0</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="section-title">Usuários</div>
+        <div id="adminUsersList"></div>
       </div>
     </section>
   </main>
 
-  <script src="/app.js?v=31"></script>
+  <script src="/app.js?v=40"></script>
 </body>
 </html>
