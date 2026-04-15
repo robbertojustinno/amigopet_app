@@ -14,7 +14,7 @@ let isClientChatLoading = false;
 let isWalkerChatLoading = false;
 let chatPollingHandle = null;
 
-const PRICE_BY_DURATION = { 15: 20, 30: 35, 45: 50, 60: 65 };
+const PRICE_BY_DURATION = { 15: 01, 30: 02, 45: 03, 60: 04 };
 
 function normalizeLoggedUser(data, fallbackRole = null) {
   if (!data || typeof data !== "object") return data;
