@@ -545,10 +545,13 @@ def criar_pagamento(
         }
     }
 
+    headers = _mercado_pago_headers()
+    headers["X-Idempotency-Key"] = f"walk-{request_id}-{uuid4().hex}"
+
     response = requests.post(
         "https://api.mercadopago.com/v1/payments",
         json=payload,
-        headers=_mercado_pago_headers(),
+        headers=headers,
         timeout=30,
     )
 
@@ -560,7 +563,7 @@ def criar_pagamento(
     if response.status_code >= 400:
         raise HTTPException(
             status_code=400,
-            detail=data.get("message") or data.get("error") or "Erro ao criar pagamento Pix no Mercado Pago.",
+            detail=data.get("message") or data.get("error") or str(data) or "Erro ao criar pagamento Pix no Mercado Pago.",
         )
 
     transaction_data = data.get("point_of_interaction", {}).get("transaction_data", {})
@@ -679,15 +682,15 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
     walk = _apply_payment_to_walk(db, walk, payment_data)
 
     if walk.payment_status == "paid":
-      redis_service.publish(
-          f"client:{walk.client_id}",
-          {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
-      )
-      if walk.walker_id:
-          redis_service.publish(
-              f"walker:{walk.walker_id}",
-              {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
-          )
+        redis_service.publish(
+            f"client:{walk.client_id}",
+            {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
+        )
+        if walk.walker_id:
+            redis_service.publish(
+                f"walker:{walk.walker_id}",
+                {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
+            )
 
     return {
         "ok": True,
