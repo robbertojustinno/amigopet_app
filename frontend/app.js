@@ -9,12 +9,14 @@ let uploadedPetPhotoUrl = null;
 let latestMercadoPagoLink = null;
 let activeChatRequestId = null;
 let activeWalkerChatRequestId = null;
-
 let isClientChatLoading = false;
 let isWalkerChatLoading = false;
 let chatPollingHandle = null;
+let paymentPollingHandle = null;
+let activePaymentRequestId = null;
+let availableWalkers = [];
 
-const PRICE_BY_DURATION = { 15: 01, 30: 02, 45: 03, 60: 04 };
+const PRICE_BY_DURATION = { 15: 1, 30: 2, 45: 3, 60: 4 };
 
 function normalizeLoggedUser(data, fallbackRole = null) {
   if (!data || typeof data !== "object") return data;
@@ -70,24 +72,12 @@ function updateHeaderState() {
 
 function startChatPolling() {
   stopChatPolling();
-
   chatPollingHandle = setInterval(async () => {
     if (activeChatRequestId) {
-      await openChat(
-        activeChatRequestId,
-        byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
-        false,
-        true
-      );
+      await openChat(activeChatRequestId, byId("chatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", false, true);
     }
-
     if (activeWalkerChatRequestId) {
-      await openChat(
-        activeWalkerChatRequestId,
-        byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "",
-        true,
-        true
-      );
+      await openChat(activeWalkerChatRequestId, byId("walkerChatHeaderLabel")?.textContent.replace("Conversa com ", "") || "", true, true);
     }
   }, 3000);
 }
@@ -99,6 +89,41 @@ function stopChatPolling() {
   }
 }
 
+function stopPaymentPolling() {
+  if (paymentPollingHandle) {
+    clearInterval(paymentPollingHandle);
+    paymentPollingHandle = null;
+  }
+  activePaymentRequestId = null;
+}
+
+async function loadWalkers() {
+  const select = byId("selected_walker_id");
+  if (!select) return;
+
+  try {
+    const neighborhood = byId("walk_neighborhood")?.value?.trim() || "";
+    const city = byId("walk_city")?.value?.trim() || "";
+
+    const params = new URLSearchParams();
+    if (neighborhood) params.set("neighborhood", neighborhood);
+    if (city) params.set("city", city);
+
+    const path = params.toString() ? `/walkers?${params.toString()}` : "/walkers";
+    availableWalkers = await api(path);
+
+    select.innerHTML = `<option value="">Selecione um passeador</option>`;
+    availableWalkers.forEach((walker) => {
+      const option = document.createElement("option");
+      option.value = walker.id;
+      option.textContent = `${walker.full_name} • ${walker.neighborhood || "-"} / ${walker.city || "-"}`;
+      select.appendChild(option);
+    });
+  } catch (err) {
+    console.log(err.message);
+  }
+}
+
 function renderSession(user) {
   currentUser = user || null;
   updateHeaderState();
@@ -107,6 +132,7 @@ function renderSession(user) {
     activeChatRequestId = null;
     activeWalkerChatRequestId = null;
     stopChatPolling();
+    stopPaymentPolling();
     showScreen("welcomeScreen");
     return;
   }
@@ -115,6 +141,7 @@ function renderSession(user) {
     activeChatRequestId = null;
     activeWalkerChatRequestId = null;
     stopChatPolling();
+    stopPaymentPolling();
     if (byId("adminSessionInfo")) byId("adminSessionInfo").textContent = `${user.full_name || "Admin"} conectado`;
     showScreen("adminDashboard");
     loadAdminDashboard();
@@ -136,6 +163,7 @@ function renderSession(user) {
   syncEstimatedPrice();
   tryAutoLocate();
   loadRequests();
+  loadWalkers();
   startChatPolling();
 }
 
@@ -147,6 +175,7 @@ function logout() {
   activeWalkerChatRequestId = null;
   latestMercadoPagoLink = null;
   stopChatPolling();
+  stopPaymentPolling();
   renderSession(null);
   updatePaymentBoxDefault();
 }
@@ -231,7 +260,7 @@ function tryAutoLocate() {
 function syncEstimatedPrice() {
   const duration = Number(byId("duration_minutes")?.value || 30);
   const dogCount = Number(byId("dog_count")?.value || 1);
-  const base = PRICE_BY_DURATION[duration] ?? 35;
+  const base = PRICE_BY_DURATION[duration] ?? 2;
   const multiplier = 1 + (dogCount - 1) * 0.6;
   const price = Math.round(base * multiplier);
   if (byId("price")) byId("price").value = price;
@@ -266,19 +295,71 @@ function renderPaymentBox(data) {
   const box = byId("paymentStatusBox");
   if (!box) return;
 
-  latestMercadoPagoLink = data.sandbox_link || data.link_pagamento || null;
+  latestMercadoPagoLink = data.link_pagamento || null;
+
+  const qrImage = data.qr_code_base64
+    ? `<img src="data:image/png;base64,${data.qr_code_base64}" alt="QR Code Pix" style="max-width:260px; display:block; margin:14px auto;">`
+    : "";
+
+  const qrText = data.qr_code
+    ? `<textarea readonly style="width:100%; min-height:110px;">${data.qr_code}</textarea>`
+    : "";
 
   box.innerHTML = `
-    <div class="payment-status-title">Pagamento gerado com sucesso</div>
+    <div class="payment-status-title">PIX gerado com sucesso</div>
     <div class="payment-status-subtitle">Valor: R$ ${Number(data.amount || 0).toFixed(2)}</div>
-    <div class="payment-status-subtitle">Status: ${data.status || "created"}</div>
+    <div class="payment-status-subtitle">Status: ${data.status || "pending"}</div>
     <div class="payment-status-subtitle">Solicitação: ${data.request_id ?? "não vinculada"}</div>
-    <div class="request-actions"><button type="button" class="card-action-btn" id="openPaymentInlineBtn">Abrir pagamento</button></div>
+    <div class="payment-status-subtitle">Payment ID: ${data.payment_id ?? "-"}</div>
+    ${qrImage}
+    ${qrText}
+    <div class="request-actions">
+      ${latestMercadoPagoLink ? `<button type="button" class="card-action-btn" id="openPaymentInlineBtn">Abrir link do pagamento</button>` : ""}
+      ${data.qr_code ? `<button type="button" class="secondary-btn" id="copyPixBtn">Copiar código PIX</button>` : ""}
+    </div>
   `;
 
   byId("openPaymentInlineBtn")?.addEventListener("click", () => {
     if (latestMercadoPagoLink) window.open(latestMercadoPagoLink, "_blank");
   });
+
+  byId("copyPixBtn")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(data.qr_code || "");
+      alert("Código PIX copiado.");
+    } catch {
+      alert("Não foi possível copiar automaticamente.");
+    }
+  });
+}
+
+async function pollPaymentStatus(requestId) {
+  try {
+    const data = await api(`/pagamento/status/${requestId}`);
+    if (data?.paid) {
+      const box = byId("paymentStatusBox");
+      if (box) {
+        box.innerHTML = `
+          <div class="payment-status-title">Pagamento confirmado</div>
+          <div class="payment-status-subtitle">Solicitação #${requestId} foi paga com sucesso.</div>
+        `;
+      }
+      stopPaymentPolling();
+      await loadRequests();
+    }
+  } catch (err) {
+    console.log(err.message);
+  }
+}
+
+function startPaymentPolling(requestId) {
+  stopPaymentPolling();
+  activePaymentRequestId = Number(requestId);
+  paymentPollingHandle = setInterval(() => {
+    if (activePaymentRequestId) {
+      pollPaymentStatus(activePaymentRequestId);
+    }
+  }, 5000);
 }
 
 function avatarHtml(src, alt) {
@@ -323,6 +404,7 @@ function renderClientRequests(items) {
   box.innerHTML = !items?.length ? `<div class="item">Sem solicitações.</div>` : "";
 
   items?.forEach((item) => {
+    const paidTag = item.payment_status === "paid" ? `<span class="tag">PAGO</span>` : `<span class="tag">${item.payment_status}</span>`;
     const div = document.createElement("div");
     div.className = "request-card";
     div.innerHTML = `
@@ -331,7 +413,7 @@ function renderClientRequests(items) {
         <div>
           <div class="request-card-title">${requestTitleForUser(item)}</div>
           <div class="request-meta">
-            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status}</span></span>
+            <span><span class="tag">${item.status}</span> ${paidTag}</span>
             <span>${item.pickup_address || "-"}</span>
             <span>${item.city || "-"} / ${item.neighborhood || "-"}</span>
             <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
@@ -339,7 +421,7 @@ function renderClientRequests(items) {
         </div>
       </div>
       <div class="request-actions">
-        <button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 35}">Gerar pagamento</button>
+        ${item.payment_status !== "paid" ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento</button>` : ""}
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
@@ -485,6 +567,7 @@ async function generateMercadoPagoPayment(requestId = "", amount = "") {
     if (amount) query.set("amount", amount);
     const data = await api(`/pagamento?${query.toString()}`, { method: "GET" });
     renderPaymentBox(data);
+    if (requestId) startPaymentPolling(requestId);
   } catch (err) {
     alert(err.message);
   }
@@ -516,10 +599,6 @@ async function handleLoginSubmit(e) {
         method: "POST",
         body: JSON.stringify({ email, password })
       });
-
-      if (data?.access_token) {
-        localStorage.setItem("access_token", data.access_token);
-      }
 
       data = normalizeLoggedUser(data, currentAccessTab);
 
@@ -639,19 +718,26 @@ async function handleWalkSubmit(e) {
     return false;
   }
 
+  const walkerId = Number(byId("selected_walker_id")?.value || 0);
+  if (!walkerId) {
+    alert("Selecione um passeador antes de criar a solicitação.");
+    return false;
+  }
+
   try {
     const dogCount = Number(byId("dog_count")?.value || 1);
     const notes = `${byId("walk_notes")?.value || ""} [DOG_COUNT:${dogCount}]`;
 
     const payload = {
       client_id: Number(currentUser.id),
-      walker_id: null,
+      walker_id: walkerId,
       pet_id: null,
       pickup_address: byId("pickup_address")?.value || byId("mapAddress")?.value || "",
       neighborhood: byId("walk_neighborhood")?.value || "",
       city: byId("walk_city")?.value || "",
       scheduled_at: byId("scheduled_at")?.value || null,
       duration_minutes: Number(byId("duration_minutes")?.value || 30),
+      dog_count: dogCount,
       price: Number(byId("price")?.value || 0),
       notes
     };
@@ -740,6 +826,7 @@ function attachMainEvents() {
   byId("loadRequestsBtn")?.addEventListener("click", loadRequests);
   byId("refreshWalkerBtn")?.addEventListener("click", loadRequests);
   byId("loadMapBtn")?.addEventListener("click", loadMap);
+  byId("loadWalkersBtn")?.addEventListener("click", loadWalkers);
   byId("duration_minutes")?.addEventListener("change", syncEstimatedPrice);
   byId("dog_count")?.addEventListener("change", syncEstimatedPrice);
 

@@ -332,7 +332,7 @@ def list_walkers(neighborhood: str | None = None, city: str | None = None, db: S
         query = query.where(User.neighborhood.ilike(f"%{neighborhood}%"))
     if city:
         query = query.where(User.city.ilike(f"%{city}%"))
-    return list(db.scalars(query).all())
+    return list(db.scalars(query.order_by(User.full_name.asc())).all())
 
 
 @router.post("/pets", response_model=PetOut)
@@ -360,6 +360,9 @@ def create_walk_request(payload: WalkRequestCreate, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="Cliente inválido.")
 
     walker = db.get(User, payload.walker_id) if payload.walker_id else None
+    if payload.walker_id and (not walker or walker.role != "walker"):
+        raise HTTPException(status_code=400, detail="Passeador inválido.")
+
     status = "pending"
     expires_at = None
     if walker:
