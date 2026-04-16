@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, Text, func
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, func, Text
 from app.db.session import Base
 
 
@@ -24,7 +24,6 @@ class WalkRequest(Base):
 
     payment_status = Column(String(30), default="unpaid", nullable=False)
     payment_id = Column(String(80), nullable=True, index=True)
-    payment_preference_id = Column(String(120), nullable=True, index=True)
     payment_provider = Column(String(30), nullable=True, default="mercado_pago")
     payment_link = Column(Text, nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)

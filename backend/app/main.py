@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, engine
 
-app = FastAPI(title=settings.APP_NAME, version="9.0.0")
+app = FastAPI(title=settings.APP_NAME, version="9.1.0")
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_columns()

@@ -14,7 +14,6 @@ def ensure_sqlite_columns():
         "ALTER TABLE messages ADD COLUMN sender_photo VARCHAR(255)",
         "ALTER TABLE walk_requests ADD COLUMN dog_count INTEGER DEFAULT 1",
         "ALTER TABLE walk_requests ADD COLUMN payment_id VARCHAR(80)",
-        "ALTER TABLE walk_requests ADD COLUMN payment_preference_id VARCHAR(120)",
         "ALTER TABLE walk_requests ADD COLUMN payment_provider VARCHAR(30) DEFAULT 'mercado_pago'",
         "ALTER TABLE walk_requests ADD COLUMN payment_link TEXT",
         "ALTER TABLE walk_requests ADD COLUMN paid_at DATETIME",

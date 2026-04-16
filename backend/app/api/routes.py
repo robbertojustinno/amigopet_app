@@ -19,7 +19,6 @@ from app.schemas.pet import PetCreate, PetOut
 from app.schemas.walk_request import WalkRequestCreate, WalkRequestAction, WalkRequestPay
 from app.schemas.message import MessageCreate
 from app.services.redis_service import redis_service
-from app.services.payment_service import payment_service
 
 router = APIRouter()
 
@@ -96,7 +95,6 @@ def _serialize_walk_request(db: Session, walk: WalkRequest) -> dict:
         "status": walk.status,
         "payment_status": walk.payment_status,
         "payment_id": walk.payment_id,
-        "payment_preference_id": walk.payment_preference_id,
         "payment_provider": walk.payment_provider,
         "payment_link": walk.payment_link,
         "paid_at": walk.paid_at.isoformat() if walk.paid_at else None,
@@ -447,42 +445,6 @@ def decline_walk_request(request_id: int, payload: WalkRequestAction, db: Sessio
     return _serialize_walk_request(db, walk)
 
 
-@router.post("/walk-requests/{request_id}/pay")
-def pay_walk_request(request_id: int, payload: WalkRequestPay, db: Session = Depends(get_db)):
-    walk = db.get(WalkRequest, request_id)
-    if not walk:
-        raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
-    if walk.client_id != payload.actor_id:
-        raise HTTPException(status_code=403, detail="Somente o cliente pode pagar.")
-
-    checkout = payment_service.create_fake_checkout(request_id=walk.id, amount=payload.amount)
-    walk.payment_status = "processing"
-    walk.payment_updated_at = _db_safe_now()
-    db.commit()
-    return {"message": "Checkout gerado.", "checkout": checkout}
-
-
-@router.post("/walk-requests/{request_id}/confirm-payment")
-def confirm_payment(request_id: int, payload: WalkRequestAction, db: Session = Depends(get_db)):
-    walk = db.get(WalkRequest, request_id)
-    if not walk:
-        raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
-    if walk.client_id != payload.actor_id:
-        raise HTTPException(status_code=403, detail="Somente o cliente pode confirmar.")
-
-    walk.payment_status = "paid"
-    walk.status = "paid"
-    walk.paid_at = _db_safe_now()
-    walk.payment_updated_at = _db_safe_now()
-    db.commit()
-    db.refresh(walk)
-
-    if walk.walker_id:
-        redis_service.publish(f"walker:{walk.walker_id}", {"type": "payment_confirmed", "request_id": walk.id})
-
-    return _serialize_walk_request(db, walk)
-
-
 @router.post("/walk-requests/{request_id}/complete")
 def complete_walk(request_id: int, payload: WalkRequestAction, db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, request_id)
@@ -557,27 +519,34 @@ def criar_pagamento(
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
 
+    client = db.get(User, walk.client_id)
+    if not client:
+        raise HTTPException(status_code=400, detail="Cliente da solicitação não encontrado.")
+
     webhook_base_url = (settings.WEBHOOK_BASE_URL or "").strip().rstrip("/")
     if not webhook_base_url:
         webhook_base_url = str(request.base_url).rstrip("/")
 
     payload = {
-        "items": [
-            {
-                "title": f"Passeio com Pet #{request_id}",
-                "quantity": 1,
-                "currency_id": "BRL",
-                "unit_price": float(amount),
-            }
-        ],
-        "external_reference": str(request_id),
+        "transaction_amount": float(amount),
+        "description": f"Passeio com Pet #{request_id}",
+        "payment_method_id": "pix",
         "notification_url": f"{webhook_base_url}/api/webhooks/mercado-pago",
+        "external_reference": str(request_id),
         "metadata": {"request_id": request_id},
-        "statement_descriptor": "AMIGOPET",
+        "payer": {
+            "email": client.email,
+            "first_name": "Cliente",
+            "last_name": "AmigoPet",
+            "identification": {
+                "type": "CPF",
+                "number": "19119119100"
+            }
+        }
     }
 
     response = requests.post(
-        "https://api.mercadopago.com/checkout/preferences",
+        "https://api.mercadopago.com/v1/payments",
         json=payload,
         headers=_mercado_pago_headers(),
         timeout=30,
@@ -591,13 +560,15 @@ def criar_pagamento(
     if response.status_code >= 400:
         raise HTTPException(
             status_code=400,
-            detail=data.get("message") or data.get("error") or "Erro ao criar pagamento no Mercado Pago.",
+            detail=data.get("message") or data.get("error") or "Erro ao criar pagamento Pix no Mercado Pago.",
         )
 
-    walk.payment_preference_id = data.get("id")
+    transaction_data = data.get("point_of_interaction", {}).get("transaction_data", {})
+
+    walk.payment_id = str(data.get("id")) if data.get("id") else None
     walk.payment_provider = "mercado_pago"
-    walk.payment_link = data.get("init_point") or data.get("sandbox_init_point")
-    walk.payment_status = "pending"
+    walk.payment_link = transaction_data.get("ticket_url")
+    walk.payment_status = _payment_status_map(data.get("status"))
     walk.payment_updated_at = _db_safe_now()
 
     db.add(walk)
@@ -607,10 +578,54 @@ def criar_pagamento(
     return {
         "request_id": request_id,
         "amount": float(amount),
-        "preference_id": data.get("id"),
-        "link_pagamento": data.get("init_point"),
-        "sandbox_link": data.get("sandbox_init_point"),
+        "payment_id": walk.payment_id,
+        "link_pagamento": transaction_data.get("ticket_url"),
+        "qr_code": transaction_data.get("qr_code"),
+        "qr_code_base64": transaction_data.get("qr_code_base64"),
         "status": walk.payment_status,
+    }
+
+
+@router.get("/pagamento/status/{request_id}")
+def status_pagamento(request_id: int, db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, request_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
+
+    if not walk.payment_id:
+        return {
+            "request_id": walk.id,
+            "payment_id": None,
+            "payment_status": walk.payment_status,
+            "status": walk.status,
+            "paid": walk.payment_status == "paid",
+        }
+
+    response = requests.get(
+        f"https://api.mercadopago.com/v1/payments/{walk.payment_id}",
+        headers=_mercado_pago_headers(),
+        timeout=30,
+    )
+
+    try:
+        data = response.json()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Resposta inválida do Mercado Pago.")
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=400,
+            detail=data.get("message") or data.get("error") or "Erro ao consultar pagamento.",
+        )
+
+    walk = _apply_payment_to_walk(db, walk, data)
+
+    return {
+        "request_id": walk.id,
+        "payment_id": walk.payment_id,
+        "payment_status": walk.payment_status,
+        "status": walk.status,
+        "paid": walk.payment_status == "paid",
     }
 
 
@@ -626,11 +641,10 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
     payment_id = None
 
     if isinstance(body, dict):
-        payment_id = (
-            body.get("data", {}).get("id")
-            or body.get("id")
-            or body.get("resource", {}).get("id") if isinstance(body.get("resource"), dict) else None
-        )
+        data_obj = body.get("data") or {}
+        if isinstance(data_obj, dict):
+            payment_id = data_obj.get("id")
+        payment_id = payment_id or body.get("id")
 
     payment_id = payment_id or query.get("data.id") or query.get("id")
 
@@ -665,15 +679,15 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
     walk = _apply_payment_to_walk(db, walk, payment_data)
 
     if walk.payment_status == "paid":
-        redis_service.publish(
-            f"client:{walk.client_id}",
-            {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
-        )
-        if walk.walker_id:
-            redis_service.publish(
-                f"walker:{walk.walker_id}",
-                {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
-            )
+      redis_service.publish(
+          f"client:{walk.client_id}",
+          {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
+      )
+      if walk.walker_id:
+          redis_service.publish(
+              f"walker:{walk.walker_id}",
+              {"type": "payment_confirmed", "request_id": walk.id, "payment_id": walk.payment_id},
+          )
 
     return {
         "ok": True,
