@@ -739,3 +739,36 @@ def force_admin():
 
     db.close()
     return {"msg": "Admin já existe"}
+
+from app.db.session import SessionLocal
+from app.models.user import User
+
+@router.get("/force-admin")
+def force_admin():
+    db = SessionLocal()
+    try:
+        admin_email = "admin@amigopet.com"
+        admin_password = "1%3R723$Rj"
+
+        existing = db.query(User).filter(User.email == admin_email).first()
+
+        if not existing:
+            admin = User(
+                full_name="Administrador",
+                email=admin_email,
+                password=admin_password,
+                role="admin",
+                neighborhood="Sistema",
+                city="Sistema",
+                address="Admin",
+                profile_photo=None,
+                online=False,
+                active=True,
+            )
+            db.add(admin)
+            db.commit()
+            return {"msg": "Admin criado"}
+
+        return {"msg": "Admin já existe"}
+    finally:
+        db.close()
