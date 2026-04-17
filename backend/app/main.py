@@ -4,16 +4,51 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
 from app.api.routes import router
 from app.core.config import settings
 from app.db.migrations import ensure_sqlite_columns
-from app.db.session import Base, engine
+from app.db.session import Base, SessionLocal, engine
+from app.models.user import User
 
 app = FastAPI(title=settings.APP_NAME, version="9.1.0")
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_columns()
+
+
+def create_admin():
+    db: Session = SessionLocal()
+    try:
+        admin_email = "admin@amigopet.com"
+        admin_password = "1%3R723$Rj"
+
+        existing = db.query(User).filter(User.email == admin_email).first()
+
+        if not existing:
+            admin = User(
+                full_name="Administrador",
+                email=admin_email,
+                password=admin_password,
+                role="admin",
+                neighborhood="Painel central",
+                city="Sistema",
+                address="Ambiente administrativo",
+                profile_photo=None,
+                online=False,
+                active=True,
+            )
+            db.add(admin)
+            db.commit()
+            print("Admin criado automaticamente.")
+        else:
+            print("Admin já existe.")
+    finally:
+        db.close()
+
+
+create_admin()
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,34 +103,3 @@ if FRONTEND_DIR.exists():
             response.headers["Expires"] = "0"
             return response
         return JSONResponse({"detail": "styles.css não encontrado"}, status_code=404)
-        
-        from sqlalchemy.orm import Session
-from app.db.session import SessionLocal
-from app.models.user import User
-from app.core.security import get_password_hash
-
-def create_admin():
-    db: Session = SessionLocal()
-
-    admin_email = "admin@amigopet.com"
-    admin_password = "1%3R723$Rj"
-
-    existing = db.query(User).filter(User.email == admin_email).first()
-
-    if not existing:
-        admin = User(
-            full_name="Administrador",
-            email=admin_email,
-            hashed_password=get_password_hash(admin_password),
-            role="admin"
-        )
-        db.add(admin)
-        db.commit()
-        print("🔥 Admin criado automaticamente!")
-    else:
-        print("✅ Admin já existe")
-
-    db.close()
-
-
-create_admin()

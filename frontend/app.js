@@ -15,6 +15,7 @@ let chatPollingHandle = null;
 let paymentPollingHandle = null;
 let activePaymentRequestId = null;
 let availableWalkers = [];
+let availablePets = [];
 
 const PRICE_BY_DURATION = { 15: 1, 30: 2, 45: 3, 60: 4 };
 
@@ -124,6 +125,26 @@ async function loadWalkers() {
   }
 }
 
+
+async function loadPets() {
+  const select = byId("selected_pet_id");
+  if (!select || !currentUser?.id) return;
+
+  try {
+    availablePets = await api(`/pets/${currentUser.id}`);
+    select.innerHTML = `<option value="">Selecione um pet</option>`;
+
+    availablePets.forEach((pet) => {
+      const option = document.createElement("option");
+      option.value = pet.id;
+      option.textContent = `${pet.name} • ${pet.breed || pet.size || "Sem raça informada"}`;
+      select.appendChild(option);
+    });
+  } catch (err) {
+    console.log(err.message);
+  }
+}
+
 function renderSession(user) {
   currentUser = user || null;
   updateHeaderState();
@@ -164,6 +185,7 @@ function renderSession(user) {
   tryAutoLocate();
   loadRequests();
   loadWalkers();
+  loadPets();
   startChatPolling();
 }
 
@@ -410,12 +432,14 @@ function renderClientRequests(items) {
     div.innerHTML = `
       <div class="person-row">
         ${avatarHtml(requestPhotoForUser(item), requestTitleForUser(item))}
+        ${item.pet_photo ? `<img class="avatar" src="${item.pet_photo}" alt="${item.pet_name || "Pet"}">` : ``}
         <div>
           <div class="request-card-title">${requestTitleForUser(item)}</div>
           <div class="request-meta">
             <span><span class="tag">${item.status}</span> ${paidTag}</span>
             <span>${item.pickup_address || "-"}</span>
             <span>${item.city || "-"} / ${item.neighborhood || "-"}</span>
+            <span>Pet: ${item.pet_name || "Não informado"}</span>
             <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
           </div>
         </div>
@@ -448,11 +472,13 @@ function renderWalkerRequests(items) {
     div.innerHTML = `
       <div class="person-row">
         ${avatarHtml(item.client_photo, item.client_name || `Cliente ${item.client_id}`)}
+        ${item.pet_photo ? `<img class="avatar" src="${item.pet_photo}" alt="${item.pet_name || "Pet"}">` : ``}
         <div>
           <div class="request-card-title">${item.client_name || `Cliente ${item.client_id}`}</div>
           <div class="request-meta">
             <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status}</span></span>
             <span>${item.pickup_address || "-"}</span>
+            <span>Pet: ${item.pet_name || "Não informado"}</span>
             <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
           </div>
         </div>
@@ -690,7 +716,9 @@ async function handlePetSubmit(e) {
       name: byId("pet_name")?.value || "",
       breed: byId("pet_breed")?.value || "",
       size: byId("pet_size")?.value || "medio",
-      notes: `${byId("pet_notes")?.value || ""} [FOTO:${byId("pet_photo")?.value.trim()}]`
+      notes: byId("pet_notes")?.value || "",
+      photo_url: byId("pet_photo")?.value.trim() || null,
+      dog_count: Number(byId("dog_count")?.value || 1)
     };
 
     const data = await api("/pets", {
@@ -703,6 +731,7 @@ async function handlePetSubmit(e) {
     uploadedPetPhotoUrl = null;
     setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
     if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
+    await loadPets();
   } catch (err) {
     alert(err.message);
   }
@@ -724,6 +753,12 @@ async function handleWalkSubmit(e) {
     return false;
   }
 
+  const petId = Number(byId("selected_pet_id")?.value || 0);
+  if (!petId) {
+    alert("Selecione um pet antes de criar a solicitação.");
+    return false;
+  }
+
   try {
     const dogCount = Number(byId("dog_count")?.value || 1);
     const notes = `${byId("walk_notes")?.value || ""} [DOG_COUNT:${dogCount}]`;
@@ -731,7 +766,7 @@ async function handleWalkSubmit(e) {
     const payload = {
       client_id: Number(currentUser.id),
       walker_id: walkerId,
-      pet_id: null,
+      pet_id: petId,
       pickup_address: byId("pickup_address")?.value || byId("mapAddress")?.value || "",
       neighborhood: byId("walk_neighborhood")?.value || "",
       city: byId("walk_city")?.value || "",
