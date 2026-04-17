@@ -5,12 +5,14 @@ from typing import List
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    APP_NAME: str = "AmigoPet PIX AUTO"
+    APP_NAME: str = "AmigoPet PRO"
     ENV: str = "development"
     SECRET_KEY: str = "change-me"
+
     BACKEND_CORS_ORIGINS: str = "http://localhost:8080,http://127.0.0.1:8080"
     DATABASE_URL: str = "sqlite:///./amigopet.db"
     REDIS_URL: str = "redis://localhost:6379/0"
+
     DEFAULT_ADDRESS: str = "Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854"
 
     MERCADO_PAGO_ACCESS_TOKEN: str = ""

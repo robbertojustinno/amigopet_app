@@ -16,7 +16,7 @@ from app.models.walk_request import WalkRequest
 from app.models.message import Message
 from app.schemas.user import UserCreate, UserLogin, UserOut
 from app.schemas.pet import PetCreate, PetOut
-from app.schemas.walk_request import WalkRequestCreate, WalkRequestAction, WalkRequestPay
+from app.schemas.walk_request import WalkRequestCreate, WalkRequestAction
 from app.schemas.message import MessageCreate
 from app.services.redis_service import redis_service
 
@@ -350,7 +350,7 @@ def create_pet(payload: PetCreate, db: Session = Depends(get_db)):
 
 @router.get("/pets/{owner_id}", response_model=list[PetOut])
 def list_pets(owner_id: int, db: Session = Depends(get_db)):
-    return list(db.scalars(select(Pet).where(Pet.owner_id == owner_id)).all())
+    return list(db.scalars(select(Pet).where(Pet.owner_id == owner_id).order_by(Pet.id.desc())).all())
 
 
 @router.post("/walk-requests")
@@ -358,6 +358,10 @@ def create_walk_request(payload: WalkRequestCreate, db: Session = Depends(get_db
     client = db.get(User, payload.client_id)
     if not client or client.role != "client":
         raise HTTPException(status_code=400, detail="Cliente inválido.")
+
+    pet = db.get(Pet, payload.pet_id) if payload.pet_id else None
+    if payload.pet_id and (not pet or pet.owner_id != payload.client_id):
+        raise HTTPException(status_code=400, detail="Pet inválido para este cliente.")
 
     walker = db.get(User, payload.walker_id) if payload.walker_id else None
     if payload.walker_id and (not walker or walker.role != "walker"):
@@ -515,7 +519,7 @@ def expire_invites(db: Session = Depends(get_db)):
 def criar_pagamento(
     request: Request,
     request_id: int = Query(...),
-    amount: float = Query(default=20.0),
+    amount: float = Query(default=1.0),
     db: Session = Depends(get_db),
 ):
     walk = db.get(WalkRequest, request_id)

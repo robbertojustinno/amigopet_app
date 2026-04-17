@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, func
 from app.db.session import Base
 
+
 class Pet(Base):
     __tablename__ = "pets"
 
