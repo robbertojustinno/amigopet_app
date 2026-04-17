@@ -772,3 +772,5 @@ def force_admin():
         return {"msg": "Admin já existe"}
     finally:
         db.close()
+        
+        
