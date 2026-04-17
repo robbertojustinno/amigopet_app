@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: amigopet-v8
+    name: amigopet-pro
     env: docker
     plan: free
     dockerfilePath: ./backend/Dockerfile
@@ -12,7 +12,7 @@ services:
       - key: SECRET_KEY
         sync: false
       - key: DATABASE_URL
-        value: sqlite:///./amigopet.db
+        sync: false
       - key: REDIS_URL
         sync: false
       - key: DEFAULT_ADDRESS
@@ -20,4 +20,6 @@ services:
       - key: MERCADO_PAGO_ACCESS_TOKEN
         sync: false
       - key: MERCADO_PAGO_PUBLIC_KEY
+        sync: false
+      - key: WEBHOOK_BASE_URL
         sync: false
