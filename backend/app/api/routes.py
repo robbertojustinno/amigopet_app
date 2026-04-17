@@ -706,3 +706,36 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
         "payment_status": walk.payment_status,
         "status": walk.status,
     }
+
+from app.db.session import SessionLocal
+from app.models.user import User
+
+@router.get("/force-admin")
+def force_admin():
+    db = SessionLocal()
+
+    admin_email = "admin@amigopet.com"
+    admin_password = "1%3R723$Rj"
+
+    existing = db.query(User).filter(User.email == admin_email).first()
+
+    if not existing:
+        admin = User(
+            full_name="Administrador",
+            email=admin_email,
+            password=admin_password,
+            role="admin",
+            neighborhood="Sistema",
+            city="Sistema",
+            address="Admin",
+            profile_photo=None,
+            online=False,
+            active=True,
+        )
+        db.add(admin)
+        db.commit()
+        db.close()
+        return {"msg": "Admin criado"}
+
+    db.close()
+    return {"msg": "Admin já existe"}
