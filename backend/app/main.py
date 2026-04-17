@@ -68,3 +68,34 @@ if FRONTEND_DIR.exists():
             response.headers["Expires"] = "0"
             return response
         return JSONResponse({"detail": "styles.css não encontrado"}, status_code=404)
+        
+        from sqlalchemy.orm import Session
+from app.db.session import SessionLocal
+from app.models.user import User
+from app.core.security import get_password_hash
+
+def create_admin():
+    db: Session = SessionLocal()
+
+    admin_email = "admin@amigopet.com"
+    admin_password = "1%3R723$Rj"
+
+    existing = db.query(User).filter(User.email == admin_email).first()
+
+    if not existing:
+        admin = User(
+            full_name="Administrador",
+            email=admin_email,
+            hashed_password=get_password_hash(admin_password),
+            role="admin"
+        )
+        db.add(admin)
+        db.commit()
+        print("🔥 Admin criado automaticamente!")
+    else:
+        print("✅ Admin já existe")
+
+    db.close()
+
+
+create_admin()
