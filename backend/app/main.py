@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.api.routes import router
 from app.core.config import settings
-from app.core.security import get_password_hash
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
 from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
