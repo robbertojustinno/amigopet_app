@@ -8,12 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.api.routes import router
 from app.core.config import settings
+from app.core.security import get_password_hash
 from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
-
-# 👉 IMPORTANTE: importar função de hash
-from app.core.security import get_password_hash
 
 app = FastAPI(title=settings.APP_NAME, version="9.2.0")
 
@@ -33,7 +31,6 @@ def create_admin():
             admin = User(
                 full_name="Administrador",
                 email=admin_email,
-                # ✅ SENHA CORRIGIDA COM HASH
                 password_hash=get_password_hash(admin_password),
                 role="admin",
                 neighborhood="Painel central",
@@ -52,7 +49,6 @@ def create_admin():
         db.close()
 
 
-# executa ao iniciar
 create_admin()
 
 app.add_middleware(
@@ -86,15 +82,25 @@ if FRONTEND_DIR.exists():
     async def serve_frontend():
         response = FileResponse(INDEX_FILE)
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
 
     @app.get("/app.js", include_in_schema=False)
     async def serve_app_js():
-        return FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript")
+        response = FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript")
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     @app.get("/styles.css", include_in_schema=False)
     async def serve_styles_css():
         css_file = FRONTEND_DIR / "styles.css"
         if css_file.exists():
-            return FileResponse(css_file, media_type="text/css")
+            response = FileResponse(css_file, media_type="text/css")
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
         return JSONResponse({"detail": "styles.css não encontrado"}, status_code=404)
