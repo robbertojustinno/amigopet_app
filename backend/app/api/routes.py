@@ -6,8 +6,9 @@ import hashlib
 import hmac
 import secrets
 import requests
+import json
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request, Body
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -136,6 +137,77 @@ def _build_user_kwargs(
     if hasattr(User, "password"):
         data["password"] = hashed_password
     return data
+
+PROFESSIONAL_EVENT_DIR = Path("storage/professional")
+PROFESSIONAL_EVENT_DIR.mkdir(parents=True, exist_ok=True)
+EVENT_LOG_FILE = PROFESSIONAL_EVENT_DIR / "events.jsonl"
+CONTRACTS_DIR = PROFESSIONAL_EVENT_DIR / "contracts"
+CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
+TERMS_FILE = PROFESSIONAL_EVENT_DIR / "terms_acceptances.jsonl"
+TERMS_VERSION = "2026-04-25-v1"
+
+
+def _json_safe(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
+def _append_jsonl(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {k: _json_safe(v) for k, v in payload.items()}
+    with path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+
+
+def _log_event(event_type: str, *, actor_id: int | None = None, walk_id: int | None = None, data: dict | None = None) -> None:
+    _append_jsonl(
+        EVENT_LOG_FILE,
+        {
+            "event_id": uuid4().hex,
+            "event_type": event_type,
+            "actor_id": actor_id,
+            "walk_id": walk_id,
+            "created_at": _db_safe_now(),
+            "data": data or {},
+        },
+    )
+
+
+def _save_contract_snapshot(db: Session, walk: WalkRequest, event_type: str) -> dict:
+    snapshot = _serialize_walk_request(db, walk)
+    payload = {
+        "contract_id": f"AMIGOPET-{walk.id}",
+        "terms_version": TERMS_VERSION,
+        "event_type": event_type,
+        "generated_at": _db_safe_now().isoformat(),
+        "walk": snapshot,
+        "legal_summary": {
+            "platform_role": "intermediadora tecnológica",
+            "walker_responsibility": "segurança, guarda, zelo e integridade do pet durante o passeio",
+            "client_responsibility": "informações verdadeiras sobre pet, endereço, comportamento e condições especiais",
+            "payment_rule": "pagamento/liberação vinculados ao status do passeio e confirmação do provedor",
+        },
+    }
+    path = CONTRACTS_DIR / f"walk_{walk.id}.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    _log_event(event_type, actor_id=getattr(walk, "walker_id", None), walk_id=walk.id, data={"contract_file": str(path)})
+    return payload
+
+
+def _read_jsonl(path: Path, limit: int = 100) -> list[dict]:
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
+    items = []
+    for line in lines:
+        try:
+            items.append(json.loads(line))
+        except Exception:
+            pass
+    return list(reversed(items))
+
+
 def _mercado_pago_token() -> str:
     token = (settings.MERCADO_PAGO_ACCESS_TOKEN or os.getenv("MERCADO_PAGO_ACCESS_TOKEN") or "").strip()
     if not token:
@@ -252,7 +324,7 @@ def _apply_payment_to_walk(db: Session, walk: WalkRequest, payment_data: dict) -
 
 
 @router.post("/uploads/profile-photo")
-async def upload_profile_photo(file: UploadFile = File(...)):
+async def upload_profile_photo(request: Request, file: UploadFile = File(...)):
     if not file.content_type or file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Envie uma imagem JPG, PNG, WEBP ou GIF.")
 
@@ -273,7 +345,10 @@ async def upload_profile_photo(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="A imagem deve ter no máximo 5 MB.")
 
     destination.write_bytes(content)
-    return {"file_url": f"/storage/profile_photos/{filename}", "filename": filename}
+    relative_url = f"/storage/profile_photos/{filename}"
+    absolute_url = str(request.base_url).rstrip("/") + relative_url
+    _log_event("profile_photo_uploaded", data={"filename": filename, "content_type": file.content_type, "size": len(content)})
+    return {"file_url": relative_url, "absolute_url": absolute_url, "filename": filename}
 
 
 @router.get("/health")
@@ -310,6 +385,7 @@ def admin_dashboard(db: Session = Depends(get_db)):
     total_requests = db.scalar(select(func.count()).select_from(WalkRequest)) or 0
     total_completed = db.scalar(select(func.count()).select_from(WalkRequest).where(WalkRequest.status == "completed")) or 0
     total_paid = db.scalar(select(func.count()).select_from(WalkRequest).where(WalkRequest.payment_status == "paid")) or 0
+    pending_walkers = db.scalar(select(func.count()).select_from(User).where(User.role == "walker", User.active == False)) or 0
     total_revenue = db.scalar(select(func.coalesce(func.sum(WalkRequest.price), 0)).where(WalkRequest.payment_status == "paid")) or 0
 
     return {
@@ -319,6 +395,7 @@ def admin_dashboard(db: Session = Depends(get_db)):
         "total_requests": total_requests,
         "total_completed": total_completed,
         "total_paid": total_paid,
+        "pending_walkers": pending_walkers,
         "total_revenue": float(total_revenue),
     }
 
@@ -341,6 +418,72 @@ def admin_list_users(db: Session = Depends(get_db)):
         }
         for user in users
     ]
+
+
+@router.post("/admin/users/{user_id}/approve")
+def admin_approve_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    user.active = True
+    db.commit()
+    db.refresh(user)
+    _log_event("admin_user_approved", actor_id=0, data={"user_id": user.id, "role": user.role})
+    return _user_payload(user)
+
+
+@router.post("/admin/users/{user_id}/block")
+def admin_block_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+    if user.role == "admin":
+        raise HTTPException(status_code=400, detail="Não é permitido bloquear o administrador principal por esta rota.")
+    user.active = False
+    user.online = False
+    db.commit()
+    db.refresh(user)
+    _log_event("admin_user_blocked", actor_id=0, data={"user_id": user.id, "role": user.role})
+    return _user_payload(user)
+
+
+@router.get("/admin/events")
+def admin_events(limit: int = Query(default=100, ge=1, le=500)):
+    return _read_jsonl(EVENT_LOG_FILE, limit=limit)
+
+
+@router.get("/admin/contracts/{request_id}")
+def admin_contract(request_id: int):
+    path = CONTRACTS_DIR / f"walk_{request_id}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Contrato digital ainda não gerado para este passeio.")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@router.post("/legal/accept-terms")
+def accept_terms(payload: dict = Body(default={})):
+    user_id = payload.get("user_id")
+    role = payload.get("role")
+    accepted = bool(payload.get("accepted", True))
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id é obrigatório.")
+    if not accepted:
+        raise HTTPException(status_code=400, detail="É necessário aceitar os termos para continuar.")
+    record = {
+        "user_id": user_id,
+        "role": role,
+        "terms_version": TERMS_VERSION,
+        "accepted_at": _db_safe_now(),
+        "source": "app",
+    }
+    _append_jsonl(TERMS_FILE, record)
+    _log_event("terms_accepted", actor_id=int(user_id), data={"role": role, "terms_version": TERMS_VERSION})
+    return {"ok": True, "terms_version": TERMS_VERSION, "accepted_at": record["accepted_at"].isoformat()}
+
+
+@router.get("/legal/terms-version")
+def terms_version():
+    return {"terms_version": TERMS_VERSION, "required": True}
 
 
 @router.post("/users/register")
@@ -369,7 +512,7 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
             address=(payload.address or settings.DEFAULT_ADDRESS).strip(),
             profile_photo=payload.profile_photo,
             online=False,
-            active=True,
+            active=(payload.role != "walker"),
         )
     )
     db.add(user)
@@ -466,6 +609,8 @@ def create_walk_request(payload: WalkRequestCreate, db: Session = Depends(get_db
     db.add(walk)
     db.commit()
     db.refresh(walk)
+    _log_event("walk_created", actor_id=walk.client_id, walk_id=walk.id, data={"walker_id": walk.walker_id, "pet_id": walk.pet_id, "price": float(walk.price or 0)})
+    _save_contract_snapshot(db, walk, "contract_created")
 
     if walker:
         redis_service.publish(
@@ -508,6 +653,8 @@ def accept_walk_request(request_id: int, payload: WalkRequestAction, db: Session
     db.commit()
     db.refresh(walk)
     redis_service.publish(f"client:{walk.client_id}", {"type": "walk_accepted", "request_id": walk.id})
+    _log_event("walk_accepted", actor_id=payload.actor_id, walk_id=walk.id)
+    _save_contract_snapshot(db, walk, "contract_accepted")
     return _serialize_walk_request(db, walk)
 
 
@@ -522,6 +669,7 @@ def decline_walk_request(request_id: int, payload: WalkRequestAction, db: Sessio
     db.commit()
     db.refresh(walk)
     redis_service.publish(f"client:{walk.client_id}", {"type": "walk_declined", "request_id": walk.id})
+    _log_event("walk_declined", actor_id=payload.actor_id, walk_id=walk.id)
     return _serialize_walk_request(db, walk)
 
 
@@ -534,9 +682,31 @@ def complete_walk(request_id: int, payload: WalkRequestAction, db: Session = Dep
         raise HTTPException(status_code=403, detail="Somente o passeador pode concluir.")
 
     walk.status = "completed"
+    if walk.payment_status in {None, "", "unpaid"}:
+        walk.payment_status = "payment_pending"
     db.commit()
     db.refresh(walk)
+    _log_event("walk_completed_by_walker", actor_id=payload.actor_id, walk_id=walk.id, data={"payment_status": walk.payment_status})
+    _save_contract_snapshot(db, walk, "contract_completed")
+    redis_service.publish(f"client:{walk.client_id}", {"type": "walk_completed", "request_id": walk.id})
     return _serialize_walk_request(db, walk)
+
+
+@router.post("/walk-requests/{request_id}/emergency")
+def emergency_alert(request_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, request_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
+    actor_id = payload.get("actor_id")
+    message = (payload.get("message") or "Emergência acionada no passeio.").strip()
+    location = payload.get("location") or {}
+    if actor_id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Somente cliente ou passeador desta solicitação podem acionar emergência.")
+    _log_event("emergency_alert", actor_id=actor_id, walk_id=walk.id, data={"message": message, "location": location})
+    redis_service.publish(f"client:{walk.client_id}", {"type": "emergency_alert", "request_id": walk.id, "message": message})
+    if walk.walker_id:
+        redis_service.publish(f"walker:{walk.walker_id}", {"type": "emergency_alert", "request_id": walk.id, "message": message})
+    return {"ok": True, "message": "Alerta de emergência registrado.", "request_id": walk.id}
 
 
 @router.post("/messages")
@@ -592,12 +762,15 @@ def expire_invites(db: Session = Depends(get_db)):
 def criar_pagamento(
     request: Request,
     request_id: int = Query(...),
-    amount: float = Query(default=1.0),
+    amount: float | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     walk = db.get(WalkRequest, request_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
+
+    if walk.status not in {"completed", "payment_pending", "paid"}:
+        raise HTTPException(status_code=400, detail="O pagamento só pode ser gerado após o passeio ser finalizado pelo passeador.")
 
     client = db.get(User, walk.client_id)
     if not client:
@@ -608,7 +781,7 @@ def criar_pagamento(
         webhook_base_url = str(request.base_url).rstrip("/")
 
     payload = {
-        "transaction_amount": float(amount),
+        "transaction_amount": float(amount if amount is not None else (walk.price or 1.0)),
         "description": f"Passeio com Pet #{request_id}",
         "payment_method_id": "pix",
         "notification_url": f"{webhook_base_url}/api/webhooks/mercado-pago",
@@ -657,10 +830,11 @@ def criar_pagamento(
     db.add(walk)
     db.commit()
     db.refresh(walk)
+    _log_event("payment_generated", actor_id=walk.client_id, walk_id=walk.id, data={"payment_id": walk.payment_id, "payment_status": walk.payment_status})
 
     return {
         "request_id": request_id,
-        "amount": float(amount),
+        "amount": float(amount if amount is not None else (walk.price or 1.0)),
         "payment_id": walk.payment_id,
         "link_pagamento": transaction_data.get("ticket_url"),
         "qr_code": transaction_data.get("qr_code"),
@@ -760,6 +934,7 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
         return {"ok": True, "message": f"WalkRequest {walk_id} não encontrado."}
 
     walk = _apply_payment_to_walk(db, walk, payment_data)
+    _log_event("payment_webhook_received", actor_id=walk.client_id, walk_id=walk.id, data={"payment_id": walk.payment_id, "payment_status": walk.payment_status})
 
     if walk.payment_status == "paid":
         redis_service.publish(
