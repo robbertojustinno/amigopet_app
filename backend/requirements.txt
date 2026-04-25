@@ -8,5 +8,3 @@ python-dotenv
 python-multipart
 email-validator
 psycopg2-binary
-passlib[bcrypt]
-bcrypt

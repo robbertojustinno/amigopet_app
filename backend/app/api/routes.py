@@ -2,10 +2,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 import os
+import hashlib
+import hmac
+import secrets
 import requests
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
-from passlib.context import CryptContext
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -42,11 +44,20 @@ def _normalize_email(value: str) -> str:
 def _normalize_password(value: str) -> str:
     return (value or "").strip()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+PASSWORD_ALGORITHM = "pbkdf2_sha256"
+PASSWORD_ITERATIONS = 260_000
 
 
 def _get_password_hash(password: str) -> str:
-    return pwd_context.hash(_normalize_password(password))
+    clean_password = _normalize_password(password)
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        clean_password.encode("utf-8"),
+        salt.encode("utf-8"),
+        PASSWORD_ITERATIONS,
+    ).hex()
+    return f"{PASSWORD_ALGORITHM}${PASSWORD_ITERATIONS}${salt}${digest}"
 
 
 def _verify_password(plain_password: str, stored_password: str | None) -> bool:
@@ -54,13 +65,19 @@ def _verify_password(plain_password: str, stored_password: str | None) -> bool:
     stored_password = (stored_password or "").strip()
     if not stored_password:
         return False
-    if stored_password.startswith(("$2a$", "$2b$", "$2y$")):
+    if stored_password.startswith(f"{PASSWORD_ALGORITHM}$"):
         try:
-            return pwd_context.verify(plain_password, stored_password)
+            _, iterations, salt, expected_digest = stored_password.split("$", 3)
+            calculated_digest = hashlib.pbkdf2_hmac(
+                "sha256",
+                plain_password.encode("utf-8"),
+                salt.encode("utf-8"),
+                int(iterations),
+            ).hex()
+            return hmac.compare_digest(calculated_digest, expected_digest)
         except Exception:
             return False
-    return plain_password == stored_password
-
+    return hmac.compare_digest(plain_password, stored_password)
 
 def _get_user_stored_password(user: User) -> str:
     return (getattr(user, "password_hash", None) or getattr(user, "password", None) or "").strip()

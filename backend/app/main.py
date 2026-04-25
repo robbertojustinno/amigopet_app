@@ -1,10 +1,11 @@
 from pathlib import Path
+import hashlib
+import secrets
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.api.routes import router
@@ -13,13 +14,22 @@ from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
 
-app = FastAPI(title=settings.APP_NAME, version="9.3.0")
+app = FastAPI(title=settings.APP_NAME, version="9.4.0")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+PASSWORD_ALGORITHM = "pbkdf2_sha256"
+PASSWORD_ITERATIONS = 260_000
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash((password or "").strip())
+    clean_password = (password or "").strip()
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        clean_password.encode("utf-8"),
+        salt.encode("utf-8"),
+        PASSWORD_ITERATIONS,
+    ).hex()
+    return f"{PASSWORD_ALGORITHM}${PASSWORD_ITERATIONS}${salt}${digest}"
 
 
 def _set_user_password(user: User, password: str) -> None:
@@ -59,9 +69,7 @@ def create_admin() -> None:
     try:
         admin_email = "admin@amigopet.com"
         admin_password = "123456"
-
         existing = db.query(User).filter(User.email == admin_email).first()
-
         if existing:
             existing.full_name = "Administrador"
             existing.role = "admin"
