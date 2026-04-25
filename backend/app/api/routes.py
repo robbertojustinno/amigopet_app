@@ -5,6 +5,7 @@ import os
 import requests
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
+from passlib.context import CryptContext
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -41,7 +42,83 @@ def _normalize_email(value: str) -> str:
 def _normalize_password(value: str) -> str:
     return (value or "").strip()
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+def _get_password_hash(password: str) -> str:
+    return pwd_context.hash(_normalize_password(password))
+
+
+def _verify_password(plain_password: str, stored_password: str | None) -> bool:
+    plain_password = _normalize_password(plain_password)
+    stored_password = (stored_password or "").strip()
+    if not stored_password:
+        return False
+    if stored_password.startswith(("$2a$", "$2b$", "$2y$")):
+        try:
+            return pwd_context.verify(plain_password, stored_password)
+        except Exception:
+            return False
+    return plain_password == stored_password
+
+
+def _get_user_stored_password(user: User) -> str:
+    return (getattr(user, "password_hash", None) or getattr(user, "password", None) or "").strip()
+
+
+def _set_user_password(user: User, password: str) -> None:
+    hashed_password = _get_password_hash(password)
+    if hasattr(user, "password_hash"):
+        user.password_hash = hashed_password
+    if hasattr(user, "password"):
+        user.password = hashed_password
+
+
+def _user_payload(user: User) -> dict:
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "role": user.role,
+        "neighborhood": user.neighborhood,
+        "city": user.city,
+        "address": user.address,
+        "profile_photo": user.profile_photo,
+        "online": user.online,
+        "active": user.active,
+    }
+
+
+def _build_user_kwargs(
+    *,
+    full_name: str,
+    email: str,
+    password: str,
+    role: str,
+    neighborhood: str,
+    city: str,
+    address: str,
+    profile_photo: str | None,
+    online: bool,
+    active: bool,
+) -> dict:
+    hashed_password = _get_password_hash(password)
+    data = {
+        "full_name": full_name,
+        "email": email,
+        "role": role,
+        "neighborhood": neighborhood,
+        "city": city,
+        "address": address,
+        "profile_photo": profile_photo,
+        "online": online,
+        "active": active,
+    }
+    if hasattr(User, "password_hash"):
+        data["password_hash"] = hashed_password
+    if hasattr(User, "password"):
+        data["password"] = hashed_password
+    return data
 def _mercado_pago_token() -> str:
     token = (settings.MERCADO_PAGO_ACCESS_TOKEN or os.getenv("MERCADO_PAGO_ACCESS_TOKEN") or "").strip()
     if not token:
@@ -186,29 +263,27 @@ async def upload_profile_photo(file: UploadFile = File(...)):
 def health():
     return {"ok": True, "app": settings.APP_NAME, "default_address": settings.DEFAULT_ADDRESS}
 
-
 @router.post("/admin/login")
-def admin_login(payload: UserLogin):
-    admin_email = os.getenv("ADMIN_EMAIL")
-    admin_password = os.getenv("ADMIN_PASSWORD")
+def admin_login(payload: UserLogin, db: Session = Depends(get_db)):
+    normalized_email = _normalize_email(payload.email)
+    normalized_password = _normalize_password(payload.password)
 
-    if not admin_email or not admin_password:
-        raise HTTPException(status_code=500, detail="Admin não configurado no servidor.")
+    admin = db.scalar(
+        select(User).where(
+            func.lower(func.trim(User.email)) == normalized_email,
+            User.role == "admin",
+            User.active == True,
+        )
+    )
 
-    if payload.email.strip().lower() != admin_email.strip().lower() or payload.password.strip() != admin_password.strip():
+    if not admin or not _verify_password(normalized_password, _get_user_stored_password(admin)):
         raise HTTPException(status_code=401, detail="Credenciais admin inválidas.")
 
-    return {
-        "id": 0,
-        "full_name": "Administrador",
-        "email": admin_email,
-        "role": "admin",
-        "neighborhood": "Painel central",
-        "city": "Sistema",
-        "address": "Ambiente administrativo",
-        "online": True,
-    }
-
+    admin.online = True
+    _set_user_password(admin, normalized_password)  # garante hash atualizado mesmo se veio senha antiga em texto puro
+    db.commit()
+    db.refresh(admin)
+    return _user_payload(admin)
 
 @router.get("/admin/dashboard")
 def admin_dashboard(db: Session = Depends(get_db)):
@@ -267,31 +342,23 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="E-mail já cadastrado.")
 
     user = User(
-        full_name=normalized_full_name,
-        email=normalized_email,
-        password=normalized_password,
-        role=payload.role,
-        neighborhood=(payload.neighborhood or "").strip(),
-        city=(payload.city or "").strip(),
-        address=(payload.address or settings.DEFAULT_ADDRESS).strip(),
-        profile_photo=payload.profile_photo,
-        online=False,
-        active=True,
+        **_build_user_kwargs(
+            full_name=normalized_full_name,
+            email=normalized_email,
+            password=normalized_password,
+            role=payload.role,
+            neighborhood=(payload.neighborhood or "").strip(),
+            city=(payload.city or "").strip(),
+            address=(payload.address or settings.DEFAULT_ADDRESS).strip(),
+            profile_photo=payload.profile_photo,
+            online=False,
+            active=True,
+        )
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return {
-        "id": user.id,
-        "full_name": user.full_name,
-        "email": user.email,
-        "role": user.role,
-        "neighborhood": user.neighborhood,
-        "city": user.city,
-        "address": user.address,
-        "profile_photo": user.profile_photo,
-        "online": user.online,
-    }
+    return _user_payload(user)
 
 
 @router.post("/users/login")
@@ -302,28 +369,17 @@ def login_user(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.scalar(
         select(User).where(
             func.lower(func.trim(User.email)) == normalized_email,
-            func.trim(User.password) == normalized_password,
             User.active == True,
         )
     )
-    if not user:
+    if not user or not _verify_password(normalized_password, _get_user_stored_password(user)):
         raise HTTPException(status_code=401, detail="Credenciais inválidas.")
 
     user.online = True
+    _set_user_password(user, normalized_password)  # migra senha antiga em texto puro para hash no primeiro login válido
     db.commit()
     db.refresh(user)
-    return {
-        "id": user.id,
-        "full_name": user.full_name,
-        "email": user.email,
-        "role": user.role,
-        "neighborhood": user.neighborhood,
-        "city": user.city,
-        "address": user.address,
-        "profile_photo": user.profile_photo,
-        "online": user.online,
-    }
-
+    return _user_payload(user)
 
 @router.get("/walkers", response_model=list[UserOut])
 def list_walkers(neighborhood: str | None = None, city: str | None = None, db: Session = Depends(get_db)):
@@ -706,71 +762,3 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
         "payment_status": walk.payment_status,
         "status": walk.status,
     }
-
-from app.db.session import SessionLocal
-from app.models.user import User
-
-@router.get("/force-admin")
-def force_admin():
-    db = SessionLocal()
-
-    admin_email = "admin@amigopet.com"
-    admin_password = "1%3R723$Rj"
-
-    existing = db.query(User).filter(User.email == admin_email).first()
-
-    if not existing:
-        admin = User(
-            full_name="Administrador",
-            email=admin_email,
-            password=admin_password,
-            role="admin",
-            neighborhood="Sistema",
-            city="Sistema",
-            address="Admin",
-            profile_photo=None,
-            online=False,
-            active=True,
-        )
-        db.add(admin)
-        db.commit()
-        db.close()
-        return {"msg": "Admin criado"}
-
-    db.close()
-    return {"msg": "Admin já existe"}
-
-from app.db.session import SessionLocal
-from app.models.user import User
-
-@router.get("/force-admin")
-def force_admin():
-    db = SessionLocal()
-    try:
-        admin_email = "admin@amigopet.com"
-        admin_password = "1%3R723$Rj"
-
-        existing = db.query(User).filter(User.email == admin_email).first()
-
-        if not existing:
-            admin = User(
-                full_name="Administrador",
-                email=admin_email,
-                password=admin_password,
-                role="admin",
-                neighborhood="Sistema",
-                city="Sistema",
-                address="Admin",
-                profile_photo=None,
-                online=False,
-                active=True,
-            )
-            db.add(admin)
-            db.commit()
-            return {"msg": "Admin criado"}
-
-        return {"msg": "Admin já existe"}
-    finally:
-        db.close()
-        
-        

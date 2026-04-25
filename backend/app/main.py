@@ -4,37 +4,57 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.api.routes import router
 from app.core.config import settings
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-from app.api.routes import router
-from app.core.config import settings
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
 from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
-from app.db.session import Base, SessionLocal, engine
-from app.models.user import User
 
-app = FastAPI(title=settings.APP_NAME, version="9.2.0")
+app = FastAPI(title=settings.APP_NAME, version="9.3.0")
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash((password or "").strip())
+
+
+def _set_user_password(user: User, password: str) -> None:
+    hashed_password = get_password_hash(password)
+    if hasattr(user, "password_hash"):
+        user.password_hash = hashed_password
+    if hasattr(user, "password"):
+        user.password = hashed_password
+
+
+def _build_admin_kwargs(password: str) -> dict:
+    hashed_password = get_password_hash(password)
+    data = {
+        "full_name": "Administrador",
+        "email": "admin@amigopet.com",
+        "role": "admin",
+        "neighborhood": "Painel central",
+        "city": "Sistema",
+        "address": "Ambiente administrativo",
+        "profile_photo": None,
+        "online": False,
+        "active": True,
+    }
+    if hasattr(User, "password_hash"):
+        data["password_hash"] = hashed_password
+    if hasattr(User, "password"):
+        data["password"] = hashed_password
+    return data
+
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_columns()
 
 
-def create_admin():
+def create_admin() -> None:
     db: Session = SessionLocal()
     try:
         admin_email = "admin@amigopet.com"
@@ -44,7 +64,6 @@ def create_admin():
 
         if existing:
             existing.full_name = "Administrador"
-            existing.password_hash = get_password_hash(admin_password)
             existing.role = "admin"
             existing.neighborhood = "Painel central"
             existing.city = "Sistema"
@@ -52,21 +71,11 @@ def create_admin():
             existing.profile_photo = None
             existing.online = False
             existing.active = True
+            _set_user_password(existing, admin_password)
             db.commit()
             print("✅ Admin atualizado automaticamente.")
         else:
-            admin = User(
-                full_name="Administrador",
-                email=admin_email,
-                password_hash=get_password_hash(admin_password),
-                role="admin",
-                neighborhood="Painel central",
-                city="Sistema",
-                address="Ambiente administrativo",
-                profile_photo=None,
-                online=False,
-                active=True,
-            )
+            admin = User(**_build_admin_kwargs(admin_password))
             db.add(admin)
             db.commit()
             print("✅ Admin criado automaticamente.")
