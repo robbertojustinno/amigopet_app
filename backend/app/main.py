@@ -27,7 +27,19 @@ def create_admin():
 
         existing = db.query(User).filter(User.email == admin_email).first()
 
-        if not existing:
+        if existing:
+            existing.full_name = "Administrador"
+            existing.password_hash = get_password_hash(admin_password)
+            existing.role = "admin"
+            existing.neighborhood = "Painel central"
+            existing.city = "Sistema"
+            existing.address = "Ambiente administrativo"
+            existing.profile_photo = None
+            existing.online = False
+            existing.active = True
+            db.commit()
+            print("✅ Admin atualizado automaticamente.")
+        else:
             admin = User(
                 full_name="Administrador",
                 email=admin_email,
@@ -43,8 +55,6 @@ def create_admin():
             db.add(admin)
             db.commit()
             print("✅ Admin criado automaticamente.")
-        else:
-            print("ℹ️ Admin já existe.")
     finally:
         db.close()
 
