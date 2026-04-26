@@ -124,6 +124,25 @@ def _ensure_finance_schema(db: Session) -> None:
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """))
+
+    user_columns = _table_columns(db, "users")
+    pix_columns = {
+        "pix_key": "VARCHAR(255) NULL",
+        "pix_key_type": "VARCHAR(30) NULL",
+        "pix_holder_name": "VARCHAR(255) NULL",
+        "pix_holder_document": "VARCHAR(80) NULL",
+        "pix_verified": "BOOLEAN DEFAULT FALSE",
+        "pix_updated_at": f"{timestamp_type} NULL",
+    }
+
+    for column_name, column_type in pix_columns.items():
+        if column_name not in user_columns:
+            try:
+                db.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"))
+                db.commit()
+            except Exception:
+                db.rollback()
+
     db.commit()
 
 
@@ -245,20 +264,40 @@ def _wallet_summary(db: Session, walker_id: int | None = None) -> dict:
 
     rows = db.execute(
         text(f"""
-            SELECT status, COALESCE(SUM(amount), 0) AS total
+            SELECT transaction_type, status, COALESCE(SUM(amount), 0) AS total
             FROM wallet_transactions
             {where}
-            GROUP BY status
+            GROUP BY transaction_type, status
         """),
         params,
     ).mappings().all()
 
-    summary = {"pending": 0.0, "available": 0.0, "paid": 0.0, "blocked": 0.0}
-    for row in rows:
-        summary[row["status"] or "pending"] = float(row["total"] or 0)
+    credit = {"pending": 0.0, "available": 0.0, "paid": 0.0, "blocked": 0.0}
+    withdraw = {"withdraw_requested": 0.0, "processing": 0.0, "paid": 0.0, "blocked": 0.0}
 
-    summary["total_open"] = _round_money(summary["pending"] + summary["available"] + summary["blocked"])
-    return summary
+    for row in rows:
+        tx_type = (row.get("transaction_type") or "credit").lower()
+        status = (row.get("status") or "pending").lower()
+        total = float(row.get("total") or 0)
+        if tx_type in {"withdraw", "withdrawal", "debit"}:
+            withdraw[status] = withdraw.get(status, 0.0) + total
+        else:
+            credit[status] = credit.get(status, 0.0) + total
+
+    reserved_withdraw = withdraw.get("withdraw_requested", 0.0) + withdraw.get("processing", 0.0)
+    available_net = max(0.0, credit.get("available", 0.0) - reserved_withdraw)
+
+    return {
+        "pending": _round_money(credit.get("pending", 0.0)),
+        "available": _round_money(available_net),
+        "available_gross": _round_money(credit.get("available", 0.0)),
+        "paid": _round_money(credit.get("paid", 0.0)),
+        "blocked": _round_money(credit.get("blocked", 0.0)),
+        "withdraw_requested": _round_money(withdraw.get("withdraw_requested", 0.0)),
+        "withdraw_processing": _round_money(withdraw.get("processing", 0.0)),
+        "withdraw_paid": _round_money(withdraw.get("paid", 0.0)),
+        "total_open": _round_money(credit.get("pending", 0.0) + available_net + credit.get("blocked", 0.0)),
+    }
 
 
 def _wallet_transactions(db: Session, walker_id: int | None = None, limit: int = 100) -> list[dict]:
@@ -272,7 +311,9 @@ def _wallet_transactions(db: Session, walker_id: int | None = None, limit: int =
     rows = db.execute(
         text(f"""
             SELECT wt.id, wt.walker_id, wt.request_id, wt.amount, wt.transaction_type, wt.status,
-                   wt.description, wt.created_at, wt.updated_at, u.full_name AS walker_name, u.email AS walker_email
+                   wt.description, wt.created_at, wt.updated_at,
+                   u.full_name AS walker_name, u.email AS walker_email,
+                   u.pix_key, u.pix_key_type, u.pix_holder_name, u.pix_holder_document, u.pix_verified
             FROM wallet_transactions wt
             LEFT JOIN users u ON u.id = wt.walker_id
             {where}
@@ -754,16 +795,108 @@ def admin_finance(db: Session = Depends(get_db)):
 
 @router.get("/wallet/{walker_id}")
 def walker_wallet(walker_id: int, db: Session = Depends(get_db)):
+    _ensure_finance_schema(db)
     walker = db.get(User, walker_id)
     if not walker or walker.role != "walker":
         raise HTTPException(status_code=404, detail="Passeador não encontrado.")
+
+    pix = {
+        "pix_key": getattr(walker, "pix_key", None),
+        "pix_key_type": getattr(walker, "pix_key_type", None),
+        "pix_holder_name": getattr(walker, "pix_holder_name", None),
+        "pix_holder_document": getattr(walker, "pix_holder_document", None),
+        "pix_verified": bool(getattr(walker, "pix_verified", False)),
+        "pix_updated_at": str(getattr(walker, "pix_updated_at", "") or ""),
+    }
 
     return {
         "walker_id": walker.id,
         "walker_name": walker.full_name,
         "summary": _wallet_summary(db, walker_id=walker_id),
+        "pix": pix,
         "transactions": _wallet_transactions(db, walker_id=walker_id, limit=100),
     }
+
+
+@router.post("/wallet/{walker_id}/pix")
+def save_walker_pix(walker_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db)):
+    _ensure_finance_schema(db)
+    walker = db.get(User, walker_id)
+    if not walker or walker.role != "walker":
+        raise HTTPException(status_code=404, detail="Passeador não encontrado.")
+
+    pix_key_type = (payload.get("pix_key_type") or "").strip().lower()
+    pix_key = (payload.get("pix_key") or "").strip()
+    holder_name = (payload.get("pix_holder_name") or payload.get("holder_name") or walker.full_name or "").strip()
+    holder_document = (payload.get("pix_holder_document") or payload.get("holder_document") or "").strip()
+
+    allowed_types = {"cpf", "cnpj", "email", "telefone", "celular", "aleatoria", "evp"}
+    if pix_key_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Tipo de chave PIX inválido.")
+    if len(pix_key) < 3:
+        raise HTTPException(status_code=400, detail="Informe uma chave PIX válida.")
+    if len(holder_name) < 3:
+        raise HTTPException(status_code=400, detail="Informe o nome do titular da chave PIX.")
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET pix_key = :pix_key,
+                pix_key_type = :pix_key_type,
+                pix_holder_name = :holder_name,
+                pix_holder_document = :holder_document,
+                pix_verified = FALSE,
+                pix_updated_at = CURRENT_TIMESTAMP
+            WHERE id = :walker_id
+        """),
+        {
+            "pix_key": pix_key,
+            "pix_key_type": pix_key_type,
+            "holder_name": holder_name,
+            "holder_document": holder_document,
+            "walker_id": walker_id,
+        },
+    )
+    db.commit()
+    _log_event("walker_pix_saved", actor_id=walker_id, data={"pix_key_type": pix_key_type, "holder_name": holder_name})
+    return {"ok": True, "message": "Chave PIX salva com sucesso.", "pix_key_type": pix_key_type, "pix_holder_name": holder_name}
+
+
+@router.post("/wallet/{walker_id}/withdraw")
+def request_withdraw(walker_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db)):
+    _ensure_finance_schema(db)
+    walker = db.get(User, walker_id)
+    if not walker or walker.role != "walker":
+        raise HTTPException(status_code=404, detail="Passeador não encontrado.")
+
+    pix_key = (getattr(walker, "pix_key", None) or "").strip()
+    if not pix_key:
+        raise HTTPException(status_code=400, detail="Cadastre sua chave PIX antes de solicitar saque.")
+
+    amount = _round_money(payload.get("amount") or 0)
+    summary = _wallet_summary(db, walker_id=walker_id)
+    available = _round_money(summary.get("available") or 0)
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Informe um valor de saque válido.")
+    if amount > available:
+        raise HTTPException(status_code=400, detail=f"Saldo disponível insuficiente. Disponível: R$ {available:.2f}")
+
+    db.execute(
+        text("""
+            INSERT INTO wallet_transactions
+            (walker_id, request_id, amount, transaction_type, status, description)
+            VALUES (:walker_id, NULL, :amount, 'withdraw', 'withdraw_requested', :description)
+        """),
+        {
+            "walker_id": walker_id,
+            "amount": amount,
+            "description": f"Solicitação de saque via PIX para {getattr(walker, 'pix_key_type', '')}: {pix_key}",
+        },
+    )
+    db.commit()
+    _log_event("walker_withdraw_requested", actor_id=walker_id, data={"amount": amount, "pix_key_type": getattr(walker, "pix_key_type", None)})
+    return {"ok": True, "message": "Saque solicitado com sucesso.", "amount": amount, "status": "withdraw_requested"}
 
 
 @router.post("/admin/wallet-transactions/{transaction_id}/mark-paid")

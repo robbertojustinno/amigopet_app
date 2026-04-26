@@ -151,3 +151,28 @@ button:disabled { opacity:.55; cursor:not-allowed; background:#e2e8f0 !important
 @media(max-width:700px){
   .finance-mini span { width: 100%; }
 }
+
+.pix-wallet-box {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #f8fbff;
+}
+.wallet-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.wallet-form button { width: 100%; }
+.withdraw-form {
+  grid-template-columns: 1fr 1fr;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.wallet-transaction-card .request-meta span { word-break: break-word; }
+@media (max-width: 760px) {
+  .wallet-form, .withdraw-form { grid-template-columns: 1fr; }
+}

@@ -434,6 +434,7 @@ function renderWalletTransactions(containerId, transactions = [], isAdmin = fals
           <span>Passeio #${tx.request_id || "-"}</span>
           <span>${tx.transaction_type || "credit"}</span>
           <span class="tag">${tx.status || "pending"}</span>
+          ${tx.transaction_type === "withdraw" ? `<span>PIX: ${tx.pix_key_type || "-"} • ${tx.pix_key || "-"}</span>` : ""}
           <span>${tx.created_at || ""}</span>
         </div>
         <div class="wallet-amount">${money(tx.amount || 0)}</div>
@@ -503,11 +504,74 @@ async function loadWalkerWallet() {
     if (byId("walkerWalletPending")) byId("walkerWalletPending").textContent = money(data.summary?.pending);
     if (byId("walkerWalletAvailable")) byId("walkerWalletAvailable").textContent = money(data.summary?.available);
     if (byId("walkerWalletPaid")) byId("walkerWalletPaid").textContent = money(data.summary?.paid);
+
+    const pix = data.pix || {};
+    if (byId("walkerPixStatus")) {
+      byId("walkerPixStatus").textContent = pix.pix_key
+        ? `PIX cadastrado: ${pix.pix_key_type || "-"} • ${pix.pix_key} • Titular: ${pix.pix_holder_name || "-"}`
+        : "Nenhuma chave PIX cadastrada. Cadastre para solicitar saque.";
+    }
+    if (byId("pix_key_type") && pix.pix_key_type) byId("pix_key_type").value = pix.pix_key_type;
+    if (byId("pix_key") && pix.pix_key) byId("pix_key").value = pix.pix_key;
+    if (byId("pix_holder_name") && pix.pix_holder_name) byId("pix_holder_name").value = pix.pix_holder_name;
+    if (byId("pix_holder_document") && pix.pix_holder_document) byId("pix_holder_document").value = pix.pix_holder_document;
+
     renderWalletTransactions("walkerWalletTransactions", data.transactions || [], false);
   } catch (err) {
     console.log(err.message);
   }
 }
+
+async function handlePixSubmit(e) {
+  if (e) e.preventDefault();
+  if (!currentUser?.id || currentUser.role !== "walker") {
+    alert("Sessão do passeador não encontrada.");
+    return false;
+  }
+  try {
+    const payload = {
+      pix_key_type: byId("pix_key_type")?.value || "",
+      pix_key: byId("pix_key")?.value || "",
+      pix_holder_name: byId("pix_holder_name")?.value || "",
+      pix_holder_document: byId("pix_holder_document")?.value || ""
+    };
+    await api(`/wallet/${currentUser.id}/pix`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    alert("Chave PIX salva com sucesso.");
+    await loadWalkerWallet();
+  } catch (err) {
+    alert(err.message);
+  }
+  return false;
+}
+
+async function handleWithdrawSubmit(e) {
+  if (e) e.preventDefault();
+  if (!currentUser?.id || currentUser.role !== "walker") {
+    alert("Sessão do passeador não encontrada.");
+    return false;
+  }
+  const amount = Number(byId("withdraw_amount")?.value || 0);
+  if (!amount || amount <= 0) {
+    alert("Informe um valor de saque válido.");
+    return false;
+  }
+  try {
+    await api(`/wallet/${currentUser.id}/withdraw`, {
+      method: "POST",
+      body: JSON.stringify({ amount })
+    });
+    alert("Saque solicitado. O admin fará o repasse para sua chave PIX cadastrada.");
+    if (byId("withdraw_amount")) byId("withdraw_amount").value = "";
+    await loadWalkerWallet();
+  } catch (err) {
+    alert(err.message);
+  }
+  return false;
+}
+
 
 async function adminApproveWalker(userId) {
   if (!userId) return;
@@ -1154,6 +1218,8 @@ function attachMainEvents() {
   byId("walkForm")?.addEventListener("submit", handleWalkSubmit);
   byId("messageForm")?.addEventListener("submit", handleMessageSubmit);
   byId("walkerMessageForm")?.addEventListener("submit", handleWalkerMessageSubmit);
+  byId("pixForm")?.addEventListener("submit", handlePixSubmit);
+  byId("withdrawForm")?.addEventListener("submit", handleWithdrawSubmit);
 
   byId("expireBtn")?.addEventListener("click", async () => {
     try {

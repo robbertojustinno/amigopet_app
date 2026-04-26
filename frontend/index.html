@@ -304,6 +304,32 @@
           <div class="metric"><div class="metric-label">Disponível</div><div id="walkerWalletAvailable" class="metric-value">R$ 0,00</div></div>
           <div class="metric"><div class="metric-label">Já repassado</div><div id="walkerWalletPaid" class="metric-value">R$ 0,00</div></div>
         </div>
+
+        <div class="pix-wallet-box">
+          <div class="section-title" style="margin-top:18px;">Chave PIX para repasse</div>
+          <p id="walkerPixStatus" class="inline-note">Nenhuma chave PIX cadastrada.</p>
+          <form id="pixForm" class="wallet-form" novalidate>
+            <select id="pix_key_type" required>
+              <option value="">Tipo da chave PIX</option>
+              <option value="cpf">CPF</option>
+              <option value="cnpj">CNPJ</option>
+              <option value="email">E-mail</option>
+              <option value="telefone">Telefone</option>
+              <option value="aleatoria">Chave aleatória</option>
+            </select>
+            <input id="pix_key" type="text" placeholder="Chave PIX" required />
+            <input id="pix_holder_name" type="text" placeholder="Nome do titular" required />
+            <input id="pix_holder_document" type="text" placeholder="CPF/CNPJ do titular (opcional)" />
+            <button class="primary-btn" type="submit">Salvar chave PIX</button>
+          </form>
+
+          <form id="withdrawForm" class="wallet-form withdraw-form" novalidate>
+            <input id="withdraw_amount" type="number" min="1" step="0.01" placeholder="Valor para solicitar saque" />
+            <button class="secondary-btn" type="submit">Solicitar saque via PIX</button>
+          </form>
+        </div>
+
+        <div class="section-title" style="margin-top:18px;">Histórico financeiro</div>
         <div id="walkerWalletTransactions"></div>
       </div>
 
@@ -380,6 +406,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=95"></script>
+  <script src="/app.js?v=110"></script>
 </body>
 </html>
