@@ -128,6 +128,30 @@ if FRONTEND_DIR.exists():
         response.headers["Expires"] = "0"
         return response
 
+
+
+    @app.get("/landing.html", include_in_schema=False)
+    async def serve_landing():
+        landing_file = FRONTEND_DIR / "landing.html"
+        if landing_file.exists():
+            response = FileResponse(landing_file, media_type="text/html")
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        return JSONResponse({"detail": "landing.html não encontrado"}, status_code=404)
+
+    @app.get("/guia_identidade_visual.html", include_in_schema=False)
+    async def serve_brand_guide():
+        guide_file = FRONTEND_DIR / "guia_identidade_visual.html"
+        if guide_file.exists():
+            response = FileResponse(guide_file, media_type="text/html")
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        return JSONResponse({"detail": "guia_identidade_visual.html não encontrado"}, status_code=404)
+
     @app.get("/app.js", include_in_schema=False)
     async def serve_app_js():
         response = FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript")
