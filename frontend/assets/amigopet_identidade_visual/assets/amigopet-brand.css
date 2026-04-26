@@ -1,0 +1,15 @@
+:root{
+  --amigopet-green:#16A34A;
+  --amigopet-blue:#0EA5E9;
+  --amigopet-navy:#0F172A;
+  --amigopet-bg:#EEF6F3;
+  --amigopet-white:#FFFFFF;
+  --amigopet-warning:#F59E0B;
+  --amigopet-danger:#DC2626;
+  --amigopet-radius:22px;
+  --amigopet-shadow:0 18px 40px rgba(15,23,42,.12);
+  --amigopet-font:Inter, Arial, sans-serif;
+}
+.brand-gradient{background:linear-gradient(135deg,var(--amigopet-green),var(--amigopet-blue));}
+.brand-button{border:0;border-radius:16px;padding:14px 20px;background:linear-gradient(90deg,var(--amigopet-green),var(--amigopet-blue));color:#fff;font-weight:800;box-shadow:var(--amigopet-shadow);}
+.brand-card{background:#fff;border:1px solid #DCE8E5;border-radius:var(--amigopet-radius);box-shadow:var(--amigopet-shadow);}

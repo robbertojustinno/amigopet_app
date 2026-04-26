@@ -1,0 +1,18 @@
+{
+  "brand_name": "AmigoPet",
+  "tagline": "Passeios seguros, pets felizes.",
+  "positioning": "O app estilo Uber para passeadores de cachorro, com pagamento, segurança e gestão completa.",
+  "colors": {
+    "green_primary": "#16A34A",
+    "blue_primary": "#0EA5E9",
+    "navy": "#0F172A",
+    "soft_bg": "#EEF6F3",
+    "white": "#FFFFFF",
+    "warning": "#F59E0B",
+    "danger": "#DC2626"
+  },
+  "fonts": {
+    "primary": "Inter, Arial, sans-serif",
+    "fallback": "Arial, Helvetica, sans-serif"
+  }
+}
