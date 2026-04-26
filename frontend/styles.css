@@ -241,3 +241,7 @@ iframe,#mapFrame{min-height:150px!important;height:150px!important;border-radius
 #petPhotoPreviewWrap img,#photoPreviewWrap img,.photo-preview-wrap img{width:72px!important;height:72px!important;max-width:72px!important;max-height:72px!important;object-fit:cover!important;border-radius:14px!important}
 @media (min-width:1100px){#clientDashboard > .grid-2:first-of-type{grid-template-columns:.82fr 1.18fr!important}#clientDashboard > .grid-2:nth-of-type(2){grid-template-columns:1.15fr .85fr!important}#walkerDashboard > .grid-2{grid-template-columns:1.1fr .9fr!important}}
 @media (max-width:900px){.hero,.grid-2,.grid-3{grid-template-columns:1fr!important}.page{width:100%!important;padding:0 8px 12px!important}.topbar{padding:8px 10px!important}.brand-subtitle{max-width:160px!important}}
+
+.role-chip[data-role="admin"] {
+  display: none !important;
+}
