@@ -420,23 +420,44 @@ async function adminBlockWalker(userId) {
 async function triggerEmergency(role) {
   const requestId = role === "walker" ? activeWalkerChatRequestId : activeChatRequestId;
   if (!requestId) {
-    alert("Abra uma solicitação/chat antes de acionar emergência.");
+    alert("Abra o chat de uma solicitação ou use o botão de emergência no card do passeio.");
     return;
   }
-  const message = prompt("Descreva rapidamente a emergência:", "Emergência durante o passeio.");
+  await triggerRequestEmergency(requestId);
+}
+
+
+
+function canPayWalk(item) {
+  return ["completed", "payment_pending"].includes(String(item.status || "").toLowerCase()) && item.payment_status !== "paid";
+}
+
+async function completeWalkRequest(requestId) {
+  try {
+    await api(`/walk-requests/${requestId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ actor_id: currentUser.id })
+    });
+    alert("Passeio finalizado. O cliente já pode gerar o pagamento.");
+    await loadRequests();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function triggerRequestEmergency(requestId) {
+  if (!currentUser?.id) return alert("Sessão não encontrada.");
+  const message = prompt("Descreva rapidamente a emergência:", "Emergência acionada no passeio.");
   if (message === null) return;
+  const location = currentCoords ? { lat: currentCoords.lat, lng: currentCoords.lng } : {};
   try {
     await api(`/walk-requests/${requestId}/emergency`, {
       method: "POST",
-      body: JSON.stringify({
-        actor_id: currentUser?.id,
-        message: message || "Emergência acionada.",
-        location: currentCoords ? `${currentCoords.lat},${currentCoords.lng}` : "não informada"
-      })
+      body: JSON.stringify({ actor_id: currentUser.id, message, location })
     });
-    alert("Emergência registrada e enviada ao sistema.");
+    alert("Emergência registrada no sistema.");
   } catch (err) {
-    alert(err.message || "Erro ao registrar emergência.");
+    alert(err.message);
   }
 }
 
@@ -485,9 +506,12 @@ function renderClientRequests(items) {
   box.innerHTML = !items?.length ? `<div class="item">Sem solicitações.</div>` : "";
 
   items?.forEach((item) => {
-    const paidTag = item.payment_status === "paid" ? `<span class="tag">PAGO</span>` : `<span class="tag">${item.payment_status}</span>`;
+    const paidTag = item.payment_status === "paid" ? `<span class="tag tag-ativo">PAGO</span>` : `<span class="tag">${item.payment_status || "unpaid"}</span>`;
+    const canPay = canPayWalk(item);
+    const blockedPaymentNote = item.payment_status !== "paid" && !canPay ? `<div class="warning-box">Pagamento liberado somente depois que o passeador finalizar o passeio.</div>` : "";
+    const cardClass = item.status === "completed" ? "request-card completed-ready" : (item.status === "accepted" ? "request-card accepted-live" : "request-card");
     const div = document.createElement("div");
-    div.className = "request-card";
+    div.className = cardClass;
     div.innerHTML = `
       <div class="person-row">
         ${avatarHtml(requestPhotoForUser(item), requestTitleForUser(item))}
@@ -503,8 +527,10 @@ function renderClientRequests(items) {
           </div>
         </div>
       </div>
+      ${blockedPaymentNote}
       <div class="request-actions">
-        ${item.payment_status !== "paid" ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento</button>` : ""}
+        ${canPay ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento PIX</button>` : ""}
+        ${["accepted", "completed", "payment_pending"].includes(item.status) ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
@@ -513,7 +539,9 @@ function renderClientRequests(items) {
   box.querySelectorAll(".pay-btn").forEach((btn) => {
     btn.addEventListener("click", () => generateMercadoPagoPayment(btn.dataset.requestId, btn.dataset.amount));
   });
-
+  box.querySelectorAll(".emergency-request-btn").forEach((btn) => {
+    btn.addEventListener("click", () => triggerRequestEmergency(btn.dataset.requestId));
+  });
   box.querySelectorAll(".open-chat-btn").forEach((btn) => {
     btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, false));
   });
@@ -526,8 +554,11 @@ function renderWalkerRequests(items) {
   box.innerHTML = !items?.length ? `<div class="item">Sem solicitações para exibir.</div>` : "";
 
   items?.forEach((item) => {
+    const canAccept = ["invited", "pending"].includes(String(item.status || "").toLowerCase());
+    const canComplete = String(item.status || "").toLowerCase() === "accepted";
+    const cardClass = canComplete ? "request-card accepted-live" : (item.status === "completed" ? "request-card completed-ready" : "request-card");
     const div = document.createElement("div");
-    div.className = "request-card";
+    div.className = cardClass;
     div.innerHTML = `
       <div class="person-row">
         ${avatarHtml(item.client_photo, item.client_name || `Cliente ${item.client_id}`)}
@@ -535,7 +566,7 @@ function renderWalkerRequests(items) {
         <div>
           <div class="request-card-title">${item.client_name || `Cliente ${item.client_id}`}</div>
           <div class="request-meta">
-            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status}</span></span>
+            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status || "unpaid"}</span></span>
             <span>${item.pickup_address || "-"}</span>
             <span>Pet: ${item.pet_name || "Não informado"}</span>
             <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
@@ -543,8 +574,10 @@ function renderWalkerRequests(items) {
         </div>
       </div>
       <div class="request-actions">
-        <button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button>
-        <button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>
+        ${canAccept ? `<button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button>` : ""}
+        ${canAccept ? `<button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>` : ""}
+        ${canComplete ? `<button type="button" class="success-btn complete-walk-btn" data-request-id="${item.id}">Finalizar passeio</button>` : ""}
+        ${["accepted", "completed", "payment_pending"].includes(item.status) ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${item.client_name || `Cliente ${item.client_id}`}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
@@ -563,7 +596,12 @@ function renderWalkerRequests(items) {
       }
     });
   });
-
+  box.querySelectorAll(".complete-walk-btn").forEach((btn) => {
+    btn.addEventListener("click", () => completeWalkRequest(btn.dataset.requestId));
+  });
+  box.querySelectorAll(".emergency-request-btn").forEach((btn) => {
+    btn.addEventListener("click", () => triggerRequestEmergency(btn.dataset.requestId));
+  });
   box.querySelectorAll(".open-chat-btn").forEach((btn) => {
     btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, true));
   });
@@ -717,6 +755,11 @@ async function handleRegisterSubmit(e) {
 
   const forcedRole = currentAccessTab === "walker" ? "walker" : "client";
 
+  if (!byId("accept_terms")?.checked) {
+    alert("Você precisa aceitar os termos jurídicos para criar a conta.");
+    return false;
+  }
+
   if (forcedRole === "walker" && !byId("profile_photo")?.value.trim()) {
     alert("A foto do passeador é obrigatória.");
     return false;
@@ -740,6 +783,15 @@ async function handleRegisterSubmit(e) {
     });
 
     data = normalizeLoggedUser(data, forcedRole);
+
+    try {
+      await api("/legal/accept-terms", {
+        method: "POST",
+        body: JSON.stringify({ user_id: data.id, role: data.role, accepted: true })
+      });
+    } catch (termsErr) {
+      console.log("Aceite de termos não registrado:", termsErr.message);
+    }
 
     alert(data?.id ? `Conta criada com ID ${data.id}` : "Conta criada com sucesso");
 
