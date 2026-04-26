@@ -391,22 +391,29 @@ function avatarHtml(src, alt) {
 function renderAdminUsers(items) {
   const box = byId("adminUsersList");
   if (!box) return;
-
   box.innerHTML = !items?.length ? `<div class="item">Sem registros.</div>` : "";
-
   items?.forEach((item) => {
+    const isWalker = item.role === "walker";
+    const status = statusLabel(item);
     const div = document.createElement("div");
-    div.className = "request-card";
+    div.className = "request-card admin-user-card";
     div.innerHTML = `
-      <div class="person-row">
+      <div class="person-row admin-person-row">
         ${avatarHtml(item.profile_photo, item.full_name)}
-        <div>
+        <div class="admin-user-main">
           <div class="request-card-title">${item.full_name}</div>
-          <div class="request-meta"><span>${item.email}</span><span>${item.city || "-"} / ${item.neighborhood || "-"}</span><span class="tag">${item.role}</span></div>
+          <div class="request-meta"><span>${item.email}</span><span>${item.city || "-"} / ${item.neighborhood || "-"}</span><span class="tag">${item.role}</span><span class="tag tag-${status}">${status}</span></div>
+          <div class="admin-user-address">${item.address || "Endereço não informado"}</div>
         </div>
+      </div>
+      <div class="request-actions admin-actions">
+        ${isWalker ? `<button type="button" class="card-action-btn approve-walker-btn" data-user-id="${item.id}">Aprovar passeador</button>` : ""}
+        ${isWalker ? `<button type="button" class="secondary-btn block-walker-btn" data-user-id="${item.id}">Bloquear</button>` : ""}
       </div>`;
     box.appendChild(div);
   });
+  box.querySelectorAll(".approve-walker-btn").forEach((btn) => btn.addEventListener("click", () => adminApproveWalker(btn.dataset.userId)));
+  box.querySelectorAll(".block-walker-btn").forEach((btn) => btn.addEventListener("click", () => adminBlockWalker(btn.dataset.userId)));
 }
 
 function requestTitleForUser(item) {
@@ -862,6 +869,8 @@ function attachMainEvents() {
   byId("refreshWalkerBtn")?.addEventListener("click", loadRequests);
   byId("loadMapBtn")?.addEventListener("click", loadMap);
   byId("loadWalkersBtn")?.addEventListener("click", loadWalkers);
+  byId("clientEmergencyBtn")?.addEventListener("click", () => triggerEmergency("client"));
+  byId("walkerEmergencyBtn")?.addEventListener("click", () => triggerEmergency("walker"));
   byId("duration_minutes")?.addEventListener("change", syncEstimatedPrice);
   byId("dog_count")?.addEventListener("change", syncEstimatedPrice);
 
