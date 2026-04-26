@@ -530,7 +530,7 @@ function renderClientRequests(items) {
       ${blockedPaymentNote}
       <div class="request-actions">
         ${canPay ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento PIX</button>` : ""}
-        ${["accepted", "completed", "payment_pending"].includes(item.status) ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
+        ${assignedToCurrentWalker ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
@@ -554,9 +554,11 @@ function renderWalkerRequests(items) {
   box.innerHTML = !items?.length ? `<div class="item">Sem solicitações para exibir.</div>` : "";
 
   items?.forEach((item) => {
-    const canAccept = ["invited", "pending"].includes(String(item.status || "").toLowerCase());
-    const canComplete = String(item.status || "").toLowerCase() === "accepted";
-    const cardClass = canComplete ? "request-card accepted-live" : (item.status === "completed" ? "request-card completed-ready" : "request-card");
+    const status = String(item.status || "").toLowerCase();
+    const assignedToCurrentWalker = Number(item.walker_id || 0) === Number(currentUser?.id || 0);
+    const canAccept = ["invited", "pending"].includes(status);
+    const canComplete = assignedToCurrentWalker && !["completed", "paid", "cancelled", "declined"].includes(status);
+    const cardClass = canComplete ? "request-card accepted-live" : (status === "completed" ? "request-card completed-ready" : "request-card");
     const div = document.createElement("div");
     div.className = cardClass;
     div.innerHTML = `
