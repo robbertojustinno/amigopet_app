@@ -19,6 +19,10 @@ let availablePets = [];
 
 const PRICE_BY_DURATION = { 15: 1, 30: 2, 45: 3, 60: 4 };
 
+function isAdminEntryPage() {
+  return document.body?.dataset?.adminPage === "true" || window.location.pathname === "/admin" || window.location.pathname.endsWith("/admin.html");
+}
+
 function normalizeLoggedUser(data, fallbackRole = null) {
   if (!data || typeof data !== "object") return data;
   const normalized = { ...data };
@@ -46,16 +50,14 @@ function setAccessTab(tab) {
   currentAccessTab = tab;
   setRoleChip(tab);
   byId("goToRegisterBtn")?.classList.toggle("hidden", tab === "admin");
-  byId("quickRegisterBtn")?.classList.toggle("hidden", tab === "admin");
-  if (byId("quickRegisterBtn")) byId("quickRegisterBtn").textContent = tab === "walker" ? "Criar conta de passeador" : "Criar conta";
   byId("walkerPhotoArea")?.classList.toggle("hidden", tab !== "walker");
   if (byId("role")) byId("role").value = tab === "walker" ? "walker" : "client";
 
   if (tab === "admin") {
     if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Admin";
     if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse o painel administrativo";
-    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Cadastro desabilitado";
-    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Administradores são criados pelo backend e acessam apenas pelo login.";
+    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Cadastro de Admin";
+    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Cadastro desabilitado nesta tela";
   } else if (tab === "walker") {
     if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Passeador";
     if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse sua área de passeador";
@@ -928,21 +930,8 @@ function attachMainEvents() {
   });
 }
 
-function openTermsModal() {
-  byId("termsModal")?.classList.remove("hidden");
-}
-
-function closeTermsModal() {
-  byId("termsModal")?.classList.add("hidden");
-}
-
-function acceptTermsFromModal() {
-  if (byId("termsAccepted")) byId("termsAccepted").checked = true;
-  closeTermsModal();
-}
-
 window.addEventListener("load", () => {
-  setAccessTab("client");
+  setAccessTab(isAdminEntryPage() ? "admin" : "client");
   updatePaymentBoxDefault();
   updateHeaderState();
   syncEstimatedPrice();
@@ -961,458 +950,18 @@ window.addEventListener("load", () => {
   }
 });
 
-
-/* ===== AmigoPet V2 Comercial overrides ===== */
-let uploadedVaccineUrl = null;
-let editingPetId = null;
-
-function statusLabel(status) {
-  return ({invited:"Convidado",pending:"Pendente",accepted:"Aceito",in_progress:"Em andamento",completed:"Finalizado",paid:"Pago",expired:"Expirado",declined:"Recusado"}[status] || status || "-");
-}
-function paymentLabel(status) {
-  return ({unpaid:"Não pago",pending:"Pendente",processing:"Processando",paid:"Pago",failed:"Falhou",refunded:"Estornado"}[status] || status || "-");
-}
-function extractPetMeta(notes = "") {
-  const until = (notes.match(/\[VACINA_ATE:([^\]]+)\]/) || [])[1] || "";
-  const card = (notes.match(/\[CARTEIRA_VACINA:([^\]]+)\]/) || [])[1] || "";
-  const clean = notes.replace(/\s*\[VACINA_ATE:[^\]]+\]/g, "").replace(/\s*\[CARTEIRA_VACINA:[^\]]+\]/g, "").trim();
-  return { until, card, clean };
-}
-async function uploadImageFile(file) {
-  if (!file) return null;
-  const form = new FormData();
-  form.append("file", file);
-  try {
-    const data = await api("/uploads/profile-photo", { method: "POST", body: form, headers: {} });
-    return data.file_url || data.url || null;
-  } catch {
-    return await base64Url(file);
-  }
-}
-function isAssignedToCurrentWalker(item) {
-  return currentUser?.role === "walker" && Number(item.walker_id || 0) === Number(currentUser.id || 0);
-}
-function canFinishWalk(item) {
-  return isAssignedToCurrentWalker(item) && !["completed", "paid", "cancelled", "declined"].includes(item.status);
-}
-function canGeneratePayment(item) {
-  return currentUser?.role === "client" && item.status === "completed" && item.payment_status !== "paid";
-}
-function activeMapUrl() {
-  if (currentCoords) return buildCoordsMapUrl(currentCoords.lat, currentCoords.lng);
-  return buildMapUrl(byId("pickup_address")?.value || byId("mapAddress")?.value || "Rua Mirabel, 49 Piabetá - Magé - RJ");
-}
-function renderPetList(pets) {
-  const box = byId("petListBox");
-  if (!box) return;
-  box.innerHTML = !pets?.length ? `<div class="item">Nenhum pet cadastrado ainda.</div>` : "";
-  pets?.forEach((pet) => {
-    const meta = extractPetMeta(pet.notes || "");
-    const div = document.createElement("div");
-    div.className = "pet-mini-card";
-    div.innerHTML = `
-      ${pet.photo_url ? `<img src="${pet.photo_url}" alt="${pet.name}">` : `<div class="avatar"></div>`}
-      <div style="flex:1; min-width:0;">
-        <div class="pet-mini-title">${pet.name || "Pet"}</div>
-        <div class="pet-mini-meta">${pet.breed || pet.size || "Sem raça"} ${meta.until ? `• Vacina até ${meta.until}` : "• Vacina não informada"}</div>
-        ${meta.clean ? `<div class="pet-mini-meta">${meta.clean}</div>` : ""}
-        ${meta.card ? `<div class="pet-mini-meta">Carteira anexada</div>` : ""}
-        <div class="pet-mini-actions">
-          <button type="button" class="secondary-btn edit-pet-btn" data-pet-id="${pet.id}">Editar</button>
-          <button type="button" class="ghost-btn select-pet-btn" data-pet-id="${pet.id}">Usar no passeio</button>
-        </div>
-      </div>`;
-    box.appendChild(div);
+/* ===== Admin secure entry page ===== */
+function forceAdminEntryPageUI() {
+  if (!isAdminEntryPage()) return;
+  currentAccessTab = "admin";
+  setAccessTab("admin");
+  document.querySelectorAll('.role-chip').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.role === 'admin');
+    if (btn.dataset.role !== 'admin') btn.classList.add('hidden');
   });
-
-  box.querySelectorAll(".edit-pet-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const pet = (availablePets || []).find((item) => Number(item.id) === Number(btn.dataset.petId));
-      if (pet) startEditPet(pet);
-    });
-  });
-
-  box.querySelectorAll(".select-pet-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (byId("selected_pet_id")) byId("selected_pet_id").value = btn.dataset.petId;
-      alert("Pet selecionado para a próxima solicitação.");
-    });
-  });
+  byId("quickRegisterBtn")?.classList.add("hidden");
+  byId("goToRegisterBtn")?.classList.add("hidden");
+  if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Admin";
+  if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse o painel administrativo";
 }
-
-function setPetFormMode(isEditing) {
-  if (byId("petFormTitle")) byId("petFormTitle").textContent = isEditing ? "Editar pet" : "Cadastrar pet";
-  if (byId("petSubmitBtn")) byId("petSubmitBtn").textContent = isEditing ? "Salvar alterações" : "Salvar pet";
-  byId("cancelPetEditBtn")?.classList.toggle("hidden", !isEditing);
-  byId("petForm")?.closest(".panel")?.classList.toggle("editing-pet-panel", !!isEditing);
-}
-
-function clearPetEditForm() {
-  editingPetId = null;
-  if (byId("pet_edit_id")) byId("pet_edit_id").value = "";
-  byId("petForm")?.reset();
-  uploadedPetPhotoUrl = null;
-  uploadedVaccineUrl = null;
-  setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
-  if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
-  if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Carteira de vacinação não anexada.";
-  setPetFormMode(false);
-}
-
-function startEditPet(pet) {
-  const meta = extractPetMeta(pet.notes || "");
-  editingPetId = Number(pet.id);
-  if (byId("pet_edit_id")) byId("pet_edit_id").value = String(pet.id);
-  if (byId("pet_name")) byId("pet_name").value = pet.name || "";
-  if (byId("pet_breed")) byId("pet_breed").value = pet.breed || "";
-  if (byId("pet_size")) byId("pet_size").value = pet.size || "medio";
-  if (byId("pet_notes")) byId("pet_notes").value = meta.clean || "";
-  if (byId("vaccination_until")) byId("vaccination_until").value = meta.until || "";
-  if (byId("vaccine_card")) byId("vaccine_card").value = meta.card || "";
-  if (byId("pet_photo")) byId("pet_photo").value = pet.photo_url || "";
-  setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", pet.photo_url || null);
-  if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = pet.photo_url ? "Foto atual carregada." : "Nenhuma foto selecionada.";
-  if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = meta.card ? "Carteira atual anexada." : "Carteira de vacinação não anexada.";
-  setPetFormMode(true);
-  byId("petForm")?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-async function loadPets() {
-  const select = byId("selected_pet_id");
-  if (!currentUser?.id) return;
-  try {
-    availablePets = await api(`/pets/${currentUser.id}`);
-    if (select) {
-      select.innerHTML = `<option value="">Selecione um pet</option>`;
-      availablePets.forEach((pet) => {
-        const option = document.createElement("option");
-        option.value = pet.id;
-        option.textContent = `${pet.name} • ${pet.breed || pet.size || "Sem raça informada"}`;
-        select.appendChild(option);
-      });
-    }
-    renderPetList(availablePets);
-  } catch (err) { console.log(err.message); }
-}
-function renderTrackingBox(targetId, item = null) {
-  const box = byId(targetId);
-  if (!box) return;
-  if (!item) {
-    box.innerHTML = "Nenhum passeio em acompanhamento.";
-    return;
-  }
-  box.innerHTML = `
-    <strong>Passeio #${item.id} • ${statusLabel(item.status)}</strong>
-    <div class="request-meta" style="margin-top:6px;">Pet: ${item.pet_name || "-"} • Endereço: ${item.pickup_address || "-"}</div>
-    <iframe class="tracking-map" src="${activeMapUrl()}" title="Acompanhamento do passeio"></iframe>
-    <div class="request-actions" style="margin-top:10px;">
-      ${currentUser?.role === "walker" ? `<button type="button" class="success-btn tracking-update-btn" data-request-id="${item.id}">Enviar localização</button>` : ""}
-      <button type="button" class="emergency-btn emergency-btn-action" data-request-id="${item.id}">🚨 Emergência</button>
-    </div>`;
-  box.querySelector(".tracking-update-btn")?.addEventListener("click", () => sendTrackingUpdate(item.id));
-  box.querySelector(".emergency-btn-action")?.addEventListener("click", () => triggerEmergency(item.id));
-}
-async function sendTrackingUpdate(requestId) {
-  try {
-    if (!currentCoords && navigator.geolocation) {
-      await new Promise((resolve) => navigator.geolocation.getCurrentPosition((p) => {
-        applyDetectedLocation(p.coords.latitude, p.coords.longitude);
-        resolve();
-      }, resolve, { enableHighAccuracy:true, timeout:8000 }));
-    }
-    const text = currentCoords
-      ? `📍 Localização do passeio #${requestId}: ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)}`
-      : `📍 Passeio #${requestId}: localização não disponível no aparelho.`;
-    await api("/messages", { method: "POST", body: JSON.stringify({ walk_request_id: Number(requestId), sender_id: currentUser.id, text }) });
-    alert("Localização enviada no chat do passeio.");
-  } catch (err) { alert(err.message); }
-}
-async function triggerEmergency(requestId) {
-  if (!confirm("Acionar emergência deste passeio?")) return;
-  try {
-    await api("/messages", { method: "POST", body: JSON.stringify({ walk_request_id: Number(requestId), sender_id: currentUser.id, text: "🚨 EMERGÊNCIA acionada no passeio. Verifique imediatamente." }) });
-    try { await api("/emergency", { method: "POST", body: JSON.stringify({ request_id: Number(requestId), user_id: Number(currentUser.id), message: "Emergência acionada pelo app" }) }); } catch {}
-    alert("Emergência registrada.");
-  } catch (err) { alert(err.message); }
-}
-function renderClientRequests(items) {
-  const box = byId("requestList");
-  if (!box) return;
-  box.innerHTML = !items?.length ? `<div class="item">Sem solicitações.</div>` : "";
-  const active = items?.find((item) => ["accepted", "in_progress", "completed"].includes(item.status));
-  renderTrackingBox("clientRealtimeBox", active || null);
-  items?.forEach((item) => {
-    const div = document.createElement("div");
-    div.className = "request-card compact-request";
-    div.innerHTML = `
-      <div class="person-row">
-        ${avatarHtml(requestPhotoForUser(item), requestTitleForUser(item))}
-        ${item.pet_photo ? `<img class="avatar" src="${item.pet_photo}" alt="${item.pet_name || "Pet"}">` : ``}
-        <div>
-          <div class="request-card-title">${requestTitleForUser(item)} <span class="tag">#${item.id}</span></div>
-          <div class="request-meta">
-            <span><span class="tag">${statusLabel(item.status)}</span> <span class="tag">${paymentLabel(item.payment_status)}</span></span>
-            <span>Pet: ${item.pet_name || "Não informado"}</span>
-            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-      <div class="request-actions">
-        ${canGeneratePayment(item) ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento</button>` : ""}
-        <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Chat</button>
-        <button type="button" class="emergency-btn emergency-btn-action" data-request-id="${item.id}">🚨 Emergência</button>
-      </div>`;
-    box.appendChild(div);
-  });
-  box.querySelectorAll(".pay-btn").forEach((btn) => btn.addEventListener("click", () => generateMercadoPagoPayment(btn.dataset.requestId, btn.dataset.amount)));
-  box.querySelectorAll(".open-chat-btn").forEach((btn) => btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, false)));
-  box.querySelectorAll(".emergency-btn-action").forEach((btn) => btn.addEventListener("click", () => triggerEmergency(btn.dataset.requestId)));
-}
-function renderWalkerRequests(items) {
-  const box = byId("walkerRequestsInfo");
-  if (!box) return;
-  box.innerHTML = !items?.length ? `<div class="item">Sem solicitações para exibir.</div>` : "";
-  const active = items?.find((item) => isAssignedToCurrentWalker(item) && ["accepted", "in_progress", "completed", "expired", "invited"].includes(item.status));
-  renderTrackingBox("walkerRealtimeBox", active || null);
-  items?.forEach((item) => {
-    const assigned = isAssignedToCurrentWalker(item);
-    const div = document.createElement("div");
-    div.className = "request-card compact-request";
-    div.innerHTML = `
-      <div class="person-row">
-        ${avatarHtml(item.client_photo, item.client_name || `Cliente ${item.client_id}`)}
-        ${item.pet_photo ? `<img class="avatar" src="${item.pet_photo}" alt="${item.pet_name || "Pet"}">` : ``}
-        <div>
-          <div class="request-card-title">${item.client_name || `Cliente ${item.client_id}`} <span class="tag">#${item.id}</span></div>
-          <div class="request-meta">
-            <span><span class="tag">${statusLabel(item.status)}</span> <span class="tag">${paymentLabel(item.payment_status)}</span></span>
-            <span>Pet: ${item.pet_name || "Não informado"}</span>
-            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-      <div class="request-actions">
-        ${!assigned && ["invited", "pending"].includes(item.status) ? `<button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button><button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>` : ""}
-        ${canFinishWalk(item) ? `<button type="button" class="success-btn finish-walk-btn" data-request-id="${item.id}">Finalizar passeio</button>` : ""}
-        ${assigned ? `<button type="button" class="warning-btn tracking-update-btn" data-request-id="${item.id}">Enviar localização</button>` : ""}
-        <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${item.client_name || `Cliente ${item.client_id}`}">Chat</button>
-      </div>`;
-    box.appendChild(div);
-  });
-  box.querySelectorAll(".walker-action-btn").forEach((btn) => btn.addEventListener("click", async () => {
-    try {
-      await api(`/walk-requests/${btn.dataset.requestId}/${btn.dataset.action}`, { method: "POST", body: JSON.stringify({ actor_id: currentUser.id }) });
-      await loadRequests();
-    } catch (err) { alert(err.message); }
-  }));
-  box.querySelectorAll(".finish-walk-btn").forEach((btn) => btn.addEventListener("click", async () => {
-    try {
-      await api(`/walk-requests/${btn.dataset.requestId}/complete`, { method: "POST", body: JSON.stringify({ actor_id: currentUser.id }) });
-      alert("Passeio finalizado. O cliente já pode gerar o pagamento.");
-      await loadRequests();
-    } catch (err) { alert(err.message); }
-  }));
-  box.querySelectorAll(".tracking-update-btn").forEach((btn) => btn.addEventListener("click", () => sendTrackingUpdate(btn.dataset.requestId)));
-  box.querySelectorAll(".open-chat-btn").forEach((btn) => btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, true)));
-}
-const originalHandlePetSubmitV2 = handlePetSubmit;
-handlePetSubmit = async function(e) {
-  if (e) e.preventDefault();
-  if (!currentUser?.id) { alert("Sessão do cliente não encontrada."); return false; }
-  if (!byId("pet_photo")?.value.trim()) { alert("A foto do animal é obrigatória."); return false; }
-  try {
-    const notes = `${byId("pet_notes")?.value || ""} ${byId("vaccination_until")?.value ? `[VACINA_ATE:${byId("vaccination_until").value}]` : ""} ${byId("vaccine_card")?.value ? `[CARTEIRA_VACINA:${byId("vaccine_card").value}]` : ""}`.trim();
-    const payload = {
-      owner_id: Number(currentUser.id),
-      name: byId("pet_name")?.value || "",
-      breed: byId("pet_breed")?.value || "",
-      size: byId("pet_size")?.value || "medio",
-      notes,
-      photo_url: byId("pet_photo")?.value.trim() || null,
-      dog_count: Number(byId("dog_count")?.value || 1)
-    };
-    const petId = Number(byId("pet_edit_id")?.value || editingPetId || 0);
-    const isEditing = !!petId;
-    const data = await api(isEditing ? `/pets/${petId}` : "/pets", {
-      method: isEditing ? "PUT" : "POST",
-      body: JSON.stringify(payload)
-    });
-    alert(isEditing ? "Pet atualizado com sucesso." : `Pet salvo com ID ${data.id}`);
-    clearPetEditForm();
-    await loadPets();
-  } catch (err) { alert(err.message); }
-  return false;
-};
-const originalHandleRegisterSubmitV2 = handleRegisterSubmit;
-handleRegisterSubmit = async function(e) {
-  if (!byId("termsAccepted")?.checked) {
-    e?.preventDefault();
-    alert("Você precisa aceitar os termos para criar conta.");
-    return false;
-  }
-  return originalHandleRegisterSubmitV2(e);
-};
-const originalAttachMainEventsV2 = attachMainEvents;
-attachMainEvents = function() {
-  originalAttachMainEventsV2();
-  byId("plansBtn")?.addEventListener("click", () => showScreen("plansScreen"));
-  byId("backFromPlansBtn")?.addEventListener("click", () => renderSession(currentUser));
-  byId("openTermsBtn")?.addEventListener("click", openTermsModal);
-  byId("closeTermsBtn")?.addEventListener("click", closeTermsModal);
-  byId("acceptTermsFromModalBtn")?.addEventListener("click", acceptTermsFromModal);
-  byId("termsModal")?.addEventListener("click", (event) => { if (event.target?.id === "termsModal") closeTermsModal(); });
-  byId("quickRegisterBtn")?.addEventListener("click", () => {
-    if (currentAccessTab === "admin") { alert("Cadastro de admin não fica disponível na tela pública."); return; }
-    if (currentUser) { alert("Saia da conta atual para criar outro cadastro."); return; }
-    showScreen("registerScreen");
-  });
-  byId("refreshPetsBtn")?.addEventListener("click", loadPets);
-  byId("cancelPetEditBtn")?.addEventListener("click", clearPetEditForm);
-  byId("chooseVaccineBtn")?.addEventListener("click", () => byId("vaccine_file")?.click());
-  byId("clearVaccineBtn")?.addEventListener("click", () => {
-    uploadedVaccineUrl = null;
-    if (byId("vaccine_card")) byId("vaccine_card").value = "";
-    if (byId("vaccine_file")) byId("vaccine_file").value = "";
-    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Carteira de vacinação não anexada.";
-  });
-  byId("vaccine_file")?.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Enviando carteira...";
-    uploadedVaccineUrl = await uploadImageFile(file);
-    if (byId("vaccine_card")) byId("vaccine_card").value = uploadedVaccineUrl || "";
-    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = uploadedVaccineUrl ? `Carteira anexada: ${file.name}` : "Não foi possível anexar.";
-  });
-};
-window.addEventListener("load", () => setTimeout(() => byId("splashOverlay")?.classList.add("hide"), 850));
-
-
-/* ===== Termos empresariais por item + gravação na conta ===== */
-const AMIGOPET_TERMS_VERSION = "2026-04-25-v1";
-const AMIGOPET_TERMS_ITEMS = [
-  ["responsabilidade_cliente", "Responsabilidade do cliente/tutor", "Confirmo que informarei dados verdadeiros sobre o pet, saúde, comportamento, endereço e condições especiais."],
-  ["responsabilidade_passeador", "Responsabilidade do passeador", "Confirmo que entendi que o passeador é responsável por zelo, guarda, segurança e comunicação durante o passeio."],
-  ["pagamentos_comissoes", "Pagamentos, comissões e repasses", "Confirmo ciência de que o valor pago pode incluir taxa da plataforma, comissão e regras de repasse ao passeador."],
-  ["emergencia_seguranca", "Emergência, segurança e comunicação", "Confirmo ciência sobre botão de emergência, registros do sistema, chat interno e acompanhamento do passeio."],
-  ["lgpd_privacidade", "LGPD e privacidade de dados", "Autorizo o tratamento dos dados necessários para operação, segurança, pagamento, suporte e prevenção de fraude."],
-  ["cancelamento_reembolso", "Cancelamento, reembolso e disputas", "Confirmo ciência de que cancelamentos, reembolsos e disputas seguirão as regras da plataforma."],
-  ["aceite_digital", "Aceite digital e validade jurídica", "Confirmo que o aceite eletrônico tem validade como registro de concordância com os termos vigentes."],
-];
-let acceptedTermsItems = {};
-
-function getAcceptedTermsItems() {
-  const result = {};
-  AMIGOPET_TERMS_ITEMS.forEach(([key]) => {
-    result[key] = !!document.querySelector(`[data-term-item="${key}"]`)?.checked;
-  });
-  return result;
-}
-function allProfessionalTermsAccepted() {
-  const items = getAcceptedTermsItems();
-  return AMIGOPET_TERMS_ITEMS.every(([key]) => items[key] === true);
-}
-function refreshTermsAcceptedState() {
-  acceptedTermsItems = getAcceptedTermsItems();
-  const allAccepted = allProfessionalTermsAccepted();
-  if (byId("termsAccepted")) byId("termsAccepted").checked = allAccepted;
-  byId("acceptTermsFromModalBtn")?.toggleAttribute("disabled", !allAccepted);
-  byId("registerSubmitBtn")?.toggleAttribute("disabled", !allAccepted);
-}
-function professionalTermsHtml() {
-  return `
-    <div class="terms-modal-card professional-terms-card">
-      <div class="terms-modal-head">
-        <div>
-          <h2>Termos de Responsabilidade AmigoPet</h2>
-          <p>Versão ${AMIGOPET_TERMS_VERSION} • Aceite item por item registrado na conta.</p>
-        </div>
-        <button type="button" id="closeTermsBtn" class="ghost-btn">Fechar</button>
-      </div>
-      <div class="terms-modal-body">
-        <p><strong>Antes de criar a conta, leia e marque cada item abaixo.</strong> Esse registro será salvo no cadastro do usuário com data, hora, versão dos termos e itens aceitos.</p>
-        <div class="terms-check-list">
-          ${AMIGOPET_TERMS_ITEMS.map(([key, title, text]) => `
-            <label class="terms-check-item">
-              <input type="checkbox" data-term-item="${key}">
-              <span><strong>${title}</strong><small>${text}</small></span>
-            </label>
-          `).join("")}
-        </div>
-      </div>
-      <div class="terms-modal-actions">
-        <button type="button" id="acceptTermsFromModalBtn" class="primary-btn" disabled>Li e aceito todos os itens</button>
-      </div>
-    </div>
-  `;
-}
-function installProfessionalTermsUI() {
-  const registerForm = byId("registerForm");
-  if (!registerForm) return;
-  if (!byId("termsAccepted")) {
-    const hidden = document.createElement("input");
-    hidden.type = "checkbox";
-    hidden.id = "termsAccepted";
-    hidden.className = "hidden";
-    registerForm.appendChild(hidden);
-  }
-  if (!byId("professionalTermsSummary")) {
-    const box = document.createElement("div");
-    box.id = "professionalTermsSummary";
-    box.className = "terms-summary-box";
-    box.innerHTML = `<div><strong>Termos obrigatórios</strong><p>É necessário abrir os termos e marcar todos os itens para criar a conta.</p></div><button type="button" id="openTermsBtn" class="secondary-btn">Ler e aceitar termos</button>`;
-    const submit = byId("registerSubmitBtn");
-    registerForm.insertBefore(box, submit || null);
-  }
-  let modal = byId("termsModal");
-  if (!modal) {
-    modal = document.createElement("div");
-    modal.id = "termsModal";
-    modal.className = "terms-modal hidden";
-    document.body.appendChild(modal);
-  }
-  modal.innerHTML = professionalTermsHtml();
-  byId("openTermsBtn")?.addEventListener("click", openTermsModal);
-  byId("closeTermsBtn")?.addEventListener("click", closeTermsModal);
-  byId("acceptTermsFromModalBtn")?.addEventListener("click", acceptTermsFromModal);
-  byId("termsModal")?.addEventListener("click", (event) => { if (event.target?.id === "termsModal") closeTermsModal(); });
-  document.querySelectorAll("[data-term-item]").forEach((input) => input.addEventListener("change", refreshTermsAcceptedState));
-  refreshTermsAcceptedState();
-}
-openTermsModal = function() { byId("termsModal")?.classList.remove("hidden"); };
-closeTermsModal = function() { byId("termsModal")?.classList.add("hidden"); };
-acceptTermsFromModal = function() {
-  if (!allProfessionalTermsAccepted()) { alert("Marque todos os itens dos termos para continuar."); return; }
-  acceptedTermsItems = getAcceptedTermsItems();
-  if (byId("termsAccepted")) byId("termsAccepted").checked = true;
-  closeTermsModal();
-};
-const previousHandleRegisterSubmitTerms = handleRegisterSubmit;
-handleRegisterSubmit = async function(e) {
-  if (!allProfessionalTermsAccepted()) {
-    e?.preventDefault();
-    alert("Você precisa ler e aceitar todos os itens dos termos antes de criar conta.");
-    openTermsModal();
-    return false;
-  }
-  acceptedTermsItems = getAcceptedTermsItems();
-  const result = await previousHandleRegisterSubmitTerms(e);
-  if (currentUser?.id) {
-    try {
-      const accepted = await api("/legal/accept-terms", {
-        method: "POST",
-        body: JSON.stringify({ user_id: Number(currentUser.id), role: currentUser.role, accepted: true, terms_version: AMIGOPET_TERMS_VERSION, accepted_terms_items: acceptedTermsItems }),
-      });
-      currentUser.accepted_terms = true;
-      currentUser.accepted_terms_at = accepted.accepted_at;
-      currentUser.terms_version = accepted.terms_version;
-      currentUser.accepted_terms_items = accepted.accepted_terms_items;
-      localStorage.setItem("session_user", JSON.stringify(currentUser));
-    } catch (err) {
-      alert("Conta criada, mas houve falha ao registrar aceite dos termos: " + err.message);
-    }
-  }
-  return result;
-};
-const previousAttachMainEventsTerms = attachMainEvents;
-attachMainEvents = function() { previousAttachMainEventsTerms(); installProfessionalTermsUI(); };
-window.addEventListener("load", () => setTimeout(installProfessionalTermsUI, 250));
+window.addEventListener("load", () => setTimeout(forceAdminEntryPageUI, 120));

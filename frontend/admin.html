@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AmigoPet Pro</title>
+  <title>AmigoPet Admin</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, sans-serif; background: #eef3fb; color: #0d1b3e; }
@@ -66,12 +66,12 @@
     @media (max-width: 980px) { .hero, .grid-2, .grid-3 { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body>
+<body data-admin-page="true">
   <header class="topbar">
     <div class="logo">AP</div>
     <div>
       <p class="brand-title">AmigoPet Pro</p>
-      <p class="brand-subtitle">Seu pet bem cuidado, seu negócio pronto para crescer</p>
+      <p class="brand-subtitle">Acesso restrito ao painel administrativo</p>
     </div>
     <div style="margin-left:auto;">
       <button id="logoutBtn" class="ghost-btn hidden" type="button">Sair</button>
@@ -109,22 +109,21 @@
 
         <div class="panel">
           <div class="role-switch">
-            <button type="button" class="role-chip active" data-role="client">Cliente</button>
-            <button type="button" class="role-chip" data-role="walker">Passeador</button>
-            <button type="button" class="role-chip" data-role="admin">Admin</button>
+            <button type="button" class="role-chip active" data-role="admin">Admin</button>
           </div>
 
-          <h2 id="loginScreenTitle" class="right-title">Entrar como Cliente</h2>
-          <p id="loginScreenSubtitle" class="muted">Acesse sua área de cliente</p>
+          <h2 id="loginScreenTitle" class="right-title">Entrar como Admin</h2>
+          <p id="loginScreenSubtitle" class="muted">Acesse o painel administrativo</p>
 
+          <div class="admin-secure-note">🔐 Área restrita. Use apenas credenciais administrativas autorizadas.</div>
           <form id="loginForm" novalidate>
-            <input id="login_email" name="login_email" type="email" autocomplete="username" placeholder="E-mail" required />
+            <input id="login_email" name="login_email" type="email" autocomplete="username" placeholder="E-mail do admin" required />
             <input id="login_password" name="login_password" type="password" autocomplete="current-password" placeholder="Senha" required />
             <button class="primary-btn" id="loginSubmitBtn" type="submit">Entrar</button>
           </form>
 
           <div class="actions-row" style="margin-top:8px;">
-            <button id="goToRegisterBtn" type="button" class="ghost-btn">Criar conta</button>
+            <button id="goToRegisterBtn" type="button" class="ghost-btn hidden">Criar conta</button>
           </div>
         </div>
       </div>
@@ -144,7 +143,7 @@
           <div class="grid-2">
             <div>
               <input id="full_name" type="text" placeholder="Nome completo" required />
-              <input id="email" type="email" placeholder="E-mail" required />
+              <input id="email" type="email" placeholder="E-mail do admin" required />
               <input id="password" type="password" placeholder="Senha" required />
               <input id="neighborhood" type="text" placeholder="Bairro" />
               <input id="city" type="text" placeholder="Cidade" />
