@@ -78,7 +78,7 @@
     </div>
     <div style="margin-left:auto;">
       <button id="plansBtn" class="ghost-btn" type="button">Planos</button>
-      <button id="quickRegisterBtn" class="ghost-btn" type="button">Cadastro</button>
+      <button id="quickRegisterBtn" class="ghost-btn" type="button">Criar conta</button>
       <button id="logoutBtn" class="ghost-btn hidden" type="button">Sair</button>
     </div>
   </header>
@@ -94,7 +94,7 @@
           <div class="preview-box">
             <div class="preview-header">
               <span>AmigoPet Pro</span>
-              <span>Planos • Entrar • Criar conta</span>
+              <span>Planos • Cliente • Passeador</span>
             </div>
             <div class="preview-content">
               <div class="preview-card">
@@ -174,7 +174,10 @@
             </div>
           </div>
 
-          <label class="check-row"><input id="termsAccepted" type="checkbox" /> <span>Li e aceito os termos, política de segurança do pet e regras de responsabilidade.</span></label>
+          <div class="terms-accept-box">
+            <label class="check-row"><input id="termsAccepted" type="checkbox" /> <span>Li e aceito os termos, política de segurança do pet e regras de responsabilidade.</span></label>
+            <button id="openTermsBtn" type="button" class="terms-link-btn">Ler termos completos antes de aceitar</button>
+          </div>
           <button class="primary-btn" id="registerSubmitBtn" type="submit">Criar conta</button>
         </form>
       </div>
@@ -383,6 +386,27 @@
 
   </main>
 
-  <script src="/app.js?v=230"></script>
+  <div id="termsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="termsModalTitle">
+    <div class="terms-modal">
+      <div class="terms-modal-header">
+        <div><h2 id="termsModalTitle">Termos de Responsabilidade AmigoPet</h2><p>Leia antes de criar sua conta. Recomenda-se revisão jurídica antes da publicação comercial final.</p></div>
+        <button id="closeTermsBtn" type="button" class="ghost-btn">Fechar</button>
+      </div>
+      <div class="terms-modal-body">
+        <h3>1. Papel da plataforma</h3><p>O AmigoPet conecta tutores de pets e passeadores, registrando solicitações, pagamento, chat, localização e eventos de segurança.</p>
+        <h3>2. Responsabilidade do tutor</h3><p>O tutor deve informar corretamente dados do pet, comportamento, saúde, carteira de vacinação, endereço e observações importantes.</p>
+        <h3>3. Responsabilidade do passeador</h3><p>O passeador deve proteger o pet, cumprir horários, seguir a rota combinada, não abandonar o animal e comunicar incidentes imediatamente.</p>
+        <h3>4. Segurança do pet</h3><p>O sistema pode registrar status, chat, localização e emergência para suporte, auditoria e comprovação de fatos.</p>
+        <h3>5. Pagamento e repasse</h3><p>O pagamento ocorre pela plataforma. O sistema calcula comissão e saldo do passeador. Repasses podem ser bloqueados em caso de emergência ou disputa.</p>
+        <h3>6. Aprovação de passeadores</h3><p>“Aprovar Passeador” permite ao admin validar quem pode receber solicitações, protegendo tutores, pets e a plataforma.</p>
+        <h3>7. Emergências e disputas</h3><p>Em caso de fuga, acidente, fraude ou reclamação, a plataforma pode analisar registros, bloquear repasses e tomar medidas administrativas.</p>
+        <h3>8. Privacidade e dados</h3><p>Dados pessoais, imagens, localização e informações do pet são usados para operação, segurança e prevenção de fraude.</p>
+        <h3>9. Aceite digital</h3><p>Ao marcar o aceite e criar conta, o usuário declara ciência das regras de uso, segurança, pagamento e responsabilidade.</p>
+      </div>
+      <div class="terms-modal-footer"><button id="acceptTermsFromModalBtn" type="button" class="primary-btn">Li e aceito os termos</button></div>
+    </div>
+  </div>
+
+  <script src="/app.js?v=232"></script>
 </body>
 </html>

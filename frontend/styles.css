@@ -90,3 +90,19 @@ body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-siz
 .pet-mini-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .pet-mini-actions button { padding:7px 10px; border-radius:10px; font-size:12px; }
 .editing-pet-panel { outline:3px solid rgba(14,165,233,.22); }
+
+/* Termos completos */
+.terms-accept-box{border:1px solid #d7e0ef;background:#f8fbff;border-radius:16px;padding:12px;margin:10px 0 14px}
+.check-row{display:flex;align-items:flex-start;gap:10px;color:#17345d;font-weight:700}
+.check-row input{width:auto;margin-top:3px}
+.terms-link-btn{margin-top:8px;background:transparent;color:#0d72db;border:0;padding:0;font-weight:800;text-decoration:underline;cursor:pointer}
+.modal-backdrop{position:fixed;inset:0;z-index:999;background:rgba(5,15,35,.62);display:flex;align-items:center;justify-content:center;padding:16px}
+.terms-modal{width:min(840px,96vw);max-height:88vh;background:#fff;border-radius:22px;box-shadow:0 28px 80px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden}
+.terms-modal-header{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:18px 20px;border-bottom:1px solid #e4ebf7;background:#f8fbff}
+.terms-modal-header h2{margin:0 0 6px;font-size:22px}
+.terms-modal-header p{margin:0;color:#607391}
+.terms-modal-body{padding:18px 20px;overflow:auto;line-height:1.52}
+.terms-modal-body h3{margin:16px 0 6px;font-size:16px}
+.terms-modal-body p{margin:0 0 10px;color:#364866}
+.terms-modal-footer{padding:14px 20px;border-top:1px solid #e4ebf7;background:#fff}
+.terms-modal-footer .primary-btn{width:100%}

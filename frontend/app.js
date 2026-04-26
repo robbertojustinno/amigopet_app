@@ -46,14 +46,16 @@ function setAccessTab(tab) {
   currentAccessTab = tab;
   setRoleChip(tab);
   byId("goToRegisterBtn")?.classList.toggle("hidden", tab === "admin");
+  byId("quickRegisterBtn")?.classList.toggle("hidden", tab === "admin");
+  if (byId("quickRegisterBtn")) byId("quickRegisterBtn").textContent = tab === "walker" ? "Criar conta de passeador" : "Criar conta";
   byId("walkerPhotoArea")?.classList.toggle("hidden", tab !== "walker");
   if (byId("role")) byId("role").value = tab === "walker" ? "walker" : "client";
 
   if (tab === "admin") {
     if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Admin";
     if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse o painel administrativo";
-    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Cadastro de Admin";
-    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Cadastro desabilitado nesta tela";
+    if (byId("registerScreenTitle")) byId("registerScreenTitle").textContent = "Cadastro desabilitado";
+    if (byId("registerScreenSubtitle")) byId("registerScreenSubtitle").textContent = "Administradores são criados pelo backend e acessam apenas pelo login.";
   } else if (tab === "walker") {
     if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Passeador";
     if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse sua área de passeador";
@@ -926,6 +928,19 @@ function attachMainEvents() {
   });
 }
 
+function openTermsModal() {
+  byId("termsModal")?.classList.remove("hidden");
+}
+
+function closeTermsModal() {
+  byId("termsModal")?.classList.add("hidden");
+}
+
+function acceptTermsFromModal() {
+  if (byId("termsAccepted")) byId("termsAccepted").checked = true;
+  closeTermsModal();
+}
+
 window.addEventListener("load", () => {
   setAccessTab("client");
   updatePaymentBoxDefault();
@@ -1242,7 +1257,12 @@ attachMainEvents = function() {
   originalAttachMainEventsV2();
   byId("plansBtn")?.addEventListener("click", () => showScreen("plansScreen"));
   byId("backFromPlansBtn")?.addEventListener("click", () => renderSession(currentUser));
+  byId("openTermsBtn")?.addEventListener("click", openTermsModal);
+  byId("closeTermsBtn")?.addEventListener("click", closeTermsModal);
+  byId("acceptTermsFromModalBtn")?.addEventListener("click", acceptTermsFromModal);
+  byId("termsModal")?.addEventListener("click", (event) => { if (event.target?.id === "termsModal") closeTermsModal(); });
   byId("quickRegisterBtn")?.addEventListener("click", () => {
+    if (currentAccessTab === "admin") { alert("Cadastro de admin não fica disponível na tela pública."); return; }
     if (currentUser) { alert("Saia da conta atual para criar outro cadastro."); return; }
     showScreen("registerScreen");
   });
