@@ -1,0 +1,22 @@
+AmigoPet V2 Comercial - Editar Pet
+
+Inclui:
+- Botão Editar em cada pet cadastrado.
+- Formulário alterna entre Cadastrar pet e Editar pet.
+- Atualiza nome, raça, porte, observações, foto, validade da vacina e carteira de vacinação.
+- Botão cancelar edição.
+- Botão usar pet no passeio.
+- Endpoint backend PUT /api/pets/{pet_id}.
+
+Substitua:
+- frontend/index.html
+- frontend/styles.css
+- frontend/app.js
+- backend/app/api/routes.py
+
+Depois rode:
+git add frontend backend/app/api/routes.py
+git commit -m "add edit pet flow"
+git push
+
+No Render: Manual Deploy > Clear build cache & deploy

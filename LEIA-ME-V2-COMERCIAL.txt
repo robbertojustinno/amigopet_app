@@ -1,0 +1,24 @@
+AmigoPet V2 Comercial — UI + Pet + Vacinação + Tempo Real + Planos
+
+Substitua a pasta frontend/ pelos arquivos deste pacote.
+
+Incluído:
+- Logo/tela de abertura.
+- Página de planos.
+- Ficha de cadastro acessível no topo.
+- Cadastro de pet com validade/anexo de vacinação.
+- Lista de pets cadastrados dentro da caixa Cadastrar Pet.
+- Cards de solicitações mais discretos.
+- Chat menor para cliente e passeador.
+- Foto do pet visível para o passeador na solicitação.
+- Acompanhamento em tempo real via mapa e envio de localização no chat.
+- Botão emergência.
+- Pagamento liberado ao cliente somente depois que o passeio estiver finalizado.
+
+Comandos:
+git add frontend
+git commit -m "AmigoPet V2 Comercial UI pet vacina tempo real planos"
+git push
+
+Render:
+Manual Deploy > Clear build cache & deploy.

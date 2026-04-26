@@ -158,3 +158,21 @@ body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-siz
   .logo.logo-image-wrap{width:40px;height:40px;border-radius:13px;}
   .splash-logo img{width:88px;height:88px;border-radius:24px;}
 }
+
+/* ===== FIX LOGO BACKGROUND ADMIN ===== */
+.admin-hero-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 320px;        /* controla tamanho */
+  height: 320px;
+  opacity: 0.06;       /* deixa elegante (marca d’água) */
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* container do topo */
+.dashboard-header {
+  position: relative;
+  z-index: 1;
+}
