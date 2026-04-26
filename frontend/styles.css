@@ -110,3 +110,51 @@ body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-siz
 
 /* ===== Termos profissionais ===== */
 .terms-summary-box{border:1px solid #d7e0ef;background:#f8fbff;border-radius:16px;padding:14px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.terms-summary-box p{margin:4px 0 0;color:#64748b;font-size:13px}.terms-modal{position:fixed;inset:0;background:rgba(15,23,42,.58);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px}.terms-modal-card{background:#fff;border-radius:24px;width:min(860px,96vw);max-height:88vh;overflow:hidden;box-shadow:0 30px 80px rgba(15,23,42,.28);border:1px solid #dbe6f3}.terms-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:20px 22px;border-bottom:1px solid #e2eaf5}.terms-modal-head h2{margin:0;font-size:24px}.terms-modal-head p{margin:6px 0 0;color:#64748b}.terms-modal-body{padding:20px 22px;overflow:auto;max-height:58vh}.terms-check-list{display:grid;gap:10px;margin-top:14px}.terms-check-item{display:flex;gap:12px;align-items:flex-start;border:1px solid #dbe6f3;background:#f8fbff;border-radius:16px;padding:13px;cursor:pointer}.terms-check-item input{width:20px;height:20px;margin:2px 0 0;flex-shrink:0}.terms-check-item strong{display:block;color:#0f172a}.terms-check-item small{display:block;color:#475569;line-height:1.45;margin-top:3px}.terms-modal-actions{padding:16px 22px;border-top:1px solid #e2eaf5;background:#fbfdff}.terms-modal-actions button:disabled,.primary-btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(1)}
+
+
+/* ===== Logo e identidade visual AmigoPet ===== */
+.logo.logo-image-wrap{
+  width:46px;
+  height:46px;
+  padding:0;
+  background:transparent;
+  border-radius:15px;
+  overflow:hidden;
+  box-shadow:0 10px 22px rgba(15,23,42,.14);
+  flex:0 0 auto;
+}
+.logo.logo-image-wrap img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+}
+.splash-logo{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.splash-logo img{
+  width:104px;
+  height:104px;
+  border-radius:30px;
+  object-fit:cover;
+  box-shadow:0 22px 65px rgba(0,0,0,.30);
+  display:block;
+}
+.preview-brand-logo{
+  width:min(320px, 92%);
+  margin:0 auto;
+  display:block;
+  border-radius:18px;
+  box-shadow:0 14px 35px rgba(15,23,42,.18);
+}
+.brand-title::after{
+  content:'™';
+  font-size:11px;
+  margin-left:2px;
+  color:#16a34a;
+}
+@media(max-width:640px){
+  .logo.logo-image-wrap{width:40px;height:40px;border-radius:13px;}
+  .splash-logo img{width:88px;height:88px;border-radius:24px;}
+}
