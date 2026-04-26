@@ -174,7 +174,6 @@ function renderSession(user) {
     if (byId("walkerSessionInfo")) byId("walkerSessionInfo").textContent = `${user.full_name || "Passeador"} conectado`;
     showScreen("walkerDashboard");
     loadRequests();
-    loadWalkerWallet();
     startChatPolling();
     return;
   }
@@ -236,7 +235,7 @@ async function api(path, options = {}) {
 
 function buildMapUrl(address) {
   const q = encodeURIComponent(address);
-  return `https://www.openstreetmap.org/export/embed.html?search=${q}`;
+  return `https://www.openstreetmap.org/export/embed.html?search=${q}&marker=1&query=${q}`;
 }
 
 function buildCoordsMapUrl(lat, lng) {
@@ -389,283 +388,25 @@ function avatarHtml(src, alt) {
   return src ? `<img class="avatar" src="${src}" alt="${alt}">` : `<div class="avatar"></div>`;
 }
 
-function statusLabel(item) {
-  if (!item) return "pendente";
-  if (item.role === "walker") return item.active === true ? "aprovado" : "pendente";
-  return item.active === false ? "bloqueado" : "ativo";
-}
-
-function money(value) {
-  return `R$ ${Number(value || 0).toFixed(2)}`;
-}
-
-function financeLine(item) {
-  const gross = money(item.price || 0);
-  const platform = money(item.platform_fee_amount || 0);
-  const walker = money(item.walker_amount || 0);
-  const wallet = item.wallet_status || "pending";
-  return `
-    <div class="finance-mini">
-      <span>Bruto: <strong>${gross}</strong></span>
-      <span>Admin: <strong>${platform}</strong></span>
-      <span>Passeador: <strong>${walker}</strong></span>
-      <span>Carteira: <strong>${wallet}</strong></span>
-    </div>
-  `;
-}
-
-function renderWalletTransactions(containerId, transactions = [], isAdmin = false) {
-  const box = byId(containerId);
-  if (!box) return;
-
-  if (!transactions.length) {
-    box.innerHTML = `<div class="item">Nenhuma transação financeira ainda.</div>`;
-    return;
-  }
-
-  box.innerHTML = "";
-  transactions.forEach((tx) => {
-    const div = document.createElement("div");
-    div.className = "wallet-transaction-card";
-    div.innerHTML = `
-      <div>
-        <strong>${tx.walker_name || `Passeador ${tx.walker_id}`}</strong>
-        <div class="request-meta">
-          <span>Passeio #${tx.request_id || "-"}</span>
-          <span>${tx.transaction_type || "credit"}</span>
-          <span class="tag">${tx.status || "pending"}</span>
-          ${tx.transaction_type === "withdraw" ? `<span>PIX: ${tx.pix_key_type || "-"} • ${tx.pix_key || "-"}</span>` : ""}
-          <span>${tx.created_at || ""}</span>
-        </div>
-        <div class="wallet-amount">${money(tx.amount || 0)}</div>
-        <div class="inline-note">${tx.description || ""}</div>
-      </div>
-      ${isAdmin ? `
-        <div class="request-actions">
-          ${(tx.status !== "paid") ? `<button type="button" class="success-btn mark-wallet-paid-btn" data-tx-id="${tx.id}">Marcar repassado</button>` : ""}
-          ${(tx.status !== "blocked" && tx.status !== "paid") ? `<button type="button" class="danger-btn block-wallet-btn" data-tx-id="${tx.id}">Bloquear saldo</button>` : ""}
-        </div>
-      ` : ""}
-    `;
-    box.appendChild(div);
-  });
-
-  if (isAdmin) {
-    box.querySelectorAll(".mark-wallet-paid-btn").forEach((btn) => {
-      btn.addEventListener("click", () => adminMarkWalletPaid(btn.dataset.txId));
-    });
-    box.querySelectorAll(".block-wallet-btn").forEach((btn) => {
-      btn.addEventListener("click", () => adminBlockWallet(btn.dataset.txId));
-    });
-  }
-}
-
-async function adminMarkWalletPaid(txId) {
-  if (!confirm("Confirmar que este valor já foi repassado ao passeador?")) return;
-  try {
-    await api(`/admin/wallet-transactions/${txId}/mark-paid`, { method: "POST" });
-    await loadAdminFinance();
-    await loadAdminDashboard();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function adminBlockWallet(txId) {
-  if (!confirm("Bloquear este saldo por disputa/emergência?")) return;
-  try {
-    await api(`/admin/wallet-transactions/${txId}/block`, { method: "POST" });
-    await loadAdminFinance();
-    await loadAdminDashboard();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function loadAdminFinance() {
-  try {
-    const data = await api("/admin/finance");
-    if (byId("financeGrossTotal")) byId("financeGrossTotal").textContent = money(data.gross_total);
-    if (byId("financePlatformTotal")) byId("financePlatformTotal").textContent = money(data.platform_total);
-    if (byId("financeWalkerTotal")) byId("financeWalkerTotal").textContent = money(data.walker_total);
-    if (byId("financeWalletPending")) byId("financeWalletPending").textContent = money(data.wallet?.pending);
-    if (byId("financeWalletAvailable")) byId("financeWalletAvailable").textContent = money(data.wallet?.available);
-    if (byId("financeWalletPaid")) byId("financeWalletPaid").textContent = money(data.wallet?.paid);
-    renderWalletTransactions("adminWalletTransactions", data.transactions || [], true);
-  } catch (err) {
-    console.log(err.message);
-  }
-}
-
-async function loadWalkerWallet() {
-  if (!currentUser?.id || currentUser.role !== "walker") return;
-  try {
-    const data = await api(`/wallet/${currentUser.id}`);
-    if (byId("walkerWalletPending")) byId("walkerWalletPending").textContent = money(data.summary?.pending);
-    if (byId("walkerWalletAvailable")) byId("walkerWalletAvailable").textContent = money(data.summary?.available);
-    if (byId("walkerWalletPaid")) byId("walkerWalletPaid").textContent = money(data.summary?.paid);
-
-    const pix = data.pix || {};
-    if (byId("walkerPixStatus")) {
-      byId("walkerPixStatus").textContent = pix.pix_key
-        ? `PIX cadastrado: ${pix.pix_key_type || "-"} • ${pix.pix_key} • Titular: ${pix.pix_holder_name || "-"}`
-        : "Nenhuma chave PIX cadastrada. Cadastre para solicitar saque.";
-    }
-    if (byId("pix_key_type") && pix.pix_key_type) byId("pix_key_type").value = pix.pix_key_type;
-    if (byId("pix_key") && pix.pix_key) byId("pix_key").value = pix.pix_key;
-    if (byId("pix_holder_name") && pix.pix_holder_name) byId("pix_holder_name").value = pix.pix_holder_name;
-    if (byId("pix_holder_document") && pix.pix_holder_document) byId("pix_holder_document").value = pix.pix_holder_document;
-
-    renderWalletTransactions("walkerWalletTransactions", data.transactions || [], false);
-  } catch (err) {
-    console.log(err.message);
-  }
-}
-
-async function handlePixSubmit(e) {
-  if (e) e.preventDefault();
-  if (!currentUser?.id || currentUser.role !== "walker") {
-    alert("Sessão do passeador não encontrada.");
-    return false;
-  }
-  try {
-    const payload = {
-      pix_key_type: byId("pix_key_type")?.value || "",
-      pix_key: byId("pix_key")?.value || "",
-      pix_holder_name: byId("pix_holder_name")?.value || "",
-      pix_holder_document: byId("pix_holder_document")?.value || ""
-    };
-    await api(`/wallet/${currentUser.id}/pix`, {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-    alert("Chave PIX salva com sucesso.");
-    await loadWalkerWallet();
-  } catch (err) {
-    alert(err.message);
-  }
-  return false;
-}
-
-async function handleWithdrawSubmit(e) {
-  if (e) e.preventDefault();
-  if (!currentUser?.id || currentUser.role !== "walker") {
-    alert("Sessão do passeador não encontrada.");
-    return false;
-  }
-  const amount = Number(byId("withdraw_amount")?.value || 0);
-  if (!amount || amount <= 0) {
-    alert("Informe um valor de saque válido.");
-    return false;
-  }
-  try {
-    await api(`/wallet/${currentUser.id}/withdraw`, {
-      method: "POST",
-      body: JSON.stringify({ amount })
-    });
-    alert("Saque solicitado. O admin fará o repasse para sua chave PIX cadastrada.");
-    if (byId("withdraw_amount")) byId("withdraw_amount").value = "";
-    await loadWalkerWallet();
-  } catch (err) {
-    alert(err.message);
-  }
-  return false;
-}
-
-
-async function adminApproveWalker(userId) {
-  if (!userId) return;
-  try {
-    await api(`/admin/users/${userId}/approve`, { method: "POST" });
-    alert("Passeador aprovado com sucesso.");
-    await loadAdminDashboard();
-  } catch (err) {
-    alert(err.message || "Erro ao aprovar passeador.");
-  }
-}
-
-async function adminBlockWalker(userId) {
-  if (!userId) return;
-  if (!confirm("Deseja bloquear este passeador?")) return;
-  try {
-    await api(`/admin/users/${userId}/block`, { method: "POST" });
-    alert("Passeador bloqueado com sucesso.");
-    await loadAdminDashboard();
-  } catch (err) {
-    alert(err.message || "Erro ao bloquear passeador.");
-  }
-}
-
-async function triggerEmergency(role) {
-  const requestId = role === "walker" ? activeWalkerChatRequestId : activeChatRequestId;
-  if (!requestId) {
-    alert("Abra o chat de uma solicitação ou use o botão de emergência no card do passeio.");
-    return;
-  }
-  await triggerRequestEmergency(requestId);
-}
-
-
-
-function canPayWalk(item) {
-  return ["completed", "payment_pending"].includes(String(item.status || "").toLowerCase()) && item.payment_status !== "paid";
-}
-
-async function completeWalkRequest(requestId) {
-  try {
-    await api(`/walk-requests/${requestId}/complete`, {
-      method: "POST",
-      body: JSON.stringify({ actor_id: currentUser.id })
-    });
-    alert("Passeio finalizado. O cliente já pode gerar o pagamento.");
-    await loadRequests();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function triggerRequestEmergency(requestId) {
-  if (!currentUser?.id) return alert("Sessão não encontrada.");
-  const message = prompt("Descreva rapidamente a emergência:", "Emergência acionada no passeio.");
-  if (message === null) return;
-  const location = currentCoords ? { lat: currentCoords.lat, lng: currentCoords.lng } : {};
-  try {
-    await api(`/walk-requests/${requestId}/emergency`, {
-      method: "POST",
-      body: JSON.stringify({ actor_id: currentUser.id, message, location })
-    });
-    alert("Emergência registrada no sistema.");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
 function renderAdminUsers(items) {
   const box = byId("adminUsersList");
   if (!box) return;
+
   box.innerHTML = !items?.length ? `<div class="item">Sem registros.</div>` : "";
+
   items?.forEach((item) => {
-    const isWalker = item.role === "walker";
-    const status = statusLabel(item);
     const div = document.createElement("div");
-    div.className = "request-card admin-user-card";
+    div.className = "request-card";
     div.innerHTML = `
-      <div class="person-row admin-person-row">
+      <div class="person-row">
         ${avatarHtml(item.profile_photo, item.full_name)}
-        <div class="admin-user-main">
+        <div>
           <div class="request-card-title">${item.full_name}</div>
-          <div class="request-meta"><span>${item.email}</span><span>${item.city || "-"} / ${item.neighborhood || "-"}</span><span class="tag">${item.role}</span><span class="tag tag-${status}">${status}</span></div>
-          <div class="admin-user-address">${item.address || "Endereço não informado"}</div>
+          <div class="request-meta"><span>${item.email}</span><span>${item.city || "-"} / ${item.neighborhood || "-"}</span><span class="tag">${item.role}</span></div>
         </div>
-      </div>
-      <div class="request-actions admin-actions">
-        ${isWalker ? `<button type="button" class="card-action-btn approve-walker-btn" data-user-id="${item.id}">Aprovar passeador</button>` : ""}
-        ${isWalker ? `<button type="button" class="secondary-btn block-walker-btn" data-user-id="${item.id}">Bloquear</button>` : ""}
       </div>`;
     box.appendChild(div);
   });
-  box.querySelectorAll(".approve-walker-btn").forEach((btn) => btn.addEventListener("click", () => adminApproveWalker(btn.dataset.userId)));
-  box.querySelectorAll(".block-walker-btn").forEach((btn) => btn.addEventListener("click", () => adminBlockWalker(btn.dataset.userId)));
 }
 
 function requestTitleForUser(item) {
@@ -685,13 +426,9 @@ function renderClientRequests(items) {
   box.innerHTML = !items?.length ? `<div class="item">Sem solicitações.</div>` : "";
 
   items?.forEach((item) => {
-    const paidTag = item.payment_status === "paid" ? `<span class="tag tag-ativo">PAGO</span>` : `<span class="tag">${item.payment_status || "unpaid"}</span>`;
-    const canPay = canPayWalk(item);
-    const canEmergency = Number(item.client_id || 0) === Number(currentUser?.id || 0);
-    const blockedPaymentNote = item.payment_status !== "paid" && !canPay ? `<div class="warning-box">Pagamento liberado somente depois que o passeador finalizar o passeio.</div>` : "";
-    const cardClass = item.status === "completed" ? "request-card completed-ready" : (item.status === "accepted" ? "request-card accepted-live" : "request-card");
+    const paidTag = item.payment_status === "paid" ? `<span class="tag">PAGO</span>` : `<span class="tag">${item.payment_status}</span>`;
     const div = document.createElement("div");
-    div.className = cardClass;
+    div.className = "request-card";
     div.innerHTML = `
       <div class="person-row">
         ${avatarHtml(requestPhotoForUser(item), requestTitleForUser(item))}
@@ -707,10 +444,8 @@ function renderClientRequests(items) {
           </div>
         </div>
       </div>
-      ${blockedPaymentNote}
       <div class="request-actions">
-        ${canPay ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento PIX</button>` : ""}
-        ${canEmergency ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
+        ${item.payment_status !== "paid" ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento</button>` : ""}
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
@@ -719,9 +454,7 @@ function renderClientRequests(items) {
   box.querySelectorAll(".pay-btn").forEach((btn) => {
     btn.addEventListener("click", () => generateMercadoPagoPayment(btn.dataset.requestId, btn.dataset.amount));
   });
-  box.querySelectorAll(".emergency-request-btn").forEach((btn) => {
-    btn.addEventListener("click", () => triggerRequestEmergency(btn.dataset.requestId));
-  });
+
   box.querySelectorAll(".open-chat-btn").forEach((btn) => {
     btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, false));
   });
@@ -734,13 +467,8 @@ function renderWalkerRequests(items) {
   box.innerHTML = !items?.length ? `<div class="item">Sem solicitações para exibir.</div>` : "";
 
   items?.forEach((item) => {
-    const status = String(item.status || "").toLowerCase();
-    const assignedToCurrentWalker = Number(item.walker_id || 0) === Number(currentUser?.id || 0);
-    const canAccept = ["invited", "pending"].includes(status);
-    const canComplete = assignedToCurrentWalker && !["completed", "paid", "cancelled", "declined"].includes(status);
-    const cardClass = canComplete ? "request-card accepted-live" : (status === "completed" ? "request-card completed-ready" : "request-card");
     const div = document.createElement("div");
-    div.className = cardClass;
+    div.className = "request-card";
     div.innerHTML = `
       <div class="person-row">
         ${avatarHtml(item.client_photo, item.client_name || `Cliente ${item.client_id}`)}
@@ -748,19 +476,16 @@ function renderWalkerRequests(items) {
         <div>
           <div class="request-card-title">${item.client_name || `Cliente ${item.client_id}`}</div>
           <div class="request-meta">
-            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status || "unpaid"}</span></span>
+            <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status}</span></span>
             <span>${item.pickup_address || "-"}</span>
             <span>Pet: ${item.pet_name || "Não informado"}</span>
-            <span>${item.duration_minutes} min • ${money(item.price || 0)}</span>
+            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
           </div>
-          ${financeLine(item)}
         </div>
       </div>
       <div class="request-actions">
-        ${canAccept ? `<button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button>` : ""}
-        ${canAccept ? `<button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>` : ""}
-        ${canComplete ? `<button type="button" class="success-btn complete-walk-btn" data-request-id="${item.id}">Finalizar passeio</button>` : ""}
-        ${["accepted", "completed", "payment_pending"].includes(item.status) ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
+        <button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button>
+        <button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${item.client_name || `Cliente ${item.client_id}`}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
@@ -779,12 +504,7 @@ function renderWalkerRequests(items) {
       }
     });
   });
-  box.querySelectorAll(".complete-walk-btn").forEach((btn) => {
-    btn.addEventListener("click", () => completeWalkRequest(btn.dataset.requestId));
-  });
-  box.querySelectorAll(".emergency-request-btn").forEach((btn) => {
-    btn.addEventListener("click", () => triggerRequestEmergency(btn.dataset.requestId));
-  });
+
   box.querySelectorAll(".open-chat-btn").forEach((btn) => {
     btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, true));
   });
@@ -842,15 +562,11 @@ async function loadAdminDashboard() {
     if (byId("metricTotalUsers")) byId("metricTotalUsers").textContent = data.total_users ?? 0;
     if (byId("metricClients")) byId("metricClients").textContent = data.total_clients ?? 0;
     if (byId("metricWalkers")) byId("metricWalkers").textContent = data.total_walkers ?? 0;
-    if (byId("metricRevenue")) byId("metricRevenue").textContent = money(data.total_revenue);
+    if (byId("metricRevenue")) byId("metricRevenue").textContent = `R$ ${Number(data.total_revenue || 0).toFixed(2)}`;
     if (byId("metricRequests")) byId("metricRequests").textContent = data.total_requests ?? 0;
     if (byId("metricCompleted")) byId("metricCompleted").textContent = data.total_completed ?? 0;
     if (byId("metricPaid")) byId("metricPaid").textContent = data.total_paid ?? 0;
-    if (byId("metricPlatformTotal")) byId("metricPlatformTotal").textContent = money(data.platform_total);
-    if (byId("metricWalkerTotal")) byId("metricWalkerTotal").textContent = money(data.walker_total);
-    if (byId("metricWalletAvailable")) byId("metricWalletAvailable").textContent = money(data.wallet_available);
     renderAdminUsers(await api("/admin/users"));
-    await loadAdminFinance();
   } catch (err) {
     alert(err.message);
   }
@@ -865,7 +581,6 @@ async function loadRequests() {
     const data = await api(path);
     renderClientRequests(currentUser?.role === "client" ? data : []);
     renderWalkerRequests(currentUser?.role === "walker" ? data : []);
-    if (currentUser?.role === "walker") await loadWalkerWallet();
   } catch (err) {
     console.log(err.message);
   }
@@ -943,11 +658,6 @@ async function handleRegisterSubmit(e) {
 
   const forcedRole = currentAccessTab === "walker" ? "walker" : "client";
 
-  if (!byId("accept_terms")?.checked) {
-    alert("Você precisa aceitar os termos jurídicos para criar a conta.");
-    return false;
-  }
-
   if (forcedRole === "walker" && !byId("profile_photo")?.value.trim()) {
     alert("A foto do passeador é obrigatória.");
     return false;
@@ -971,15 +681,6 @@ async function handleRegisterSubmit(e) {
     });
 
     data = normalizeLoggedUser(data, forcedRole);
-
-    try {
-      await api("/legal/accept-terms", {
-        method: "POST",
-        body: JSON.stringify({ user_id: data.id, role: data.role, accepted: true })
-      });
-    } catch (termsErr) {
-      console.log("Aceite de termos não registrado:", termsErr.message);
-    }
 
     alert(data?.id ? `Conta criada com ID ${data.id}` : "Conta criada com sucesso");
 
@@ -1157,14 +858,10 @@ function attachMainEvents() {
 
   byId("backToWelcomeBtn")?.addEventListener("click", () => showScreen("welcomeScreen"));
   byId("refreshAdminBtn")?.addEventListener("click", loadAdminDashboard);
-  byId("refreshFinanceBtn")?.addEventListener("click", loadAdminFinance);
-  byId("refreshWalletBtn")?.addEventListener("click", loadWalkerWallet);
   byId("loadRequestsBtn")?.addEventListener("click", loadRequests);
   byId("refreshWalkerBtn")?.addEventListener("click", loadRequests);
   byId("loadMapBtn")?.addEventListener("click", loadMap);
   byId("loadWalkersBtn")?.addEventListener("click", loadWalkers);
-  byId("clientEmergencyBtn")?.addEventListener("click", () => triggerEmergency("client"));
-  byId("walkerEmergencyBtn")?.addEventListener("click", () => triggerEmergency("walker"));
   byId("duration_minutes")?.addEventListener("change", syncEstimatedPrice);
   byId("dog_count")?.addEventListener("change", syncEstimatedPrice);
 
@@ -1218,8 +915,6 @@ function attachMainEvents() {
   byId("walkForm")?.addEventListener("submit", handleWalkSubmit);
   byId("messageForm")?.addEventListener("submit", handleMessageSubmit);
   byId("walkerMessageForm")?.addEventListener("submit", handleWalkerMessageSubmit);
-  byId("pixForm")?.addEventListener("submit", handlePixSubmit);
-  byId("withdrawForm")?.addEventListener("submit", handleWithdrawSubmit);
 
   byId("expireBtn")?.addEventListener("click", async () => {
     try {
@@ -1250,3 +945,262 @@ window.addEventListener("load", () => {
     renderSession(null);
   }
 });
+
+
+/* ===== AmigoPet V2 Comercial overrides ===== */
+let uploadedVaccineUrl = null;
+
+function statusLabel(status) {
+  return ({invited:"Convidado",pending:"Pendente",accepted:"Aceito",in_progress:"Em andamento",completed:"Finalizado",paid:"Pago",expired:"Expirado",declined:"Recusado"}[status] || status || "-");
+}
+function paymentLabel(status) {
+  return ({unpaid:"Não pago",pending:"Pendente",processing:"Processando",paid:"Pago",failed:"Falhou",refunded:"Estornado"}[status] || status || "-");
+}
+function extractPetMeta(notes = "") {
+  const until = (notes.match(/\[VACINA_ATE:([^\]]+)\]/) || [])[1] || "";
+  const card = (notes.match(/\[CARTEIRA_VACINA:([^\]]+)\]/) || [])[1] || "";
+  const clean = notes.replace(/\s*\[VACINA_ATE:[^\]]+\]/g, "").replace(/\s*\[CARTEIRA_VACINA:[^\]]+\]/g, "").trim();
+  return { until, card, clean };
+}
+async function uploadImageFile(file) {
+  if (!file) return null;
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const data = await api("/uploads/profile-photo", { method: "POST", body: form, headers: {} });
+    return data.file_url || data.url || null;
+  } catch {
+    return await base64Url(file);
+  }
+}
+function isAssignedToCurrentWalker(item) {
+  return currentUser?.role === "walker" && Number(item.walker_id || 0) === Number(currentUser.id || 0);
+}
+function canFinishWalk(item) {
+  return isAssignedToCurrentWalker(item) && !["completed", "paid", "cancelled", "declined"].includes(item.status);
+}
+function canGeneratePayment(item) {
+  return currentUser?.role === "client" && item.status === "completed" && item.payment_status !== "paid";
+}
+function activeMapUrl() {
+  if (currentCoords) return buildCoordsMapUrl(currentCoords.lat, currentCoords.lng);
+  return buildMapUrl(byId("pickup_address")?.value || byId("mapAddress")?.value || "Rua Mirabel, 49 Piabetá - Magé - RJ");
+}
+function renderPetList(pets) {
+  const box = byId("petListBox");
+  if (!box) return;
+  box.innerHTML = !pets?.length ? `<div class="item">Nenhum pet cadastrado ainda.</div>` : "";
+  pets?.forEach((pet) => {
+    const meta = extractPetMeta(pet.notes || "");
+    const div = document.createElement("div");
+    div.className = "pet-mini-card";
+    div.innerHTML = `
+      ${pet.photo_url ? `<img src="${pet.photo_url}" alt="${pet.name}">` : `<div class="avatar"></div>`}
+      <div>
+        <div class="pet-mini-title">${pet.name || "Pet"}</div>
+        <div class="pet-mini-meta">${pet.breed || pet.size || "Sem raça"} ${meta.until ? `• Vacina até ${meta.until}` : "• Vacina não informada"}</div>
+        ${meta.card ? `<div class="pet-mini-meta">Carteira anexada</div>` : ""}
+      </div>`;
+    box.appendChild(div);
+  });
+}
+async function loadPets() {
+  const select = byId("selected_pet_id");
+  if (!currentUser?.id) return;
+  try {
+    availablePets = await api(`/pets/${currentUser.id}`);
+    if (select) {
+      select.innerHTML = `<option value="">Selecione um pet</option>`;
+      availablePets.forEach((pet) => {
+        const option = document.createElement("option");
+        option.value = pet.id;
+        option.textContent = `${pet.name} • ${pet.breed || pet.size || "Sem raça informada"}`;
+        select.appendChild(option);
+      });
+    }
+    renderPetList(availablePets);
+  } catch (err) { console.log(err.message); }
+}
+function renderTrackingBox(targetId, item = null) {
+  const box = byId(targetId);
+  if (!box) return;
+  if (!item) {
+    box.innerHTML = "Nenhum passeio em acompanhamento.";
+    return;
+  }
+  box.innerHTML = `
+    <strong>Passeio #${item.id} • ${statusLabel(item.status)}</strong>
+    <div class="request-meta" style="margin-top:6px;">Pet: ${item.pet_name || "-"} • Endereço: ${item.pickup_address || "-"}</div>
+    <iframe class="tracking-map" src="${activeMapUrl()}" title="Acompanhamento do passeio"></iframe>
+    <div class="request-actions" style="margin-top:10px;">
+      ${currentUser?.role === "walker" ? `<button type="button" class="success-btn tracking-update-btn" data-request-id="${item.id}">Enviar localização</button>` : ""}
+      <button type="button" class="emergency-btn emergency-btn-action" data-request-id="${item.id}">🚨 Emergência</button>
+    </div>`;
+  box.querySelector(".tracking-update-btn")?.addEventListener("click", () => sendTrackingUpdate(item.id));
+  box.querySelector(".emergency-btn-action")?.addEventListener("click", () => triggerEmergency(item.id));
+}
+async function sendTrackingUpdate(requestId) {
+  try {
+    if (!currentCoords && navigator.geolocation) {
+      await new Promise((resolve) => navigator.geolocation.getCurrentPosition((p) => {
+        applyDetectedLocation(p.coords.latitude, p.coords.longitude);
+        resolve();
+      }, resolve, { enableHighAccuracy:true, timeout:8000 }));
+    }
+    const text = currentCoords
+      ? `📍 Localização do passeio #${requestId}: ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)}`
+      : `📍 Passeio #${requestId}: localização não disponível no aparelho.`;
+    await api("/messages", { method: "POST", body: JSON.stringify({ walk_request_id: Number(requestId), sender_id: currentUser.id, text }) });
+    alert("Localização enviada no chat do passeio.");
+  } catch (err) { alert(err.message); }
+}
+async function triggerEmergency(requestId) {
+  if (!confirm("Acionar emergência deste passeio?")) return;
+  try {
+    await api("/messages", { method: "POST", body: JSON.stringify({ walk_request_id: Number(requestId), sender_id: currentUser.id, text: "🚨 EMERGÊNCIA acionada no passeio. Verifique imediatamente." }) });
+    try { await api("/emergency", { method: "POST", body: JSON.stringify({ request_id: Number(requestId), user_id: Number(currentUser.id), message: "Emergência acionada pelo app" }) }); } catch {}
+    alert("Emergência registrada.");
+  } catch (err) { alert(err.message); }
+}
+function renderClientRequests(items) {
+  const box = byId("requestList");
+  if (!box) return;
+  box.innerHTML = !items?.length ? `<div class="item">Sem solicitações.</div>` : "";
+  const active = items?.find((item) => ["accepted", "in_progress", "completed"].includes(item.status));
+  renderTrackingBox("clientRealtimeBox", active || null);
+  items?.forEach((item) => {
+    const div = document.createElement("div");
+    div.className = "request-card compact-request";
+    div.innerHTML = `
+      <div class="person-row">
+        ${avatarHtml(requestPhotoForUser(item), requestTitleForUser(item))}
+        ${item.pet_photo ? `<img class="avatar" src="${item.pet_photo}" alt="${item.pet_name || "Pet"}">` : ``}
+        <div>
+          <div class="request-card-title">${requestTitleForUser(item)} <span class="tag">#${item.id}</span></div>
+          <div class="request-meta">
+            <span><span class="tag">${statusLabel(item.status)}</span> <span class="tag">${paymentLabel(item.payment_status)}</span></span>
+            <span>Pet: ${item.pet_name || "Não informado"}</span>
+            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="request-actions">
+        ${canGeneratePayment(item) ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento</button>` : ""}
+        <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Chat</button>
+        <button type="button" class="emergency-btn emergency-btn-action" data-request-id="${item.id}">🚨 Emergência</button>
+      </div>`;
+    box.appendChild(div);
+  });
+  box.querySelectorAll(".pay-btn").forEach((btn) => btn.addEventListener("click", () => generateMercadoPagoPayment(btn.dataset.requestId, btn.dataset.amount)));
+  box.querySelectorAll(".open-chat-btn").forEach((btn) => btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, false)));
+  box.querySelectorAll(".emergency-btn-action").forEach((btn) => btn.addEventListener("click", () => triggerEmergency(btn.dataset.requestId)));
+}
+function renderWalkerRequests(items) {
+  const box = byId("walkerRequestsInfo");
+  if (!box) return;
+  box.innerHTML = !items?.length ? `<div class="item">Sem solicitações para exibir.</div>` : "";
+  const active = items?.find((item) => isAssignedToCurrentWalker(item) && ["accepted", "in_progress", "completed", "expired", "invited"].includes(item.status));
+  renderTrackingBox("walkerRealtimeBox", active || null);
+  items?.forEach((item) => {
+    const assigned = isAssignedToCurrentWalker(item);
+    const div = document.createElement("div");
+    div.className = "request-card compact-request";
+    div.innerHTML = `
+      <div class="person-row">
+        ${avatarHtml(item.client_photo, item.client_name || `Cliente ${item.client_id}`)}
+        ${item.pet_photo ? `<img class="avatar" src="${item.pet_photo}" alt="${item.pet_name || "Pet"}">` : ``}
+        <div>
+          <div class="request-card-title">${item.client_name || `Cliente ${item.client_id}`} <span class="tag">#${item.id}</span></div>
+          <div class="request-meta">
+            <span><span class="tag">${statusLabel(item.status)}</span> <span class="tag">${paymentLabel(item.payment_status)}</span></span>
+            <span>Pet: ${item.pet_name || "Não informado"}</span>
+            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="request-actions">
+        ${!assigned && ["invited", "pending"].includes(item.status) ? `<button type="button" class="card-action-btn walker-action-btn" data-action="accept" data-request-id="${item.id}">Aceitar</button><button type="button" class="secondary-btn walker-action-btn" data-action="decline" data-request-id="${item.id}">Recusar</button>` : ""}
+        ${canFinishWalk(item) ? `<button type="button" class="success-btn finish-walk-btn" data-request-id="${item.id}">Finalizar passeio</button>` : ""}
+        ${assigned ? `<button type="button" class="warning-btn tracking-update-btn" data-request-id="${item.id}">Enviar localização</button>` : ""}
+        <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${item.client_name || `Cliente ${item.client_id}`}">Chat</button>
+      </div>`;
+    box.appendChild(div);
+  });
+  box.querySelectorAll(".walker-action-btn").forEach((btn) => btn.addEventListener("click", async () => {
+    try {
+      await api(`/walk-requests/${btn.dataset.requestId}/${btn.dataset.action}`, { method: "POST", body: JSON.stringify({ actor_id: currentUser.id }) });
+      await loadRequests();
+    } catch (err) { alert(err.message); }
+  }));
+  box.querySelectorAll(".finish-walk-btn").forEach((btn) => btn.addEventListener("click", async () => {
+    try {
+      await api(`/walk-requests/${btn.dataset.requestId}/complete`, { method: "POST", body: JSON.stringify({ actor_id: currentUser.id }) });
+      alert("Passeio finalizado. O cliente já pode gerar o pagamento.");
+      await loadRequests();
+    } catch (err) { alert(err.message); }
+  }));
+  box.querySelectorAll(".tracking-update-btn").forEach((btn) => btn.addEventListener("click", () => sendTrackingUpdate(btn.dataset.requestId)));
+  box.querySelectorAll(".open-chat-btn").forEach((btn) => btn.addEventListener("click", () => openChat(btn.dataset.requestId, btn.dataset.label, true)));
+}
+const originalHandlePetSubmitV2 = handlePetSubmit;
+handlePetSubmit = async function(e) {
+  if (e) e.preventDefault();
+  if (!currentUser?.id) { alert("Sessão do cliente não encontrada."); return false; }
+  if (!byId("pet_photo")?.value.trim()) { alert("A foto do animal é obrigatória."); return false; }
+  try {
+    const notes = `${byId("pet_notes")?.value || ""} ${byId("vaccination_until")?.value ? `[VACINA_ATE:${byId("vaccination_until").value}]` : ""} ${byId("vaccine_card")?.value ? `[CARTEIRA_VACINA:${byId("vaccine_card").value}]` : ""}`.trim();
+    const payload = {
+      owner_id: Number(currentUser.id),
+      name: byId("pet_name")?.value || "",
+      breed: byId("pet_breed")?.value || "",
+      size: byId("pet_size")?.value || "medio",
+      notes,
+      photo_url: byId("pet_photo")?.value.trim() || null,
+      dog_count: Number(byId("dog_count")?.value || 1)
+    };
+    const data = await api("/pets", { method: "POST", body: JSON.stringify(payload) });
+    alert(`Pet salvo com ID ${data.id}`);
+    byId("petForm")?.reset();
+    setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
+    if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
+    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Carteira de vacinação não anexada.";
+    await loadPets();
+  } catch (err) { alert(err.message); }
+  return false;
+};
+const originalHandleRegisterSubmitV2 = handleRegisterSubmit;
+handleRegisterSubmit = async function(e) {
+  if (!byId("termsAccepted")?.checked) {
+    e?.preventDefault();
+    alert("Você precisa aceitar os termos para criar conta.");
+    return false;
+  }
+  return originalHandleRegisterSubmitV2(e);
+};
+const originalAttachMainEventsV2 = attachMainEvents;
+attachMainEvents = function() {
+  originalAttachMainEventsV2();
+  byId("plansBtn")?.addEventListener("click", () => showScreen("plansScreen"));
+  byId("backFromPlansBtn")?.addEventListener("click", () => renderSession(currentUser));
+  byId("quickRegisterBtn")?.addEventListener("click", () => {
+    if (currentUser) { alert("Saia da conta atual para criar outro cadastro."); return; }
+    showScreen("registerScreen");
+  });
+  byId("refreshPetsBtn")?.addEventListener("click", loadPets);
+  byId("chooseVaccineBtn")?.addEventListener("click", () => byId("vaccine_file")?.click());
+  byId("clearVaccineBtn")?.addEventListener("click", () => {
+    uploadedVaccineUrl = null;
+    if (byId("vaccine_card")) byId("vaccine_card").value = "";
+    if (byId("vaccine_file")) byId("vaccine_file").value = "";
+    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Carteira de vacinação não anexada.";
+  });
+  byId("vaccine_file")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Enviando carteira...";
+    uploadedVaccineUrl = await uploadImageFile(file);
+    if (byId("vaccine_card")) byId("vaccine_card").value = uploadedVaccineUrl || "";
+    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = uploadedVaccineUrl ? `Carteira anexada: ${file.name}` : "Não foi possível anexar.";
+  });
+};
+window.addEventListener("load", () => setTimeout(() => byId("splashOverlay")?.classList.add("hide"), 850));
