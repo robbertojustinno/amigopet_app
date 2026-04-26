@@ -291,6 +291,22 @@
         <button id="walkerEmergencyBtn" type="button" class="danger-btn">🚨 Emergência</button>
       </div>
 
+      <div class="panel finance-panel" style="margin-bottom:18px;">
+        <div class="dashboard-header">
+          <div>
+            <div class="section-title" style="margin:0;">Minha carteira</div>
+            <p class="inline-note">Ganhos líquidos após comissão da plataforma.</p>
+          </div>
+          <button id="refreshWalletBtn" type="button" class="secondary-btn">Atualizar carteira</button>
+        </div>
+        <div class="grid-3 finance-grid">
+          <div class="metric"><div class="metric-label">Pendente</div><div id="walkerWalletPending" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Disponível</div><div id="walkerWalletAvailable" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Já repassado</div><div id="walkerWalletPaid" class="metric-value">R$ 0,00</div></div>
+        </div>
+        <div id="walkerWalletTransactions"></div>
+      </div>
+
       <div class="grid-2">
         <div class="panel">
           <div class="dashboard-header">
@@ -332,6 +348,29 @@
         <div class="metric"><div class="metric-label">Solicitações</div><div id="metricRequests" class="metric-value">0</div></div>
         <div class="metric"><div class="metric-label">Concluídas</div><div id="metricCompleted" class="metric-value">0</div></div>
         <div class="metric"><div class="metric-label">Pagas</div><div id="metricPaid" class="metric-value">0</div></div>
+        <div class="metric metric-money"><div class="metric-label">Comissão AmigoPet</div><div id="metricPlatformTotal" class="metric-value">R$ 0,00</div></div>
+        <div class="metric metric-money"><div class="metric-label">Saldo dos passeadores</div><div id="metricWalkerTotal" class="metric-value">R$ 0,00</div></div>
+        <div class="metric metric-money"><div class="metric-label">Carteira disponível</div><div id="metricWalletAvailable" class="metric-value">R$ 0,00</div></div>
+      </div>
+
+      <div class="panel finance-panel" style="margin-top:18px;">
+        <div class="dashboard-header">
+          <div>
+            <div class="section-title" style="margin:0;">Financeiro da plataforma</div>
+            <p class="inline-note">Separação automática entre comissão do AmigoPet e saldo líquido do passeador.</p>
+          </div>
+          <button id="refreshFinanceBtn" type="button" class="secondary-btn">Atualizar financeiro</button>
+        </div>
+        <div class="grid-3 finance-grid">
+          <div class="metric"><div class="metric-label">Total bruto pago</div><div id="financeGrossTotal" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Comissão admin</div><div id="financePlatformTotal" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Passeadores</div><div id="financeWalkerTotal" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Pendente</div><div id="financeWalletPending" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Disponível</div><div id="financeWalletAvailable" class="metric-value">R$ 0,00</div></div>
+          <div class="metric"><div class="metric-label">Repassado</div><div id="financeWalletPaid" class="metric-value">R$ 0,00</div></div>
+        </div>
+        <div class="section-title" style="margin-top:18px;">Transações da carteira</div>
+        <div id="adminWalletTransactions"></div>
       </div>
 
       <div class="panel" style="margin-top:18px;">

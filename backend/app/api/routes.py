@@ -9,7 +9,7 @@ import requests
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request, Body
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text, inspect
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -44,6 +44,246 @@ def _normalize_email(value: str) -> str:
 
 def _normalize_password(value: str) -> str:
     return (value or "").strip()
+
+
+FINANCE_DEFAULT_FEE_PERCENT = 20.0
+
+
+def _round_money(value: float) -> float:
+    try:
+        return round(float(value or 0), 2)
+    except Exception:
+        return 0.0
+
+
+def _finance_calc(price: float, fee_percent: float = FINANCE_DEFAULT_FEE_PERCENT) -> dict:
+    total = _round_money(price)
+    percent = _round_money(fee_percent)
+    platform_fee = _round_money(total * (percent / 100))
+    walker_amount = _round_money(total - platform_fee)
+    return {
+        "platform_fee_percent": percent,
+        "platform_fee_amount": platform_fee,
+        "walker_amount": walker_amount,
+    }
+
+
+def _table_columns(db: Session, table_name: str) -> set[str]:
+    try:
+        return {col["name"] for col in inspect(db.bind).get_columns(table_name)}
+    except Exception:
+        return set()
+
+
+def _ensure_finance_schema(db: Session) -> None:
+    dialect = db.bind.dialect.name if db.bind else "sqlite"
+    timestamp_type = "TIMESTAMP" if dialect != "sqlite" else "DATETIME"
+
+    walk_columns = _table_columns(db, "walk_requests")
+    finance_columns = {
+        "platform_fee_percent": "FLOAT DEFAULT 20",
+        "platform_fee_amount": "FLOAT DEFAULT 0",
+        "walker_amount": "FLOAT DEFAULT 0",
+        "wallet_status": "VARCHAR(30) DEFAULT 'pending'",
+        "released_at": f"{timestamp_type} NULL",
+    }
+
+    for column_name, column_type in finance_columns.items():
+        if column_name not in walk_columns:
+            try:
+                db.execute(text(f"ALTER TABLE walk_requests ADD COLUMN {column_name} {column_type}"))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+    if dialect == "postgresql":
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS wallet_transactions (
+                id SERIAL PRIMARY KEY,
+                walker_id INTEGER NOT NULL,
+                request_id INTEGER,
+                amount DOUBLE PRECISION DEFAULT 0,
+                transaction_type VARCHAR(30) DEFAULT 'credit',
+                status VARCHAR(30) DEFAULT 'pending',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+    else:
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS wallet_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                walker_id INTEGER NOT NULL,
+                request_id INTEGER,
+                amount FLOAT DEFAULT 0,
+                transaction_type VARCHAR(30) DEFAULT 'credit',
+                status VARCHAR(30) DEFAULT 'pending',
+                description TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+    db.commit()
+
+
+def _get_walk_finance(db: Session, walk_id: int) -> dict:
+    _ensure_finance_schema(db)
+    row = db.execute(
+        text("""
+            SELECT platform_fee_percent, platform_fee_amount, walker_amount, wallet_status, released_at
+            FROM walk_requests
+            WHERE id = :walk_id
+        """),
+        {"walk_id": walk_id},
+    ).mappings().first()
+
+    if not row:
+        return {
+            "platform_fee_percent": FINANCE_DEFAULT_FEE_PERCENT,
+            "platform_fee_amount": 0,
+            "walker_amount": 0,
+            "wallet_status": "pending",
+            "released_at": None,
+        }
+
+    return {
+        "platform_fee_percent": float(row.get("platform_fee_percent") or FINANCE_DEFAULT_FEE_PERCENT),
+        "platform_fee_amount": float(row.get("platform_fee_amount") or 0),
+        "walker_amount": float(row.get("walker_amount") or 0),
+        "wallet_status": row.get("wallet_status") or "pending",
+        "released_at": row.get("released_at"),
+    }
+
+
+def _ensure_wallet_credit_for_walk(db: Session, walk: WalkRequest) -> dict:
+    _ensure_finance_schema(db)
+
+    if not walk or not walk.walker_id:
+        return {"created": False, "reason": "Passeador não vinculado."}
+
+    finance = _finance_calc(float(walk.price or 0), FINANCE_DEFAULT_FEE_PERCENT)
+    wallet_status = "available" if walk.payment_status == "paid" and walk.status in {"completed", "paid"} else "pending"
+
+    db.execute(
+        text("""
+            UPDATE walk_requests
+            SET platform_fee_percent = :fee_percent,
+                platform_fee_amount = :fee_amount,
+                walker_amount = :walker_amount,
+                wallet_status = :wallet_status
+            WHERE id = :walk_id
+        """),
+        {
+            "fee_percent": finance["platform_fee_percent"],
+            "fee_amount": finance["platform_fee_amount"],
+            "walker_amount": finance["walker_amount"],
+            "wallet_status": wallet_status,
+            "walk_id": walk.id,
+        },
+    )
+
+    existing = db.execute(
+        text("""
+            SELECT id FROM wallet_transactions
+            WHERE request_id = :request_id
+              AND walker_id = :walker_id
+              AND transaction_type = 'credit'
+            LIMIT 1
+        """),
+        {"request_id": walk.id, "walker_id": walk.walker_id},
+    ).first()
+
+    if existing:
+        db.execute(
+            text("""
+                UPDATE wallet_transactions
+                SET amount = :amount,
+                    status = :status,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = :request_id
+                  AND walker_id = :walker_id
+                  AND transaction_type = 'credit'
+            """),
+            {
+                "amount": finance["walker_amount"],
+                "status": wallet_status,
+                "request_id": walk.id,
+                "walker_id": walk.walker_id,
+            },
+        )
+        created = False
+    else:
+        db.execute(
+            text("""
+                INSERT INTO wallet_transactions
+                (walker_id, request_id, amount, transaction_type, status, description)
+                VALUES (:walker_id, :request_id, :amount, 'credit', :status, :description)
+            """),
+            {
+                "walker_id": walk.walker_id,
+                "request_id": walk.id,
+                "amount": finance["walker_amount"],
+                "status": wallet_status,
+                "description": f"Crédito do passeio #{walk.id}",
+            },
+        )
+        created = True
+
+    db.commit()
+    return {"created": created, "wallet_status": wallet_status, **finance}
+
+
+def _wallet_summary(db: Session, walker_id: int | None = None) -> dict:
+    _ensure_finance_schema(db)
+
+    params = {}
+    where = ""
+    if walker_id:
+        where = "WHERE walker_id = :walker_id"
+        params["walker_id"] = walker_id
+
+    rows = db.execute(
+        text(f"""
+            SELECT status, COALESCE(SUM(amount), 0) AS total
+            FROM wallet_transactions
+            {where}
+            GROUP BY status
+        """),
+        params,
+    ).mappings().all()
+
+    summary = {"pending": 0.0, "available": 0.0, "paid": 0.0, "blocked": 0.0}
+    for row in rows:
+        summary[row["status"] or "pending"] = float(row["total"] or 0)
+
+    summary["total_open"] = _round_money(summary["pending"] + summary["available"] + summary["blocked"])
+    return summary
+
+
+def _wallet_transactions(db: Session, walker_id: int | None = None, limit: int = 100) -> list[dict]:
+    _ensure_finance_schema(db)
+    params = {"limit": limit}
+    where = ""
+    if walker_id:
+        where = "WHERE wt.walker_id = :walker_id"
+        params["walker_id"] = walker_id
+
+    rows = db.execute(
+        text(f"""
+            SELECT wt.id, wt.walker_id, wt.request_id, wt.amount, wt.transaction_type, wt.status,
+                   wt.description, wt.created_at, wt.updated_at, u.full_name AS walker_name, u.email AS walker_email
+            FROM wallet_transactions wt
+            LEFT JOIN users u ON u.id = wt.walker_id
+            {where}
+            ORDER BY wt.id DESC
+            LIMIT :limit
+        """),
+        params,
+    ).mappings().all()
+
+    return [dict(row) for row in rows]
+
 
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 260_000
@@ -240,6 +480,7 @@ def _serialize_walk_request(db: Session, walk: WalkRequest) -> dict:
     client = db.get(User, walk.client_id) if walk.client_id else None
     walker = db.get(User, walk.walker_id) if walk.walker_id else None
     pet = db.get(Pet, walk.pet_id) if walk.pet_id else None
+    finance = _get_walk_finance(db, walk.id)
     return {
         "id": walk.id,
         "client_id": walk.client_id,
@@ -265,6 +506,11 @@ def _serialize_walk_request(db: Session, walk: WalkRequest) -> dict:
         "payment_link": walk.payment_link,
         "paid_at": walk.paid_at.isoformat() if walk.paid_at else None,
         "payment_updated_at": walk.payment_updated_at.isoformat() if walk.payment_updated_at else None,
+        "platform_fee_percent": finance.get("platform_fee_percent"),
+        "platform_fee_amount": finance.get("platform_fee_amount"),
+        "walker_amount": finance.get("walker_amount"),
+        "wallet_status": finance.get("wallet_status"),
+        "released_at": str(finance.get("released_at")) if finance.get("released_at") else None,
         "notes": walk.notes,
         "created_at": walk.created_at.isoformat() if walk.created_at else None,
     }
@@ -320,6 +566,11 @@ def _apply_payment_to_walk(db: Session, walk: WalkRequest, payment_data: dict) -
     db.add(walk)
     db.commit()
     db.refresh(walk)
+
+    if normalized_status == "paid":
+        _ensure_wallet_credit_for_walk(db, walk)
+        db.refresh(walk)
+
     return walk
 
 
@@ -388,6 +639,16 @@ def admin_dashboard(db: Session = Depends(get_db)):
     pending_walkers = db.scalar(select(func.count()).select_from(User).where(User.role == "walker", User.active == False)) or 0
     total_revenue = db.scalar(select(func.coalesce(func.sum(WalkRequest.price), 0)).where(WalkRequest.payment_status == "paid")) or 0
 
+    _ensure_finance_schema(db)
+    finance_totals = db.execute(text("""
+        SELECT
+          COALESCE(SUM(platform_fee_amount), 0) AS platform_total,
+          COALESCE(SUM(walker_amount), 0) AS walker_total
+        FROM walk_requests
+        WHERE payment_status = 'paid'
+    """)).mappings().first()
+    wallet_summary = _wallet_summary(db)
+
     return {
         "total_users": total_users,
         "total_clients": total_clients,
@@ -397,6 +658,12 @@ def admin_dashboard(db: Session = Depends(get_db)):
         "total_paid": total_paid,
         "pending_walkers": pending_walkers,
         "total_revenue": float(total_revenue),
+        "platform_total": float((finance_totals or {}).get("platform_total") or 0),
+        "walker_total": float((finance_totals or {}).get("walker_total") or 0),
+        "wallet_pending": wallet_summary.get("pending", 0),
+        "wallet_available": wallet_summary.get("available", 0),
+        "wallet_paid": wallet_summary.get("paid", 0),
+        "wallet_blocked": wallet_summary.get("blocked", 0),
     }
 
 
@@ -458,6 +725,118 @@ def admin_contract(request_id: int):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Contrato digital ainda não gerado para este passeio.")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+
+
+@router.get("/admin/finance")
+def admin_finance(db: Session = Depends(get_db)):
+    _ensure_finance_schema(db)
+    totals = db.execute(text("""
+        SELECT
+          COALESCE(SUM(price), 0) AS gross_total,
+          COALESCE(SUM(platform_fee_amount), 0) AS platform_total,
+          COALESCE(SUM(walker_amount), 0) AS walker_total,
+          COUNT(*) AS paid_count
+        FROM walk_requests
+        WHERE payment_status = 'paid'
+    """)).mappings().first()
+
+    return {
+        "gross_total": float((totals or {}).get("gross_total") or 0),
+        "platform_total": float((totals or {}).get("platform_total") or 0),
+        "walker_total": float((totals or {}).get("walker_total") or 0),
+        "paid_count": int((totals or {}).get("paid_count") or 0),
+        "wallet": _wallet_summary(db),
+        "transactions": _wallet_transactions(db, limit=100),
+    }
+
+
+@router.get("/wallet/{walker_id}")
+def walker_wallet(walker_id: int, db: Session = Depends(get_db)):
+    walker = db.get(User, walker_id)
+    if not walker or walker.role != "walker":
+        raise HTTPException(status_code=404, detail="Passeador não encontrado.")
+
+    return {
+        "walker_id": walker.id,
+        "walker_name": walker.full_name,
+        "summary": _wallet_summary(db, walker_id=walker_id),
+        "transactions": _wallet_transactions(db, walker_id=walker_id, limit=100),
+    }
+
+
+@router.post("/admin/wallet-transactions/{transaction_id}/mark-paid")
+def admin_mark_wallet_transaction_paid(transaction_id: int, db: Session = Depends(get_db)):
+    _ensure_finance_schema(db)
+
+    tx = db.execute(
+        text("SELECT * FROM wallet_transactions WHERE id = :id"),
+        {"id": transaction_id},
+    ).mappings().first()
+
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transação não encontrada.")
+
+    db.execute(
+        text("""
+            UPDATE wallet_transactions
+            SET status = 'paid', updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        """),
+        {"id": transaction_id},
+    )
+
+    if tx.get("request_id"):
+        db.execute(
+            text("""
+                UPDATE walk_requests
+                SET wallet_status = 'paid',
+                    released_at = CURRENT_TIMESTAMP
+                WHERE id = :request_id
+            """),
+            {"request_id": tx.get("request_id")},
+        )
+
+    db.commit()
+    _log_event("wallet_transaction_paid", actor_id=0, data={"transaction_id": transaction_id, "walker_id": tx.get("walker_id"), "amount": tx.get("amount")})
+    return {"ok": True, "transaction_id": transaction_id, "status": "paid"}
+
+
+@router.post("/admin/wallet-transactions/{transaction_id}/block")
+def admin_block_wallet_transaction(transaction_id: int, db: Session = Depends(get_db)):
+    _ensure_finance_schema(db)
+
+    tx = db.execute(
+        text("SELECT * FROM wallet_transactions WHERE id = :id"),
+        {"id": transaction_id},
+    ).mappings().first()
+
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transação não encontrada.")
+
+    db.execute(
+        text("""
+            UPDATE wallet_transactions
+            SET status = 'blocked', updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        """),
+        {"id": transaction_id},
+    )
+
+    if tx.get("request_id"):
+        db.execute(
+            text("""
+                UPDATE walk_requests
+                SET wallet_status = 'blocked'
+                WHERE id = :request_id
+            """),
+            {"request_id": tx.get("request_id")},
+        )
+
+    db.commit()
+    _log_event("wallet_transaction_blocked", actor_id=0, data={"transaction_id": transaction_id, "walker_id": tx.get("walker_id"), "amount": tx.get("amount")})
+    return {"ok": True, "transaction_id": transaction_id, "status": "blocked"}
 
 
 @router.post("/legal/accept-terms")
@@ -770,6 +1149,9 @@ def criar_pagamento(
         raise HTTPException(status_code=404, detail="Solicitação não encontrada.")
 
     if walk.status not in {"completed", "payment_pending", "paid"}:
+        raise HTTPException(status_code=400, detail="O pagamento só pode ser gerado após o passeio ser finalizado pelo passeador.")
+
+    if walk.status not in {"completed", "paid"}:
         raise HTTPException(status_code=400, detail="O pagamento só pode ser gerado após o passeio ser finalizado pelo passeador.")
 
     client = db.get(User, walk.client_id)

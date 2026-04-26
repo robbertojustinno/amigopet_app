@@ -174,6 +174,7 @@ function renderSession(user) {
     if (byId("walkerSessionInfo")) byId("walkerSessionInfo").textContent = `${user.full_name || "Passeador"} conectado`;
     showScreen("walkerDashboard");
     loadRequests();
+    loadWalkerWallet();
     startChatPolling();
     return;
   }
@@ -394,6 +395,120 @@ function statusLabel(item) {
   return item.active === false ? "bloqueado" : "ativo";
 }
 
+function money(value) {
+  return `R$ ${Number(value || 0).toFixed(2)}`;
+}
+
+function financeLine(item) {
+  const gross = money(item.price || 0);
+  const platform = money(item.platform_fee_amount || 0);
+  const walker = money(item.walker_amount || 0);
+  const wallet = item.wallet_status || "pending";
+  return `
+    <div class="finance-mini">
+      <span>Bruto: <strong>${gross}</strong></span>
+      <span>Admin: <strong>${platform}</strong></span>
+      <span>Passeador: <strong>${walker}</strong></span>
+      <span>Carteira: <strong>${wallet}</strong></span>
+    </div>
+  `;
+}
+
+function renderWalletTransactions(containerId, transactions = [], isAdmin = false) {
+  const box = byId(containerId);
+  if (!box) return;
+
+  if (!transactions.length) {
+    box.innerHTML = `<div class="item">Nenhuma transação financeira ainda.</div>`;
+    return;
+  }
+
+  box.innerHTML = "";
+  transactions.forEach((tx) => {
+    const div = document.createElement("div");
+    div.className = "wallet-transaction-card";
+    div.innerHTML = `
+      <div>
+        <strong>${tx.walker_name || `Passeador ${tx.walker_id}`}</strong>
+        <div class="request-meta">
+          <span>Passeio #${tx.request_id || "-"}</span>
+          <span>${tx.transaction_type || "credit"}</span>
+          <span class="tag">${tx.status || "pending"}</span>
+          <span>${tx.created_at || ""}</span>
+        </div>
+        <div class="wallet-amount">${money(tx.amount || 0)}</div>
+        <div class="inline-note">${tx.description || ""}</div>
+      </div>
+      ${isAdmin ? `
+        <div class="request-actions">
+          ${(tx.status !== "paid") ? `<button type="button" class="success-btn mark-wallet-paid-btn" data-tx-id="${tx.id}">Marcar repassado</button>` : ""}
+          ${(tx.status !== "blocked" && tx.status !== "paid") ? `<button type="button" class="danger-btn block-wallet-btn" data-tx-id="${tx.id}">Bloquear saldo</button>` : ""}
+        </div>
+      ` : ""}
+    `;
+    box.appendChild(div);
+  });
+
+  if (isAdmin) {
+    box.querySelectorAll(".mark-wallet-paid-btn").forEach((btn) => {
+      btn.addEventListener("click", () => adminMarkWalletPaid(btn.dataset.txId));
+    });
+    box.querySelectorAll(".block-wallet-btn").forEach((btn) => {
+      btn.addEventListener("click", () => adminBlockWallet(btn.dataset.txId));
+    });
+  }
+}
+
+async function adminMarkWalletPaid(txId) {
+  if (!confirm("Confirmar que este valor já foi repassado ao passeador?")) return;
+  try {
+    await api(`/admin/wallet-transactions/${txId}/mark-paid`, { method: "POST" });
+    await loadAdminFinance();
+    await loadAdminDashboard();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function adminBlockWallet(txId) {
+  if (!confirm("Bloquear este saldo por disputa/emergência?")) return;
+  try {
+    await api(`/admin/wallet-transactions/${txId}/block`, { method: "POST" });
+    await loadAdminFinance();
+    await loadAdminDashboard();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function loadAdminFinance() {
+  try {
+    const data = await api("/admin/finance");
+    if (byId("financeGrossTotal")) byId("financeGrossTotal").textContent = money(data.gross_total);
+    if (byId("financePlatformTotal")) byId("financePlatformTotal").textContent = money(data.platform_total);
+    if (byId("financeWalkerTotal")) byId("financeWalkerTotal").textContent = money(data.walker_total);
+    if (byId("financeWalletPending")) byId("financeWalletPending").textContent = money(data.wallet?.pending);
+    if (byId("financeWalletAvailable")) byId("financeWalletAvailable").textContent = money(data.wallet?.available);
+    if (byId("financeWalletPaid")) byId("financeWalletPaid").textContent = money(data.wallet?.paid);
+    renderWalletTransactions("adminWalletTransactions", data.transactions || [], true);
+  } catch (err) {
+    console.log(err.message);
+  }
+}
+
+async function loadWalkerWallet() {
+  if (!currentUser?.id || currentUser.role !== "walker") return;
+  try {
+    const data = await api(`/wallet/${currentUser.id}`);
+    if (byId("walkerWalletPending")) byId("walkerWalletPending").textContent = money(data.summary?.pending);
+    if (byId("walkerWalletAvailable")) byId("walkerWalletAvailable").textContent = money(data.summary?.available);
+    if (byId("walkerWalletPaid")) byId("walkerWalletPaid").textContent = money(data.summary?.paid);
+    renderWalletTransactions("walkerWalletTransactions", data.transactions || [], false);
+  } catch (err) {
+    console.log(err.message);
+  }
+}
+
 async function adminApproveWalker(userId) {
   if (!userId) return;
   try {
@@ -572,8 +687,9 @@ function renderWalkerRequests(items) {
             <span><span class="tag">${item.status}</span> <span class="tag">${item.payment_status || "unpaid"}</span></span>
             <span>${item.pickup_address || "-"}</span>
             <span>Pet: ${item.pet_name || "Não informado"}</span>
-            <span>${item.duration_minutes} min • R$ ${Number(item.price || 0).toFixed(2)}</span>
+            <span>${item.duration_minutes} min • ${money(item.price || 0)}</span>
           </div>
+          ${financeLine(item)}
         </div>
       </div>
       <div class="request-actions">
@@ -662,11 +778,15 @@ async function loadAdminDashboard() {
     if (byId("metricTotalUsers")) byId("metricTotalUsers").textContent = data.total_users ?? 0;
     if (byId("metricClients")) byId("metricClients").textContent = data.total_clients ?? 0;
     if (byId("metricWalkers")) byId("metricWalkers").textContent = data.total_walkers ?? 0;
-    if (byId("metricRevenue")) byId("metricRevenue").textContent = `R$ ${Number(data.total_revenue || 0).toFixed(2)}`;
+    if (byId("metricRevenue")) byId("metricRevenue").textContent = money(data.total_revenue);
     if (byId("metricRequests")) byId("metricRequests").textContent = data.total_requests ?? 0;
     if (byId("metricCompleted")) byId("metricCompleted").textContent = data.total_completed ?? 0;
     if (byId("metricPaid")) byId("metricPaid").textContent = data.total_paid ?? 0;
+    if (byId("metricPlatformTotal")) byId("metricPlatformTotal").textContent = money(data.platform_total);
+    if (byId("metricWalkerTotal")) byId("metricWalkerTotal").textContent = money(data.walker_total);
+    if (byId("metricWalletAvailable")) byId("metricWalletAvailable").textContent = money(data.wallet_available);
     renderAdminUsers(await api("/admin/users"));
+    await loadAdminFinance();
   } catch (err) {
     alert(err.message);
   }
@@ -681,6 +801,7 @@ async function loadRequests() {
     const data = await api(path);
     renderClientRequests(currentUser?.role === "client" ? data : []);
     renderWalkerRequests(currentUser?.role === "walker" ? data : []);
+    if (currentUser?.role === "walker") await loadWalkerWallet();
   } catch (err) {
     console.log(err.message);
   }
@@ -972,6 +1093,8 @@ function attachMainEvents() {
 
   byId("backToWelcomeBtn")?.addEventListener("click", () => showScreen("welcomeScreen"));
   byId("refreshAdminBtn")?.addEventListener("click", loadAdminDashboard);
+  byId("refreshFinanceBtn")?.addEventListener("click", loadAdminFinance);
+  byId("refreshWalletBtn")?.addEventListener("click", loadWalkerWallet);
   byId("loadRequestsBtn")?.addEventListener("click", loadRequests);
   byId("refreshWalkerBtn")?.addEventListener("click", loadRequests);
   byId("loadMapBtn")?.addEventListener("click", loadMap);
