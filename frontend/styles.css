@@ -176,3 +176,131 @@ body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-siz
   position: relative;
   z-index: 1;
 }
+
+
+/* ===== FIX FINAL LOGO / HEADER AMIGOPET ===== */
+.topbar{
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 72px;
+  padding: 12px 22px;
+  background: rgba(255,255,255,.96);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid #dbe4f3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar .brand{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topbar-actions{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.brand-logo-img{
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px;
+  max-width: 48px;
+  max-height: 48px;
+  border-radius: 16px;
+  object-fit: contain !important;
+  background: #ffffff;
+  padding: 4px;
+  box-shadow: 0 10px 24px rgba(15,23,42,.14);
+  display: block;
+}
+
+.logo,
+.logo-image-wrap{
+  display: none !important;
+}
+
+.splash-logo{
+  width: 104px !important;
+  height: 104px !important;
+  border-radius: 30px !important;
+  background: rgba(255,255,255,.14) !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: hidden;
+  box-shadow: 0 22px 65px rgba(0,0,0,.26) !important;
+}
+
+.splash-logo img{
+  width: 82px !important;
+  height: 82px !important;
+  max-width: 82px !important;
+  max-height: 82px !important;
+  object-fit: contain !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  display: block;
+}
+
+.preview-card{
+  min-height: 136px !important;
+  padding: 16px !important;
+  overflow: hidden;
+}
+
+.preview-brand-logo{
+  width: min(260px, 88%) !important;
+  max-height: 84px !important;
+  object-fit: contain !important;
+  margin: 0 auto !important;
+  display: block !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  background: rgba(255,255,255,.08);
+  padding: 6px;
+}
+
+.admin-hero-bg,
+.hero-bg,
+.brand-watermark{
+  display: none !important;
+  background-image: none !important;
+}
+
+@media (max-width: 640px){
+  .topbar{
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .brand-logo-img{
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px;
+    max-width: 42px;
+    max-height: 42px;
+    border-radius: 14px;
+  }
+
+  .brand-title{
+    font-size: 15px !important;
+  }
+
+  .brand-subtitle{
+    font-size: 11px !important;
+    line-height: 1.25;
+  }
+
+  .topbar-actions .ghost-btn{
+    padding: 8px 9px;
+    font-size: 12px;
+  }
+}
