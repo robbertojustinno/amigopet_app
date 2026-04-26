@@ -1081,6 +1081,30 @@ def list_pets(owner_id: int, db: Session = Depends(get_db)):
     return list(db.scalars(select(Pet).where(Pet.owner_id == owner_id).order_by(Pet.id.desc())).all())
 
 
+@router.put("/pets/{pet_id}", response_model=PetOut)
+def update_pet(pet_id: int, payload: PetCreate, db: Session = Depends(get_db)):
+    pet = db.get(Pet, pet_id)
+    if not pet:
+        raise HTTPException(status_code=404, detail="Pet não encontrado.")
+
+    owner = db.get(User, payload.owner_id)
+    if not owner or owner.role != "client":
+        raise HTTPException(status_code=400, detail="Dono do pet inválido.")
+
+    if pet.owner_id != payload.owner_id:
+        raise HTTPException(status_code=403, detail="Este pet não pertence ao cliente informado.")
+
+    data = payload.model_dump()
+    for field, value in data.items():
+        if hasattr(pet, field):
+            setattr(pet, field, value)
+
+    db.add(pet)
+    db.commit()
+    db.refresh(pet)
+    return pet
+
+
 @router.post("/walk-requests")
 def create_walk_request(payload: WalkRequestCreate, db: Session = Depends(get_db)):
     client = db.get(User, payload.client_id)

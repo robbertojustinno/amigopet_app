@@ -949,6 +949,7 @@ window.addEventListener("load", () => {
 
 /* ===== AmigoPet V2 Comercial overrides ===== */
 let uploadedVaccineUrl = null;
+let editingPetId = null;
 
 function statusLabel(status) {
   return ({invited:"Convidado",pending:"Pendente",accepted:"Aceito",in_progress:"Em andamento",completed:"Finalizado",paid:"Pago",expired:"Expirado",declined:"Recusado"}[status] || status || "-");
@@ -996,14 +997,71 @@ function renderPetList(pets) {
     div.className = "pet-mini-card";
     div.innerHTML = `
       ${pet.photo_url ? `<img src="${pet.photo_url}" alt="${pet.name}">` : `<div class="avatar"></div>`}
-      <div>
+      <div style="flex:1; min-width:0;">
         <div class="pet-mini-title">${pet.name || "Pet"}</div>
         <div class="pet-mini-meta">${pet.breed || pet.size || "Sem raça"} ${meta.until ? `• Vacina até ${meta.until}` : "• Vacina não informada"}</div>
+        ${meta.clean ? `<div class="pet-mini-meta">${meta.clean}</div>` : ""}
         ${meta.card ? `<div class="pet-mini-meta">Carteira anexada</div>` : ""}
+        <div class="pet-mini-actions">
+          <button type="button" class="secondary-btn edit-pet-btn" data-pet-id="${pet.id}">Editar</button>
+          <button type="button" class="ghost-btn select-pet-btn" data-pet-id="${pet.id}">Usar no passeio</button>
+        </div>
       </div>`;
     box.appendChild(div);
   });
+
+  box.querySelectorAll(".edit-pet-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pet = (availablePets || []).find((item) => Number(item.id) === Number(btn.dataset.petId));
+      if (pet) startEditPet(pet);
+    });
+  });
+
+  box.querySelectorAll(".select-pet-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (byId("selected_pet_id")) byId("selected_pet_id").value = btn.dataset.petId;
+      alert("Pet selecionado para a próxima solicitação.");
+    });
+  });
 }
+
+function setPetFormMode(isEditing) {
+  if (byId("petFormTitle")) byId("petFormTitle").textContent = isEditing ? "Editar pet" : "Cadastrar pet";
+  if (byId("petSubmitBtn")) byId("petSubmitBtn").textContent = isEditing ? "Salvar alterações" : "Salvar pet";
+  byId("cancelPetEditBtn")?.classList.toggle("hidden", !isEditing);
+  byId("petForm")?.closest(".panel")?.classList.toggle("editing-pet-panel", !!isEditing);
+}
+
+function clearPetEditForm() {
+  editingPetId = null;
+  if (byId("pet_edit_id")) byId("pet_edit_id").value = "";
+  byId("petForm")?.reset();
+  uploadedPetPhotoUrl = null;
+  uploadedVaccineUrl = null;
+  setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
+  if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
+  if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Carteira de vacinação não anexada.";
+  setPetFormMode(false);
+}
+
+function startEditPet(pet) {
+  const meta = extractPetMeta(pet.notes || "");
+  editingPetId = Number(pet.id);
+  if (byId("pet_edit_id")) byId("pet_edit_id").value = String(pet.id);
+  if (byId("pet_name")) byId("pet_name").value = pet.name || "";
+  if (byId("pet_breed")) byId("pet_breed").value = pet.breed || "";
+  if (byId("pet_size")) byId("pet_size").value = pet.size || "medio";
+  if (byId("pet_notes")) byId("pet_notes").value = meta.clean || "";
+  if (byId("vaccination_until")) byId("vaccination_until").value = meta.until || "";
+  if (byId("vaccine_card")) byId("vaccine_card").value = meta.card || "";
+  if (byId("pet_photo")) byId("pet_photo").value = pet.photo_url || "";
+  setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", pet.photo_url || null);
+  if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = pet.photo_url ? "Foto atual carregada." : "Nenhuma foto selecionada.";
+  if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = meta.card ? "Carteira atual anexada." : "Carteira de vacinação não anexada.";
+  setPetFormMode(true);
+  byId("petForm")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function loadPets() {
   const select = byId("selected_pet_id");
   if (!currentUser?.id) return;
@@ -1158,12 +1216,14 @@ handlePetSubmit = async function(e) {
       photo_url: byId("pet_photo")?.value.trim() || null,
       dog_count: Number(byId("dog_count")?.value || 1)
     };
-    const data = await api("/pets", { method: "POST", body: JSON.stringify(payload) });
-    alert(`Pet salvo com ID ${data.id}`);
-    byId("petForm")?.reset();
-    setPhotoPreview("petPhotoPreviewWrap", "petPhotoPreview", null);
-    if (byId("petPhotoUploadStatus")) byId("petPhotoUploadStatus").textContent = "Nenhuma foto selecionada.";
-    if (byId("vaccineUploadStatus")) byId("vaccineUploadStatus").textContent = "Carteira de vacinação não anexada.";
+    const petId = Number(byId("pet_edit_id")?.value || editingPetId || 0);
+    const isEditing = !!petId;
+    const data = await api(isEditing ? `/pets/${petId}` : "/pets", {
+      method: isEditing ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+    alert(isEditing ? "Pet atualizado com sucesso." : `Pet salvo com ID ${data.id}`);
+    clearPetEditForm();
     await loadPets();
   } catch (err) { alert(err.message); }
   return false;
@@ -1187,6 +1247,7 @@ attachMainEvents = function() {
     showScreen("registerScreen");
   });
   byId("refreshPetsBtn")?.addEventListener("click", loadPets);
+  byId("cancelPetEditBtn")?.addEventListener("click", clearPetEditForm);
   byId("chooseVaccineBtn")?.addEventListener("click", () => byId("vaccine_file")?.click());
   byId("clearVaccineBtn")?.addEventListener("click", () => {
     uploadedVaccineUrl = null;

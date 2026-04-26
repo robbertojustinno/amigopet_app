@@ -190,8 +190,9 @@
 
       <div class="grid-2">
         <div class="panel">
-          <div class="section-title">Cadastrar pet</div>
+          <div class="section-title" id="petFormTitle">Cadastrar pet</div>
           <form id="petForm" novalidate>
+            <input id="pet_edit_id" type="hidden" />
             <input id="pet_name" type="text" placeholder="Nome do pet" required />
             <input id="pet_breed" type="text" placeholder="Raça" />
             <select id="pet_size">
@@ -221,6 +222,7 @@
             </div>
 
             <button class="primary-btn" id="petSubmitBtn" type="submit">Salvar pet</button>
+            <button class="ghost-btn hidden" id="cancelPetEditBtn" type="button">Cancelar edição</button>
           </form>
           <div class="pet-list-header">
             <div class="section-title compact-title">Pets cadastrados</div>
