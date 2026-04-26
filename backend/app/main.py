@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.routes import router
@@ -14,8 +15,65 @@ from app.models.user import User
 
 app = FastAPI(title=settings.APP_NAME, version="9.1.0")
 
+
+def ensure_runtime_columns() -> None:
+    """Garante colunas novas em bancos já existentes, inclusive PostgreSQL no Render."""
+    dialect = engine.dialect.name
+
+    if dialect == "postgresql":
+        statements = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms_at TIMESTAMP NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version VARCHAR(120) NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms_items TEXT NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pix_key VARCHAR(255) NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pix_key_type VARCHAR(30) NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pix_holder_name VARCHAR(255) NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pix_holder_document VARCHAR(80) NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pix_verified BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS pix_updated_at TIMESTAMP NULL",
+            "ALTER TABLE pets ADD COLUMN IF NOT EXISTS photo_url TEXT NULL",
+            "ALTER TABLE pets ADD COLUMN IF NOT EXISTS dog_count INTEGER DEFAULT 1",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS dog_count INTEGER DEFAULT 1",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_id VARCHAR(80) NULL",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(30) DEFAULT 'mercado_pago'",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_link TEXT NULL",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_updated_at TIMESTAMP NULL",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS platform_fee_percent DOUBLE PRECISION DEFAULT 20",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS platform_fee_amount DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS walker_amount DOUBLE PRECISION DEFAULT 0",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS wallet_status VARCHAR(30) DEFAULT 'pending'",
+            "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS released_at TIMESTAMP NULL",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(120) NULL",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_role VARCHAR(20) NULL",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_photo TEXT NULL",
+        ]
+    else:
+        statements = [
+            "ALTER TABLE users ADD COLUMN accepted_terms BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN accepted_terms_at DATETIME",
+            "ALTER TABLE users ADD COLUMN terms_version VARCHAR(120)",
+            "ALTER TABLE users ADD COLUMN accepted_terms_items TEXT",
+            "ALTER TABLE users ADD COLUMN pix_key VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN pix_key_type VARCHAR(30)",
+            "ALTER TABLE users ADD COLUMN pix_holder_name VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN pix_holder_document VARCHAR(80)",
+            "ALTER TABLE users ADD COLUMN pix_verified BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN pix_updated_at DATETIME",
+        ]
+
+    with engine.begin() as conn:
+        for statement in statements:
+            try:
+                conn.execute(text(statement))
+            except Exception:
+                pass
+
+
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_columns()
+ensure_runtime_columns()
 
 
 def create_admin():
@@ -77,33 +135,32 @@ async def health():
 if FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR)), name="assets")
 
-    @app.get("/", include_in_schema=False)
-    async def serve_frontend():
-        response = FileResponse(INDEX_FILE)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
-
-
 
     @app.get("/landing.html", include_in_schema=False)
     async def serve_landing():
         landing_file = FRONTEND_DIR / "landing.html"
-        if not landing_file.exists():
-            return JSONResponse({"detail": "landing.html não encontrado"}, status_code=404)
-        response = FileResponse(landing_file, media_type="text/html")
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
+        if landing_file.exists():
+            response = FileResponse(landing_file, media_type="text/html")
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        return JSONResponse({"detail": "landing.html não encontrado"}, status_code=404)
 
     @app.get("/guia_identidade_visual.html", include_in_schema=False)
     async def serve_brand_guide():
         guide_file = FRONTEND_DIR / "guia_identidade_visual.html"
-        if not guide_file.exists():
-            return JSONResponse({"detail": "guia_identidade_visual.html não encontrado"}, status_code=404)
-        response = FileResponse(guide_file, media_type="text/html")
+        if guide_file.exists():
+            response = FileResponse(guide_file, media_type="text/html")
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        return JSONResponse({"detail": "guia_identidade_visual.html não encontrado"}, status_code=404)
+
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend():
+        response = FileResponse(INDEX_FILE)
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
