@@ -112,16 +112,132 @@ body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-siz
 .terms-summary-box{border:1px solid #d7e0ef;background:#f8fbff;border-radius:16px;padding:14px;margin:12px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.terms-summary-box p{margin:4px 0 0;color:#64748b;font-size:13px}.terms-modal{position:fixed;inset:0;background:rgba(15,23,42,.58);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px}.terms-modal-card{background:#fff;border-radius:24px;width:min(860px,96vw);max-height:88vh;overflow:hidden;box-shadow:0 30px 80px rgba(15,23,42,.28);border:1px solid #dbe6f3}.terms-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:20px 22px;border-bottom:1px solid #e2eaf5}.terms-modal-head h2{margin:0;font-size:24px}.terms-modal-head p{margin:6px 0 0;color:#64748b}.terms-modal-body{padding:20px 22px;overflow:auto;max-height:58vh}.terms-check-list{display:grid;gap:10px;margin-top:14px}.terms-check-item{display:flex;gap:12px;align-items:flex-start;border:1px solid #dbe6f3;background:#f8fbff;border-radius:16px;padding:13px;cursor:pointer}.terms-check-item input{width:20px;height:20px;margin:2px 0 0;flex-shrink:0}.terms-check-item strong{display:block;color:#0f172a}.terms-check-item small{display:block;color:#475569;line-height:1.45;margin-top:3px}.terms-modal-actions{padding:16px 22px;border-top:1px solid #e2eaf5;background:#fbfdff}.terms-modal-actions button:disabled,.primary-btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(1)}
 
 
-/* ===== FORCE LOGO SMALL FIX FINAL ===== */
-body > .brand, body > .logo, body > .logo-image-wrap{display:none!important;width:0!important;height:0!important;overflow:hidden!important}
-.topbar{position:sticky!important;top:0!important;z-index:50!important;min-height:64px!important;padding:10px 18px!important;background:rgba(255,255,255,.98)!important;border-bottom:1px solid #dbe4f3!important;display:flex!important;align-items:center!important;gap:12px!important;overflow:hidden!important}
-.topbar .brand{display:flex!important;align-items:center!important;gap:10px!important;min-width:0!important}
-.topbar-actions{margin-left:auto!important;display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap!important;justify-content:flex-end!important}
-.brand-logo-img,.topbar .brand img,header.topbar img[src*="amigopet-icon"]{width:42px!important;height:42px!important;min-width:42px!important;max-width:42px!important;max-height:42px!important;object-fit:contain!important;border-radius:13px!important;padding:3px!important;background:#fff!important;box-shadow:0 8px 18px rgba(15,23,42,.14)!important;display:block!important}
-.splash-overlay{position:fixed!important;inset:0!important;z-index:9999!important;background:linear-gradient(135deg,#063b2b,#0c64b8)!important;display:grid!important;place-items:center!important;transition:opacity .35s ease,visibility .35s ease!important;overflow:hidden!important}
-.splash-overlay.hide{opacity:0!important;visibility:hidden!important;pointer-events:none!important}
-.splash-card{text-align:center!important;color:#fff!important;max-width:260px!important}
-.splash-logo{width:92px!important;height:92px!important;min-width:92px!important;max-width:92px!important;max-height:92px!important;margin:0 auto 12px!important;border-radius:26px!important;background:rgba(255,255,255,.14)!important;display:grid!important;place-items:center!important;overflow:hidden!important;box-shadow:0 18px 50px rgba(0,0,0,.25)!important}
-.splash-logo img{width:70px!important;height:70px!important;min-width:70px!important;max-width:70px!important;max-height:70px!important;object-fit:contain!important;display:block!important;border-radius:0!important;box-shadow:none!important}
-.preview-brand-logo{width:min(240px,86%)!important;max-height:76px!important;object-fit:contain!important;margin:0 auto!important;display:block!important;border-radius:12px!important;box-shadow:none!important;background:rgba(255,255,255,.08)!important;padding:6px!important}
-.preview-card{min-height:130px!important;padding:16px!important;overflow:hidden!important}
+/* ===== Logo e identidade visual AmigoPet ===== */
+.logo.logo-image-wrap{
+  width:46px;
+  height:46px;
+  padding:0;
+  background:transparent;
+  border-radius:15px;
+  overflow:hidden;
+  box-shadow:0 10px 22px rgba(15,23,42,.14);
+  flex:0 0 auto;
+}
+.logo.logo-image-wrap img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+}
+.splash-logo{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.splash-logo img{
+  width:104px;
+  height:104px;
+  border-radius:30px;
+  object-fit:cover;
+  box-shadow:0 22px 65px rgba(0,0,0,.30);
+  display:block;
+}
+.preview-brand-logo{
+  width:min(320px, 92%);
+  margin:0 auto;
+  display:block;
+  border-radius:18px;
+  box-shadow:0 14px 35px rgba(15,23,42,.18);
+}
+.brand-title::after{
+  content:'™';
+  font-size:11px;
+  margin-left:2px;
+  color:#16a34a;
+}
+@media(max-width:640px){
+  .logo.logo-image-wrap{width:40px;height:40px;border-radius:13px;}
+  .splash-logo img{width:88px;height:88px;border-radius:24px;}
+}
+
+/* ===== FIX LOGO BACKGROUND ADMIN ===== */
+.admin-hero-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 320px;        /* controla tamanho */
+  height: 320px;
+  opacity: 0.06;       /* deixa elegante (marca d’água) */
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* container do topo */
+.dashboard-header {
+  position: relative;
+  z-index: 1;
+}
+
+
+/* ===== AMIGOPET COMPACT DASHBOARD + INLINE LOGO FIX ===== */
+html, body{min-height:100%;overflow-x:hidden}
+body{font-size:13px!important;background:#eef3fb!important}
+.compact-topbar,.topbar{position:sticky!important;top:0!important;z-index:50!important;min-height:54px!important;height:auto!important;padding:7px 14px!important;background:rgba(255,255,255,.98)!important;border-bottom:1px solid #dbe4f3!important;display:flex!important;align-items:center!important;gap:10px!important;overflow:hidden!important}
+.topbar .brand{display:flex!important;align-items:center!important;gap:9px!important;min-width:0!important}
+.brand-logo-svg{width:36px!important;height:36px!important;min-width:36px!important;max-width:36px!important;max-height:36px!important;display:block!important;flex:0 0 36px!important}
+.brand-logo-img,.logo,.logo-image-wrap,.splash-overlay,.splash-card,.splash-logo{display:none!important}
+.brand-title{font-size:14px!important;line-height:1.1!important;margin:0!important;font-weight:800!important}
+.brand-subtitle{font-size:10.5px!important;line-height:1.15!important;margin:2px 0 0!important;color:#64748b!important;max-width:260px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.topbar-actions{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:6px!important;flex-wrap:wrap!important}
+.topbar-actions .ghost-btn,.ghost-btn,.secondary-btn,.primary-btn,.card-action-btn,button{padding:8px 10px!important;border-radius:10px!important;font-size:12px!important;line-height:1.1!important}
+.page{width:min(1260px,98%)!important;max-width:1260px!important;margin:8px auto 16px!important;padding:0 8px 14px!important;gap:8px!important}
+.panel{padding:12px!important;border-radius:16px!important;box-shadow:0 8px 20px rgba(25,55,110,.06)!important}
+.hero{grid-template-columns:.9fr 1.1fr!important;gap:12px!important;align-items:start!important}
+.badge{padding:5px 9px!important;font-size:11px!important;margin-bottom:7px!important}
+h1{font-size:22px!important;margin:0 0 6px!important;line-height:1.1!important}
+h2,.dashboard-title{font-size:20px!important;margin:0 0 5px!important;line-height:1.1!important}
+h3,.section-title{font-size:15px!important;margin-bottom:8px!important}
+.muted{margin-bottom:8px!important;font-size:12px!important;line-height:1.25!important}
+.preview-box{margin-top:8px!important;border-radius:14px!important}
+.preview-header{padding:7px 9px!important;font-size:10.5px!important}
+.preview-content{padding:10px!important}
+.preview-card,.compact-preview-card{min-height:76px!important;height:76px!important;border-radius:13px!important;padding:10px!important;overflow:hidden!important}
+.preview-card .preview-brand-logo,.preview-brand-logo{width:180px!important;max-width:76%!important;max-height:48px!important;object-fit:contain!important;box-shadow:none!important;background:transparent!important;padding:0!important}
+.preview-grid{gap:7px!important;margin-top:8px!important}
+.preview-mini{min-height:46px!important;padding:8px!important;font-size:11px!important;border-radius:11px!important;line-height:1.2!important}
+.role-switch{gap:7px!important;margin-bottom:8px!important}
+.role-chip{padding:7px 11px!important;font-size:12px!important}
+.right-title{font-size:18px!important;margin-bottom:4px!important}
+input,select,textarea{padding:8px 10px!important;border-radius:10px!important;margin-bottom:7px!important;font-size:12px!important}
+textarea{min-height:58px!important}
+.grid-2{grid-template-columns:1fr 1fr!important;gap:10px!important}
+.grid-3{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+.dashboard-header{gap:8px!important;margin-bottom:9px!important}
+.session-pill{padding:6px 10px!important;font-size:12px!important}
+.metric{border-radius:14px!important;padding:10px!important}
+.metric-label{font-size:11px!important;margin-bottom:4px!important}
+.metric-value{font-size:20px!important}
+.request-card,.item{padding:9px!important;border-radius:13px!important;margin-bottom:7px!important}
+.request-card-title{font-size:14px!important;margin-bottom:3px!important}
+.request-meta{gap:5px!important;font-size:11px!important;line-height:1.2!important}
+.tag{padding:3px 7px!important;font-size:10px!important}
+.avatar{width:36px!important;height:36px!important}
+.person-row{gap:8px!important}
+.request-actions{gap:6px!important;margin-top:7px!important}
+.request-actions button{min-width:78px!important;padding:7px 8px!important;font-size:11px!important}
+.chat-box{min-height:92px!important;max-height:128px!important;padding:8px!important;border-radius:13px!important}
+.chat-bubble{padding:7px 9px!important;margin-bottom:6px!important;font-size:12px!important}
+iframe,#mapFrame{min-height:150px!important;height:150px!important;border-radius:12px!important}
+.tracking-map{height:150px!important}
+.realtime-box{padding:9px!important;border-radius:13px!important;font-size:12px!important}
+.terms-accept-box{padding:9px!important;margin:7px 0 9px!important;border-radius:12px!important}
+.check-row{padding:8px!important;font-size:12px!important}
+.pet-list-header{margin-top:8px!important}
+.pet-mini-card{padding:8px!important;border-radius:12px!important;gap:8px!important}
+.pet-mini-card img{width:42px!important;height:42px!important;border-radius:12px!important}
+.pet-mini-title{font-size:13px!important}
+.pet-mini-meta{font-size:11px!important}
+.pet-mini-actions{gap:5px!important;margin-top:5px!important}
+.pet-mini-actions button{padding:6px 8px!important;font-size:11px!important}
+#petPhotoPreviewWrap img,#photoPreviewWrap img,.photo-preview-wrap img{width:72px!important;height:72px!important;max-width:72px!important;max-height:72px!important;object-fit:cover!important;border-radius:14px!important}
+@media (min-width:1100px){#clientDashboard > .grid-2:first-of-type{grid-template-columns:.82fr 1.18fr!important}#clientDashboard > .grid-2:nth-of-type(2){grid-template-columns:1.15fr .85fr!important}#walkerDashboard > .grid-2{grid-template-columns:1.1fr .9fr!important}}
+@media (max-width:900px){.hero,.grid-2,.grid-3{grid-template-columns:1fr!important}.page{width:100%!important;padding:0 8px 12px!important}.topbar{padding:8px 10px!important}.brand-subtitle{max-width:160px!important}}
