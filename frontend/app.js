@@ -235,7 +235,7 @@ async function api(path, options = {}) {
 
 function buildMapUrl(address) {
   const q = encodeURIComponent(address);
-  return `https://www.openstreetmap.org/export/embed.html?search=${q}&marker=1&query=${q}`;
+  return `https://www.openstreetmap.org/export/embed.html?search=${q}`;
 }
 
 function buildCoordsMapUrl(lat, lng) {
@@ -508,6 +508,7 @@ function renderClientRequests(items) {
   items?.forEach((item) => {
     const paidTag = item.payment_status === "paid" ? `<span class="tag tag-ativo">PAGO</span>` : `<span class="tag">${item.payment_status || "unpaid"}</span>`;
     const canPay = canPayWalk(item);
+    const canEmergency = Number(item.client_id || 0) === Number(currentUser?.id || 0);
     const blockedPaymentNote = item.payment_status !== "paid" && !canPay ? `<div class="warning-box">Pagamento liberado somente depois que o passeador finalizar o passeio.</div>` : "";
     const cardClass = item.status === "completed" ? "request-card completed-ready" : (item.status === "accepted" ? "request-card accepted-live" : "request-card");
     const div = document.createElement("div");
@@ -530,7 +531,7 @@ function renderClientRequests(items) {
       ${blockedPaymentNote}
       <div class="request-actions">
         ${canPay ? `<button type="button" class="card-action-btn pay-btn" data-request-id="${item.id}" data-amount="${item.price || 1}">Gerar pagamento PIX</button>` : ""}
-        ${assignedToCurrentWalker ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
+        ${canEmergency ? `<button type="button" class="danger-btn emergency-request-btn" data-request-id="${item.id}">🚨 Emergência</button>` : ""}
         <button type="button" class="ghost-btn open-chat-btn" data-request-id="${item.id}" data-label="${requestTitleForUser(item)}">Abrir chat</button>
       </div>`;
     box.appendChild(div);
