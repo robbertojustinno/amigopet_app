@@ -7,6 +7,10 @@ def ensure_sqlite_columns():
         return
 
     stmts = [
+        "ALTER TABLE users ADD COLUMN accepted_terms BOOLEAN DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN accepted_terms_at DATETIME",
+        "ALTER TABLE users ADD COLUMN terms_version VARCHAR(80)",
+        "ALTER TABLE users ADD COLUMN accepted_terms_items TEXT",
         "ALTER TABLE pets ADD COLUMN photo_url VARCHAR(255)",
         "ALTER TABLE pets ADD COLUMN dog_count INTEGER DEFAULT 1",
         "ALTER TABLE messages ADD COLUMN sender_name VARCHAR(120)",

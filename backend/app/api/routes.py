@@ -385,6 +385,7 @@ def _user_payload(user: User) -> dict:
         "profile_photo": user.profile_photo,
         "online": user.online,
         "active": user.active,
+        **_terms_payload_for_user(user),
     }
 
 
@@ -426,6 +427,61 @@ CONTRACTS_DIR = PROFESSIONAL_EVENT_DIR / "contracts"
 CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
 TERMS_FILE = PROFESSIONAL_EVENT_DIR / "terms_acceptances.jsonl"
 TERMS_VERSION = "2026-04-25-v1"
+
+TERMS_ITEMS = {
+    "responsabilidade_cliente": "Responsabilidade do cliente/tutor",
+    "responsabilidade_passeador": "Responsabilidade do passeador",
+    "pagamentos_comissoes": "Pagamentos, comissões e repasses",
+    "emergencia_seguranca": "Emergência, segurança e comunicação",
+    "lgpd_privacidade": "LGPD e privacidade de dados",
+    "cancelamento_reembolso": "Cancelamento, reembolso e disputas",
+    "aceite_digital": "Aceite digital e validade jurídica",
+}
+
+
+def _ensure_terms_schema(db: Session) -> None:
+    dialect = db.bind.dialect.name if db.bind else "sqlite"
+    timestamp_type = "TIMESTAMP" if dialect != "sqlite" else "DATETIME"
+    user_columns = _table_columns(db, "users")
+    terms_columns = {
+        "accepted_terms": "BOOLEAN DEFAULT FALSE",
+        "accepted_terms_at": f"{timestamp_type} NULL",
+        "terms_version": "VARCHAR(80) NULL",
+        "accepted_terms_items": "TEXT NULL",
+    }
+    for column_name, column_type in terms_columns.items():
+        if column_name not in user_columns:
+            try:
+                db.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"))
+                db.commit()
+            except Exception:
+                db.rollback()
+
+
+def _validate_terms_items(items: dict | None) -> dict:
+    clean_items = items if isinstance(items, dict) else {}
+    missing = [key for key in TERMS_ITEMS if clean_items.get(key) is not True]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="É obrigatório aceitar todos os itens dos termos: " + ", ".join(missing),
+        )
+    return {key: True for key in TERMS_ITEMS}
+
+
+def _terms_payload_for_user(user: User) -> dict:
+    raw_items = getattr(user, "accepted_terms_items", None) or "{}"
+    try:
+        items = json.loads(raw_items) if isinstance(raw_items, str) else (raw_items or {})
+    except Exception:
+        items = {}
+    return {
+        "accepted_terms": bool(getattr(user, "accepted_terms", False)),
+        "accepted_terms_at": str(getattr(user, "accepted_terms_at", "") or ""),
+        "terms_version": getattr(user, "terms_version", None),
+        "accepted_terms_items": items,
+    }
+
 
 
 def _json_safe(value):
@@ -649,6 +705,7 @@ def health():
 
 @router.post("/admin/login")
 def admin_login(payload: UserLogin, db: Session = Depends(get_db)):
+    _ensure_terms_schema(db)
     normalized_email = _normalize_email(payload.email)
     normalized_password = _normalize_password(payload.password)
 
@@ -671,6 +728,7 @@ def admin_login(payload: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/admin/dashboard")
 def admin_dashboard(db: Session = Depends(get_db)):
+    _ensure_terms_schema(db)
     total_users = db.scalar(select(func.count()).select_from(User)) or 0
     total_clients = db.scalar(select(func.count()).select_from(User).where(User.role == "client")) or 0
     total_walkers = db.scalar(select(func.count()).select_from(User).where(User.role == "walker")) or 0
@@ -710,6 +768,7 @@ def admin_dashboard(db: Session = Depends(get_db)):
 
 @router.get("/admin/users")
 def admin_list_users(db: Session = Depends(get_db)):
+    _ensure_terms_schema(db)
     users = list(db.scalars(select(User).order_by(User.id.desc())).all())
     return [
         {
@@ -723,6 +782,7 @@ def admin_list_users(db: Session = Depends(get_db)):
             "profile_photo": user.profile_photo,
             "online": user.online,
             "active": user.active,
+            **_terms_payload_for_user(user),
         }
         for user in users
     ]
@@ -973,33 +1033,74 @@ def admin_block_wallet_transaction(transaction_id: int, db: Session = Depends(ge
 
 
 @router.post("/legal/accept-terms")
-def accept_terms(payload: dict = Body(default={})):
+def accept_terms(payload: dict = Body(default={}), db: Session = Depends(get_db)):
+    _ensure_terms_schema(db)
     user_id = payload.get("user_id")
     role = payload.get("role")
     accepted = bool(payload.get("accepted", True))
+    items = _validate_terms_items(payload.get("accepted_terms_items") or payload.get("items") or {})
+
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id é obrigatório.")
     if not accepted:
         raise HTTPException(status_code=400, detail="É necessário aceitar os termos para continuar.")
+
+    user = db.get(User, int(user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado para registrar aceite.")
+
+    accepted_at = _db_safe_now()
+    items_json = json.dumps(items, ensure_ascii=False)
+
+    try:
+        user.accepted_terms = True
+        user.accepted_terms_at = accepted_at
+        user.terms_version = TERMS_VERSION
+        user.accepted_terms_items = items_json
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        db.execute(
+            text("""
+                UPDATE users
+                SET accepted_terms = TRUE,
+                    accepted_terms_at = :accepted_at,
+                    terms_version = :terms_version,
+                    accepted_terms_items = :items_json
+                WHERE id = :user_id
+            """),
+            {
+                "accepted_at": accepted_at,
+                "terms_version": TERMS_VERSION,
+                "items_json": items_json,
+                "user_id": int(user_id),
+            },
+        )
+        db.commit()
+
     record = {
         "user_id": user_id,
-        "role": role,
+        "role": role or user.role,
         "terms_version": TERMS_VERSION,
-        "accepted_at": _db_safe_now(),
+        "accepted_at": accepted_at,
+        "accepted_terms_items": items,
         "source": "app",
     }
     _append_jsonl(TERMS_FILE, record)
-    _log_event("terms_accepted", actor_id=int(user_id), data={"role": role, "terms_version": TERMS_VERSION})
-    return {"ok": True, "terms_version": TERMS_VERSION, "accepted_at": record["accepted_at"].isoformat()}
+    _log_event("terms_accepted", actor_id=int(user_id), data={"role": role or user.role, "terms_version": TERMS_VERSION, "items": items})
+    return {"ok": True, "terms_version": TERMS_VERSION, "accepted_at": accepted_at.isoformat(), "accepted_terms_items": items}
 
 
 @router.get("/legal/terms-version")
 def terms_version():
-    return {"terms_version": TERMS_VERSION, "required": True}
+    return {"terms_version": TERMS_VERSION, "required": True, "items": TERMS_ITEMS}
 
 
 @router.post("/users/register")
 def register_user(payload: UserCreate, db: Session = Depends(get_db)):
+    _ensure_terms_schema(db)
     normalized_email = _normalize_email(payload.email)
     normalized_password = _normalize_password(payload.password)
     normalized_full_name = payload.full_name.strip()
@@ -1035,6 +1136,7 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/users/login")
 def login_user(payload: UserLogin, db: Session = Depends(get_db)):
+    _ensure_terms_schema(db)
     normalized_email = _normalize_email(payload.email)
     normalized_password = _normalize_password(payload.password)
 

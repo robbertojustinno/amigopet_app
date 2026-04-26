@@ -15,4 +15,8 @@ class User(Base):
     profile_photo = Column(Text, nullable=True)
     online = Column(Boolean, default=False, nullable=False)
     active = Column(Boolean, default=True, nullable=False)
+    accepted_terms = Column(Boolean, default=False, nullable=False)
+    accepted_terms_at = Column(DateTime(timezone=True), nullable=True)
+    terms_version = Column(String(80), nullable=True)
+    accepted_terms_items = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

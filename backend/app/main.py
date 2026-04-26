@@ -1,6 +1,4 @@
 from pathlib import Path
-import hashlib
-import secrets
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,79 +12,38 @@ from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
 
-app = FastAPI(title=settings.APP_NAME, version="9.4.0")
-
-PASSWORD_ALGORITHM = "pbkdf2_sha256"
-PASSWORD_ITERATIONS = 260_000
-
-
-def get_password_hash(password: str) -> str:
-    clean_password = (password or "").strip()
-    salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        clean_password.encode("utf-8"),
-        salt.encode("utf-8"),
-        PASSWORD_ITERATIONS,
-    ).hex()
-    return f"{PASSWORD_ALGORITHM}${PASSWORD_ITERATIONS}${salt}${digest}"
-
-
-def _set_user_password(user: User, password: str) -> None:
-    hashed_password = get_password_hash(password)
-    if hasattr(user, "password_hash"):
-        user.password_hash = hashed_password
-    if hasattr(user, "password"):
-        user.password = hashed_password
-
-
-def _build_admin_kwargs(password: str) -> dict:
-    hashed_password = get_password_hash(password)
-    data = {
-        "full_name": "Administrador",
-        "email": "admin@amigopet.com",
-        "role": "admin",
-        "neighborhood": "Painel central",
-        "city": "Sistema",
-        "address": "Ambiente administrativo",
-        "profile_photo": None,
-        "online": False,
-        "active": True,
-    }
-    if hasattr(User, "password_hash"):
-        data["password_hash"] = hashed_password
-    if hasattr(User, "password"):
-        data["password"] = hashed_password
-    return data
-
+app = FastAPI(title=settings.APP_NAME, version="9.1.0")
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_columns()
 
 
-def create_admin() -> None:
+def create_admin():
     db: Session = SessionLocal()
     try:
         admin_email = "admin@amigopet.com"
-        admin_password = "123456"
+        admin_password = "1%3R723$Rj"
+
         existing = db.query(User).filter(User.email == admin_email).first()
-        if existing:
-            existing.full_name = "Administrador"
-            existing.role = "admin"
-            existing.neighborhood = "Painel central"
-            existing.city = "Sistema"
-            existing.address = "Ambiente administrativo"
-            existing.profile_photo = None
-            existing.online = False
-            existing.active = True
-            _set_user_password(existing, admin_password)
-            db.commit()
-            print("✅ Admin atualizado automaticamente.")
-        else:
-            admin = User(**_build_admin_kwargs(admin_password))
+
+        if not existing:
+            admin = User(
+                full_name="Administrador",
+                email=admin_email,
+                password=admin_password,
+                role="admin",
+                neighborhood="Painel central",
+                city="Sistema",
+                address="Ambiente administrativo",
+                profile_photo=None,
+                online=False,
+                active=True,
+            )
             db.add(admin)
             db.commit()
-            print("✅ Admin criado automaticamente.")
+            print("Admin criado automaticamente.")
+        else:
+            print("Admin já existe.")
     finally:
         db.close()
 
@@ -133,24 +90,24 @@ if FRONTEND_DIR.exists():
     @app.get("/landing.html", include_in_schema=False)
     async def serve_landing():
         landing_file = FRONTEND_DIR / "landing.html"
-        if landing_file.exists():
-            response = FileResponse(landing_file, media_type="text/html")
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-            return response
-        return JSONResponse({"detail": "landing.html não encontrado"}, status_code=404)
+        if not landing_file.exists():
+            return JSONResponse({"detail": "landing.html não encontrado"}, status_code=404)
+        response = FileResponse(landing_file, media_type="text/html")
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     @app.get("/guia_identidade_visual.html", include_in_schema=False)
     async def serve_brand_guide():
         guide_file = FRONTEND_DIR / "guia_identidade_visual.html"
-        if guide_file.exists():
-            response = FileResponse(guide_file, media_type="text/html")
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-            return response
-        return JSONResponse({"detail": "guia_identidade_visual.html não encontrado"}, status_code=404)
+        if not guide_file.exists():
+            return JSONResponse({"detail": "guia_identidade_visual.html não encontrado"}, status_code=404)
+        response = FileResponse(guide_file, media_type="text/html")
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     @app.get("/app.js", include_in_schema=False)
     async def serve_app_js():

@@ -1285,3 +1285,134 @@ attachMainEvents = function() {
   });
 };
 window.addEventListener("load", () => setTimeout(() => byId("splashOverlay")?.classList.add("hide"), 850));
+
+
+/* ===== Termos empresariais por item + gravação na conta ===== */
+const AMIGOPET_TERMS_VERSION = "2026-04-25-v1";
+const AMIGOPET_TERMS_ITEMS = [
+  ["responsabilidade_cliente", "Responsabilidade do cliente/tutor", "Confirmo que informarei dados verdadeiros sobre o pet, saúde, comportamento, endereço e condições especiais."],
+  ["responsabilidade_passeador", "Responsabilidade do passeador", "Confirmo que entendi que o passeador é responsável por zelo, guarda, segurança e comunicação durante o passeio."],
+  ["pagamentos_comissoes", "Pagamentos, comissões e repasses", "Confirmo ciência de que o valor pago pode incluir taxa da plataforma, comissão e regras de repasse ao passeador."],
+  ["emergencia_seguranca", "Emergência, segurança e comunicação", "Confirmo ciência sobre botão de emergência, registros do sistema, chat interno e acompanhamento do passeio."],
+  ["lgpd_privacidade", "LGPD e privacidade de dados", "Autorizo o tratamento dos dados necessários para operação, segurança, pagamento, suporte e prevenção de fraude."],
+  ["cancelamento_reembolso", "Cancelamento, reembolso e disputas", "Confirmo ciência de que cancelamentos, reembolsos e disputas seguirão as regras da plataforma."],
+  ["aceite_digital", "Aceite digital e validade jurídica", "Confirmo que o aceite eletrônico tem validade como registro de concordância com os termos vigentes."],
+];
+let acceptedTermsItems = {};
+
+function getAcceptedTermsItems() {
+  const result = {};
+  AMIGOPET_TERMS_ITEMS.forEach(([key]) => {
+    result[key] = !!document.querySelector(`[data-term-item="${key}"]`)?.checked;
+  });
+  return result;
+}
+function allProfessionalTermsAccepted() {
+  const items = getAcceptedTermsItems();
+  return AMIGOPET_TERMS_ITEMS.every(([key]) => items[key] === true);
+}
+function refreshTermsAcceptedState() {
+  acceptedTermsItems = getAcceptedTermsItems();
+  const allAccepted = allProfessionalTermsAccepted();
+  if (byId("termsAccepted")) byId("termsAccepted").checked = allAccepted;
+  byId("acceptTermsFromModalBtn")?.toggleAttribute("disabled", !allAccepted);
+  byId("registerSubmitBtn")?.toggleAttribute("disabled", !allAccepted);
+}
+function professionalTermsHtml() {
+  return `
+    <div class="terms-modal-card professional-terms-card">
+      <div class="terms-modal-head">
+        <div>
+          <h2>Termos de Responsabilidade AmigoPet</h2>
+          <p>Versão ${AMIGOPET_TERMS_VERSION} • Aceite item por item registrado na conta.</p>
+        </div>
+        <button type="button" id="closeTermsBtn" class="ghost-btn">Fechar</button>
+      </div>
+      <div class="terms-modal-body">
+        <p><strong>Antes de criar a conta, leia e marque cada item abaixo.</strong> Esse registro será salvo no cadastro do usuário com data, hora, versão dos termos e itens aceitos.</p>
+        <div class="terms-check-list">
+          ${AMIGOPET_TERMS_ITEMS.map(([key, title, text]) => `
+            <label class="terms-check-item">
+              <input type="checkbox" data-term-item="${key}">
+              <span><strong>${title}</strong><small>${text}</small></span>
+            </label>
+          `).join("")}
+        </div>
+      </div>
+      <div class="terms-modal-actions">
+        <button type="button" id="acceptTermsFromModalBtn" class="primary-btn" disabled>Li e aceito todos os itens</button>
+      </div>
+    </div>
+  `;
+}
+function installProfessionalTermsUI() {
+  const registerForm = byId("registerForm");
+  if (!registerForm) return;
+  if (!byId("termsAccepted")) {
+    const hidden = document.createElement("input");
+    hidden.type = "checkbox";
+    hidden.id = "termsAccepted";
+    hidden.className = "hidden";
+    registerForm.appendChild(hidden);
+  }
+  if (!byId("professionalTermsSummary")) {
+    const box = document.createElement("div");
+    box.id = "professionalTermsSummary";
+    box.className = "terms-summary-box";
+    box.innerHTML = `<div><strong>Termos obrigatórios</strong><p>É necessário abrir os termos e marcar todos os itens para criar a conta.</p></div><button type="button" id="openTermsBtn" class="secondary-btn">Ler e aceitar termos</button>`;
+    const submit = byId("registerSubmitBtn");
+    registerForm.insertBefore(box, submit || null);
+  }
+  let modal = byId("termsModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "termsModal";
+    modal.className = "terms-modal hidden";
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = professionalTermsHtml();
+  byId("openTermsBtn")?.addEventListener("click", openTermsModal);
+  byId("closeTermsBtn")?.addEventListener("click", closeTermsModal);
+  byId("acceptTermsFromModalBtn")?.addEventListener("click", acceptTermsFromModal);
+  byId("termsModal")?.addEventListener("click", (event) => { if (event.target?.id === "termsModal") closeTermsModal(); });
+  document.querySelectorAll("[data-term-item]").forEach((input) => input.addEventListener("change", refreshTermsAcceptedState));
+  refreshTermsAcceptedState();
+}
+openTermsModal = function() { byId("termsModal")?.classList.remove("hidden"); };
+closeTermsModal = function() { byId("termsModal")?.classList.add("hidden"); };
+acceptTermsFromModal = function() {
+  if (!allProfessionalTermsAccepted()) { alert("Marque todos os itens dos termos para continuar."); return; }
+  acceptedTermsItems = getAcceptedTermsItems();
+  if (byId("termsAccepted")) byId("termsAccepted").checked = true;
+  closeTermsModal();
+};
+const previousHandleRegisterSubmitTerms = handleRegisterSubmit;
+handleRegisterSubmit = async function(e) {
+  if (!allProfessionalTermsAccepted()) {
+    e?.preventDefault();
+    alert("Você precisa ler e aceitar todos os itens dos termos antes de criar conta.");
+    openTermsModal();
+    return false;
+  }
+  acceptedTermsItems = getAcceptedTermsItems();
+  const result = await previousHandleRegisterSubmitTerms(e);
+  if (currentUser?.id) {
+    try {
+      const accepted = await api("/legal/accept-terms", {
+        method: "POST",
+        body: JSON.stringify({ user_id: Number(currentUser.id), role: currentUser.role, accepted: true, terms_version: AMIGOPET_TERMS_VERSION, accepted_terms_items: acceptedTermsItems }),
+      });
+      currentUser.accepted_terms = true;
+      currentUser.accepted_terms_at = accepted.accepted_at;
+      currentUser.terms_version = accepted.terms_version;
+      currentUser.accepted_terms_items = accepted.accepted_terms_items;
+      localStorage.setItem("session_user", JSON.stringify(currentUser));
+    } catch (err) {
+      alert("Conta criada, mas houve falha ao registrar aceite dos termos: " + err.message);
+    }
+  }
+  return result;
+};
+const previousAttachMainEventsTerms = attachMainEvents;
+attachMainEvents = function() { previousAttachMainEventsTerms(); installProfessionalTermsUI(); };
+window.addEventListener("load", () => setTimeout(installProfessionalTermsUI, 250));
