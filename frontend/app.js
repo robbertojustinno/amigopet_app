@@ -388,6 +388,58 @@ function avatarHtml(src, alt) {
   return src ? `<img class="avatar" src="${src}" alt="${alt}">` : `<div class="avatar"></div>`;
 }
 
+function statusLabel(item) {
+  if (!item) return "pendente";
+  if (item.role === "walker") return item.active === true ? "aprovado" : "pendente";
+  return item.active === false ? "bloqueado" : "ativo";
+}
+
+async function adminApproveWalker(userId) {
+  if (!userId) return;
+  try {
+    await api(`/admin/users/${userId}/approve`, { method: "POST" });
+    alert("Passeador aprovado com sucesso.");
+    await loadAdminDashboard();
+  } catch (err) {
+    alert(err.message || "Erro ao aprovar passeador.");
+  }
+}
+
+async function adminBlockWalker(userId) {
+  if (!userId) return;
+  if (!confirm("Deseja bloquear este passeador?")) return;
+  try {
+    await api(`/admin/users/${userId}/block`, { method: "POST" });
+    alert("Passeador bloqueado com sucesso.");
+    await loadAdminDashboard();
+  } catch (err) {
+    alert(err.message || "Erro ao bloquear passeador.");
+  }
+}
+
+async function triggerEmergency(role) {
+  const requestId = role === "walker" ? activeWalkerChatRequestId : activeChatRequestId;
+  if (!requestId) {
+    alert("Abra uma solicitação/chat antes de acionar emergência.");
+    return;
+  }
+  const message = prompt("Descreva rapidamente a emergência:", "Emergência durante o passeio.");
+  if (message === null) return;
+  try {
+    await api(`/walk-requests/${requestId}/emergency`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor_id: currentUser?.id,
+        message: message || "Emergência acionada.",
+        location: currentCoords ? `${currentCoords.lat},${currentCoords.lng}` : "não informada"
+      })
+    });
+    alert("Emergência registrada e enviada ao sistema.");
+  } catch (err) {
+    alert(err.message || "Erro ao registrar emergência.");
+  }
+}
+
 function renderAdminUsers(items) {
   const box = byId("adminUsersList");
   if (!box) return;
