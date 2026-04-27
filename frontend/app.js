@@ -19,10 +19,6 @@ let availablePets = [];
 
 const PRICE_BY_DURATION = { 15: 1, 30: 2, 45: 3, 60: 4 };
 
-function isAdminEntryPage() {
-  return document.body?.dataset?.adminPage === "true" || window.location.pathname === "/admin" || window.location.pathname.endsWith("/admin.html");
-}
-
 function normalizeLoggedUser(data, fallbackRole = null) {
   if (!data || typeof data !== "object") return data;
   const normalized = { ...data };
@@ -392,24 +388,82 @@ function avatarHtml(src, alt) {
   return src ? `<img class="avatar" src="${src}" alt="${alt}">` : `<div class="avatar"></div>`;
 }
 
+function formatBoolLabel(value, yes = "Sim", no = "Não") {
+  return value ? yes : no;
+}
+
+function roleLabel(role) {
+  return ({ client: "Cliente", walker: "Passeador", admin: "Administrador" }[role] || role || "-");
+}
+
+function safeDateLabel(value) {
+  if (!value) return "-";
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return String(value);
+  }
+}
+
 function renderAdminUsers(items) {
   const box = byId("adminUsersList");
   if (!box) return;
 
+  box.classList.add("admin-users-grid");
   box.innerHTML = !items?.length ? `<div class="item">Sem registros.</div>` : "";
 
   items?.forEach((item) => {
+    const active = item.active !== false;
+    const acceptedTerms = item.accepted_terms === true || item.accepted_terms === "true";
+    const isWalker = item.role === "walker";
+
     const div = document.createElement("div");
-    div.className = "request-card";
+    div.className = `admin-user-card ${active ? "is-active" : "is-blocked"}`;
     div.innerHTML = `
-      <div class="person-row">
+      <div class="admin-user-main">
         ${avatarHtml(item.profile_photo, item.full_name)}
-        <div>
-          <div class="request-card-title">${item.full_name}</div>
-          <div class="request-meta"><span>${item.email}</span><span>${item.city || "-"} / ${item.neighborhood || "-"}</span><span class="tag">${item.role}</span></div>
+        <div class="admin-user-info">
+          <div class="admin-user-name">${item.full_name || "Sem nome"}</div>
+          <div class="admin-user-email">${item.email || "-"}</div>
+          <div class="admin-badges">
+            <span class="tag">${roleLabel(item.role)}</span>
+            <span class="tag ${active ? "tag-ok" : "tag-danger"}">${active ? "Ativo" : "Bloqueado"}</span>
+            ${item.online ? `<span class="tag tag-online">Online</span>` : `<span class="tag">Offline</span>`}
+            ${acceptedTerms ? `<span class="tag tag-ok">Termos aceitos</span>` : `<span class="tag tag-warn">Sem aceite</span>`}
+          </div>
         </div>
-      </div>`;
+      </div>
+
+      <div class="admin-user-details">
+        <div><strong>Cidade</strong><span>${item.city || "-"}</span></div>
+        <div><strong>Bairro</strong><span>${item.neighborhood || "-"}</span></div>
+        <div><strong>Endereço</strong><span>${item.address || "-"}</span></div>
+        <div><strong>Termos</strong><span>${item.terms_version || "-"} ${item.accepted_terms_at ? "• " + safeDateLabel(item.accepted_terms_at) : ""}</span></div>
+      </div>
+
+      <div class="admin-user-actions">
+        ${isWalker && !active ? `<button type="button" class="card-action-btn admin-user-action" data-action="approve" data-user-id="${item.id}">Aprovar passeador</button>` : ""}
+        ${item.role !== "admin" && active ? `<button type="button" class="secondary-btn admin-user-action" data-action="block" data-user-id="${item.id}">Bloquear</button>` : ""}
+        ${item.role !== "admin" && !active ? `<button type="button" class="ghost-btn admin-user-action" data-action="approve" data-user-id="${item.id}">Reativar</button>` : ""}
+      </div>
+    `;
     box.appendChild(div);
+  });
+
+  box.querySelectorAll(".admin-user-action").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const endpoint = btn.dataset.action === "block"
+          ? `/admin/users/${btn.dataset.userId}/block`
+          : `/admin/users/${btn.dataset.userId}/approve`;
+        await api(endpoint, { method: "POST" });
+        await loadAdminDashboard();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
   });
 }
 
@@ -931,7 +985,7 @@ function attachMainEvents() {
 }
 
 window.addEventListener("load", () => {
-  setAccessTab(isAdminEntryPage() ? "admin" : "client");
+  setAccessTab("client");
   updatePaymentBoxDefault();
   updateHeaderState();
   syncEstimatedPrice();
@@ -949,19 +1003,3 @@ window.addEventListener("load", () => {
     renderSession(null);
   }
 });
-
-/* ===== Admin secure entry page ===== */
-function forceAdminEntryPageUI() {
-  if (!isAdminEntryPage()) return;
-  currentAccessTab = "admin";
-  setAccessTab("admin");
-  document.querySelectorAll('.role-chip').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.role === 'admin');
-    if (btn.dataset.role !== 'admin') btn.classList.add('hidden');
-  });
-  byId("quickRegisterBtn")?.classList.add("hidden");
-  byId("goToRegisterBtn")?.classList.add("hidden");
-  if (byId("loginScreenTitle")) byId("loginScreenTitle").textContent = "Entrar como Admin";
-  if (byId("loginScreenSubtitle")) byId("loginScreenSubtitle").textContent = "Acesse o painel administrativo";
-}
-window.addEventListener("load", () => setTimeout(forceAdminEntryPageUI, 120));

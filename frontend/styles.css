@@ -78,37 +78,277 @@ button[type="submit"], .card-action-btn, #loadMapBtn { background: linear-gradie
 body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-size:26px} h3{font-size:20px}
 
 
-/* ===== Admin secure page ===== */
-body:not([data-admin-page="true"]) .role-chip[data-role="admin"] {
-  display: none !important;
+/* ===== V2 ajuste visual: cliente compacto e admin rico ===== */
+
+/* Cliente: reduzir altura geral dos painéis */
+#clientDashboard .panel {
+  padding: 10px !important;
+  border-radius: 14px !important;
 }
 
-body[data-admin-page="true"] .role-switch {
-  grid-template-columns: 1fr !important;
-  display: flex !important;
+#clientDashboard .grid-2 {
+  gap: 8px !important;
 }
 
-body[data-admin-page="true"] .role-chip[data-role="client"],
-body[data-admin-page="true"] .role-chip[data-role="walker"],
-body[data-admin-page="true"] #quickRegisterBtn,
-body[data-admin-page="true"] #goToRegisterBtn {
-  display: none !important;
+#clientDashboard .section-title {
+  font-size: 14px !important;
+  margin-bottom: 6px !important;
 }
 
-body[data-admin-page="true"] .role-chip[data-role="admin"] {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+#clientDashboard input,
+#clientDashboard select,
+#clientDashboard textarea {
+  padding: 7px 9px !important;
+  margin-bottom: 6px !important;
+  border-radius: 9px !important;
+  font-size: 12px !important;
 }
 
-.admin-secure-note {
-  background: #f8fbff;
-  border: 1px solid #d7e0ef;
-  color: #17345d;
-  border-radius: 12px;
-  padding: 9px 10px;
-  font-weight: 700;
+#clientDashboard textarea {
+  min-height: 46px !important;
+  max-height: 72px !important;
+}
+
+#clientDashboard iframe,
+#clientDashboard #mapFrame {
+  min-height: 118px !important;
+  height: 118px !important;
+}
+
+#clientDashboard .actions-row {
+  gap: 5px !important;
+}
+
+#clientDashboard button {
+  padding: 7px 9px !important;
+  font-size: 11.5px !important;
+  border-radius: 9px !important;
+}
+
+#clientDashboard .dashboard-header {
+  margin-bottom: 6px !important;
+}
+
+#clientDashboard .request-card {
+  padding: 7px !important;
+  border-radius: 11px !important;
+  margin-bottom: 6px !important;
+}
+
+#clientDashboard .request-card-title {
+  font-size: 13px !important;
+}
+
+#clientDashboard .request-meta {
+  font-size: 10.5px !important;
+  gap: 4px !important;
+}
+
+#clientDashboard .avatar {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+#clientDashboard .chat-box {
+  min-height: 80px !important;
+  max-height: 112px !important;
+}
+
+#clientDashboard .chat-bubble {
+  padding: 6px 8px !important;
+  font-size: 11.5px !important;
+  margin-bottom: 5px !important;
+}
+
+#clientDashboard .realtime-box {
+  padding: 8px !important;
+  font-size: 11.5px !important;
+}
+
+#clientDashboard .tracking-map {
+  height: 118px !important;
+}
+
+#clientDashboard .pet-mini-card {
+  padding: 7px !important;
+  gap: 7px !important;
+}
+
+#clientDashboard .pet-mini-card img {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 11px !important;
+}
+
+#clientDashboard .pet-mini-actions button {
+  padding: 5px 7px !important;
+  font-size: 10.5px !important;
+}
+
+#petPhotoPreviewWrap img,
+#photoPreviewWrap img,
+.photo-preview-wrap img {
+  width: 60px !important;
+  height: 60px !important;
+  max-width: 60px !important;
+  max-height: 60px !important;
+}
+
+/* Em telas largas, painel do cliente vira visão mais geral */
+@media (min-width: 1100px) {
+  #clientDashboard > .grid-2:first-of-type {
+    grid-template-columns: 0.78fr 1.22fr !important;
+  }
+
+  #clientDashboard > .grid-2:nth-of-type(2) {
+    grid-template-columns: 1.15fr 0.85fr !important;
+  }
+
+  #clientDashboard .panel {
+    max-height: none !important;
+  }
+}
+
+/* Admin: perfil rico */
+.admin-user-hint {
+  color: #607391;
   font-size: 12px;
-  margin-bottom: 10px;
+  margin: -6px 0 10px;
+}
+
+.admin-users-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 10px;
+}
+
+.admin-user-card {
+  background: #ffffff;
+  border: 1px solid #d7e0ef;
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  display: grid;
+  gap: 10px;
+}
+
+.admin-user-card.is-blocked {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.admin-user-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-user-main .avatar {
+  width: 46px !important;
+  height: 46px !important;
+}
+
+.admin-user-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-user-name {
+  font-weight: 900;
+  font-size: 15px;
+  color: #0d1b3e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-user-email {
+  color: #607391;
+  font-size: 12px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.tag-ok {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+}
+
+.tag-danger {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+}
+
+.tag-warn {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+.tag-online {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.admin-user-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  padding: 9px;
+  border-radius: 13px;
+  background: #f8fbff;
+  border: 1px solid #e1e9f5;
+}
+
+.admin-user-details div {
+  min-width: 0;
+}
+
+.admin-user-details strong {
+  display: block;
+  font-size: 10px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin-bottom: 2px;
+}
+
+.admin-user-details span {
+  display: block;
+  color: #17345d;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-user-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.admin-user-actions button {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 9px !important;
+  font-size: 11.5px !important;
+}
+
+@media (max-width: 700px) {
+  .admin-users-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-user-details {
+    grid-template-columns: 1fr;
+  }
 }
