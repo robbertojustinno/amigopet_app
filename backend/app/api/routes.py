@@ -379,7 +379,6 @@ def _user_payload(user: User) -> dict:
         "full_name": user.full_name,
         "email": user.email,
         "role": user.role,
-        "phone": getattr(user, "phone", None),
         "neighborhood": user.neighborhood,
         "city": user.city,
         "address": user.address,
@@ -400,7 +399,6 @@ def _build_user_kwargs(
     city: str,
     address: str,
     profile_photo: str | None,
-    phone: str | None = None,
     online: bool,
     active: bool,
 ) -> dict:
@@ -413,7 +411,6 @@ def _build_user_kwargs(
         "city": city,
         "address": address,
         "profile_photo": profile_photo,
-        "phone": (phone or "").strip() or None,
         "online": online,
         "active": active,
     }
@@ -447,7 +444,6 @@ def _ensure_terms_schema(db: Session) -> None:
     timestamp_type = "TIMESTAMP" if dialect != "sqlite" else "DATETIME"
     user_columns = _table_columns(db, "users")
     terms_columns = {
-        "phone": "VARCHAR(30) NULL",
         "accepted_terms": "BOOLEAN DEFAULT FALSE",
         "accepted_terms_at": f"{timestamp_type} NULL",
         "terms_version": "VARCHAR(80) NULL",
@@ -780,7 +776,6 @@ def admin_list_users(db: Session = Depends(get_db)):
             "full_name": user.full_name,
             "email": user.email,
             "role": user.role,
-            "phone": getattr(user, "phone", None),
             "neighborhood": user.neighborhood,
             "city": user.city,
             "address": user.address,
@@ -1129,7 +1124,6 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
             city=(payload.city or "").strip(),
             address=(payload.address or settings.DEFAULT_ADDRESS).strip(),
             profile_photo=payload.profile_photo,
-            phone=payload.phone,
             online=False,
             active=(payload.role != "walker"),
         )

@@ -1,14 +1,339 @@
-<!-- TRECHO PRINCIPAL DO CADASTRO CORRIGIDO -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AmigoPet Pro</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: #eef3fb; color: #0d1b3e; }
+    .topbar { display: flex; align-items: center; gap: 12px; padding: 14px 22px; background: #fff; border-bottom: 1px solid #dbe4f3; }
+    .logo { width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, #0f8f4d, #1f8de7); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 18px; }
+    .brand-title { font-size: 18px; font-weight: 700; margin: 0; }
+    .brand-subtitle { font-size: 13px; color: #5a6b8a; margin: 2px 0 0; }
+    .page { max-width: 1180px; margin: 20px auto; padding: 0 18px 32px; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 24px; align-items: start; }
+    .panel { background: #fff; border: 1px solid #d6dfef; border-radius: 24px; padding: 22px; box-shadow: 0 12px 35px rgba(25, 55, 110, 0.08); }
+    .badge { display: inline-block; background: #dff5e8; color: #0f8f4d; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+    h1, h2, h3, h4, p { margin-top: 0; }
+    .preview-box { margin-top: 16px; border: 1px solid #dce5f4; border-radius: 18px; overflow: hidden; background: #f9fbff; }
+    .preview-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e4ebf7; background: #fff; font-size: 12px; color: #5d7090; }
+    .preview-content { padding: 16px; }
+    .preview-card { background: linear-gradient(135deg, #0f2b8a, #15b86a); color: #fff; border-radius: 16px; padding: 18px; min-height: 140px; display: flex; flex-direction: column; justify-content: center; text-align: center; font-weight: 700; }
+    .preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+    .preview-mini { background: #fff; border: 1px solid #e3eaf6; border-radius: 14px; padding: 12px; min-height: 74px; font-size: 13px; color: #536583; }
+    .right-title { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+    .muted { color: #617392; margin-bottom: 18px; }
+    .role-switch { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .role-chip { border: 1px solid #c8d5ec; background: #fff; color: #16325f; border-radius: 999px; padding: 10px 16px; font-weight: 700; cursor: pointer; }
+    .role-chip.active { background: linear-gradient(90deg, #128b49, #1f8de7); color: #fff; border-color: transparent; }
+    form { display: block; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { width: 100%; padding: 14px 15px; border-radius: 14px; border: 1px solid #cfd9ea; background: #fff; outline: none; margin-bottom: 12px; }
+    textarea { min-height: 90px; resize: vertical; }
+    .primary-btn, .secondary-btn, .ghost-btn, .card-action-btn { border: none; border-radius: 14px; padding: 14px 16px; cursor: pointer; font-weight: 700; }
+    .primary-btn { width: 100%; background: linear-gradient(90deg, #108742, #0d72db); color: #fff; }
+    .secondary-btn { background: #eef4ff; color: #18335f; }
+    .ghost-btn { background: transparent; color: #0d4ea8; border: 1px solid #c4d3ec; }
+    .card-action-btn { background: linear-gradient(90deg, #108742, #0d72db); color: #fff; }
+    .hidden { display: none !important; }
+    .actions-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .dashboard-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+    .dashboard-title { font-size: 28px; font-weight: 800; margin: 0; }
+    .session-pill { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #d7e0ef; border-radius: 999px; padding: 10px 16px; color: #17345d; font-weight: 700; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .metric { background: #fff; border: 1px solid #d7e0ef; border-radius: 18px; padding: 18px; }
+    .metric-label { color: #607391; font-size: 13px; margin-bottom: 8px; }
+    .metric-value { font-size: 26px; font-weight: 800; }
+    .request-card, .item { background: #fff; border: 1px solid #d7e0ef; border-radius: 18px; padding: 16px; margin-bottom: 12px; }
+    .request-card-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+    .request-meta { display: flex; flex-wrap: wrap; gap: 10px; color: #5e7191; font-size: 13px; }
+    .request-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .tag { display: inline-block; padding: 5px 10px; border-radius: 999px; background: #eef4ff; color: #19416e; font-weight: 700; font-size: 12px; }
+    .person-row { display: flex; gap: 12px; align-items: center; }
+    .avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; background: #dce6f7; display: inline-block; flex-shrink: 0; }
+    .chat-box { background: #f9fbff; border: 1px solid #d9e3f2; border-radius: 18px; padding: 14px; min-height: 220px; max-height: 360px; overflow-y: auto; margin-bottom: 12px; }
+    .chat-bubble { background: #fff; border: 1px solid #dbe4f3; border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; color: #1d3059; }
+    .chat-bubble strong { display: block; margin-bottom: 4px; }
+    .section-title { font-size: 20px; font-weight: 800; margin-bottom: 14px; }
+    .inline-note { color: #607391; font-size: 13px; margin-top: -4px; margin-bottom: 12px; }
+    .payment-status-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+    .payment-status-subtitle { color: #617392; margin-bottom: 6px; }
+    iframe { width: 100%; border: 0; border-radius: 16px; min-height: 260px; background: #edf3fc; }
+    @media (max-width: 980px) { .hero, .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">AP</div>
+    <div>
+      <p class="brand-title">AmigoPet Pro</p>
+      <p class="brand-subtitle">Seu pet bem cuidado, seu negócio pronto para crescer</p>
+    </div>
+    <div style="margin-left:auto;">
+      <button id="logoutBtn" class="ghost-btn hidden" type="button">Sair</button>
+    </div>
+  </header>
 
-<input id="full_name" type="text" placeholder="Nome completo" required />
-<input id="email" type="email" placeholder="E-mail" required />
-<input id="password" type="password" placeholder="Senha" required />
+  <main class="page">
+    <section id="welcomeScreen" class="screen active">
+      <div class="hero">
+        <div class="panel">
+          <div class="badge">Base profissional em evolução</div>
+          <h1>Entre na sua conta</h1>
+          <p class="muted">Cliente, passeador e admin usando o mesmo backend central e o mesmo banco.</p>
 
-<input id="phone" type="tel" placeholder="Telefone / WhatsApp" />
+          <div class="preview-box">
+            <div class="preview-header">
+              <span>AmigoPet Pro</span>
+              <span>Planos • Entrar • Criar conta</span>
+            </div>
+            <div class="preview-content">
+              <div class="preview-card">
+                <div style="font-size:40px; margin-bottom:8px;">🐶 💚</div>
+                <div style="font-size:28px;">AmigoPet Pro</div>
+                <div style="font-size:14px; opacity:.9; margin-top:8px;">Passeios, confiança e cuidado em cada rota</div>
+              </div>
 
-<div class="form-row-2">
-  <input id="neighborhood" type="text" placeholder="Bairro" />
-  <input id="city" type="text" placeholder="Cidade" />
-</div>
+              <div class="preview-grid">
+                <div class="preview-mini"><strong>24h</strong><br>Pronto para evoluir aos poucos</div>
+                <div class="preview-mini"><strong>3</strong><br>Planos comerciais iniciais</div>
+                <div class="preview-mini"><strong>5★</strong><br>Sistema de reputação para passeadores</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-<input id="address" type="text" placeholder="Endereço" />
+        <div class="panel">
+          <div class="role-switch">
+            <button type="button" class="role-chip active" data-role="client">Cliente</button>
+            <button type="button" class="role-chip" data-role="walker">Passeador</button>
+            <button type="button" class="role-chip" data-role="admin">Admin</button>
+          </div>
+
+          <h2 id="loginScreenTitle" class="right-title">Entrar como Cliente</h2>
+          <p id="loginScreenSubtitle" class="muted">Acesse sua área de cliente</p>
+
+          <form id="loginForm" novalidate>
+            <input id="login_email" name="login_email" type="email" autocomplete="username" placeholder="E-mail" required />
+            <input id="login_password" name="login_password" type="password" autocomplete="current-password" placeholder="Senha" required />
+            <button class="primary-btn" id="loginSubmitBtn" type="submit">Entrar</button>
+          </form>
+
+          <div class="actions-row" style="margin-top:8px;">
+            <button id="goToRegisterBtn" type="button" class="ghost-btn">Criar conta</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="registerScreen" class="screen">
+      <div class="panel">
+        <div class="dashboard-header">
+          <div>
+            <h2 id="registerScreenTitle" class="dashboard-title">Criar conta de Cliente</h2>
+            <p id="registerScreenSubtitle" class="muted">Cadastre-se para pedir passeios</p>
+          </div>
+          <button id="backToWelcomeBtn" type="button" class="ghost-btn">Voltar</button>
+        </div>
+
+        <form id="registerForm" novalidate>
+          <div class="grid-2">
+            <div>
+              <input id="full_name" type="text" placeholder="Nome completo" required />
+              <input id="email" type="email" placeholder="E-mail" required />
+              <input id="password" type="password" placeholder="Senha" required />
+              <input id="neighborhood" type="text" placeholder="Bairro" />
+              <input id="city" type="text" placeholder="Cidade" />
+              <input id="address" type="text" placeholder="Endereço" />
+              <input id="role" type="hidden" value="client" />
+            </div>
+
+            <div>
+              <div id="walkerPhotoArea" class="hidden">
+                <div class="section-title">Foto do passeador</div>
+                <div class="actions-row">
+                  <button id="choosePhotoBtn" type="button" class="secondary-btn">Escolher foto</button>
+                  <button id="clearPhotoBtn" type="button" class="ghost-btn">Limpar</button>
+                </div>
+                <input id="profile_photo_file" type="file" accept="image/*" class="hidden" />
+                <input id="profile_photo" type="hidden" />
+                <p id="photoUploadStatus" class="inline-note">Nenhuma foto selecionada.</p>
+                <div id="photoPreviewWrap" class="hidden">
+                  <img id="photoPreview" class="avatar" alt="Foto do passeador" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="primary-btn" id="registerSubmitBtn" type="submit">Criar conta</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="clientDashboard" class="screen">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-title">Painel do Cliente</h2>
+          <div id="clientSessionInfo" class="session-pill">Cliente conectado</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="section-title">Cadastrar pet</div>
+          <form id="petForm" novalidate>
+            <input id="pet_name" type="text" placeholder="Nome do pet" required />
+            <input id="pet_breed" type="text" placeholder="Raça" />
+            <select id="pet_size">
+              <option value="pequeno">Pequeno</option>
+              <option value="medio" selected>Médio</option>
+              <option value="grande">Grande</option>
+            </select>
+            <textarea id="pet_notes" placeholder="Observações"></textarea>
+
+            <div class="actions-row">
+              <button id="choosePetPhotoBtn" type="button" class="secondary-btn">Escolher foto do pet</button>
+              <button id="clearPetPhotoBtn" type="button" class="ghost-btn">Limpar</button>
+            </div>
+            <input id="pet_photo_file" type="file" accept="image/*" class="hidden" />
+            <input id="pet_photo" type="hidden" />
+            <p id="petPhotoUploadStatus" class="inline-note">Nenhuma foto selecionada.</p>
+            <div id="petPhotoPreviewWrap" class="hidden">
+              <img id="petPhotoPreview" class="avatar" alt="Foto do pet" />
+            </div>
+
+            <button class="primary-btn" id="petSubmitBtn" type="submit">Salvar pet</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Criar solicitação de passeio</div>
+          <form id="walkForm" novalidate>
+            <input id="pickup_address" type="text" placeholder="Endereço de retirada" />
+            <input id="mapAddress" type="text" placeholder="Endereço para o mapa" />
+            <div class="actions-row">
+              <button id="loadMapBtn" type="button" class="secondary-btn">Carregar mapa</button>
+            </div>
+            <iframe id="mapFrame" title="Mapa"></iframe>
+
+            <input id="walk_neighborhood" type="text" placeholder="Bairro" />
+            <input id="walk_city" type="text" placeholder="Cidade" />
+
+            <div class="actions-row">
+              <button id="loadWalkersBtn" type="button" class="secondary-btn">Buscar passeadores</button>
+            </div>
+            <select id="selected_walker_id">
+              <option value="">Selecione um passeador</option>
+            </select>
+
+            <select id="selected_pet_id">
+              <option value="">Selecione um pet</option>
+            </select>
+
+            <input id="scheduled_at" type="datetime-local" />
+            <select id="duration_minutes">
+              <option value="15">15 minutos</option>
+              <option value="30" selected>30 minutos</option>
+              <option value="45">45 minutos</option>
+              <option value="60">60 minutos</option>
+            </select>
+            <input id="dog_count" type="number" min="1" value="1" placeholder="Quantidade de cães" />
+            <input id="price" type="number" readonly placeholder="Preço estimado" />
+            <textarea id="walk_notes" placeholder="Observações do passeio"></textarea>
+
+            <button class="primary-btn" id="walkSubmitBtn" type="submit">Criar solicitação</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:18px;">
+        <div class="panel">
+          <div class="dashboard-header">
+            <div class="section-title" style="margin:0;">Minhas solicitações</div>
+            <button id="loadRequestsBtn" type="button" class="secondary-btn">Atualizar</button>
+          </div>
+          <div id="requestList"></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Chat do cliente</div>
+          <p id="chatHeaderLabel" class="inline-note">Abra o chat de uma solicitação.</p>
+          <div id="chatList" class="chat-box"></div>
+          <form id="messageForm" novalidate>
+            <textarea id="chat_text" placeholder="Digite sua mensagem"></textarea>
+            <button class="primary-btn" id="messageSubmitBtn" type="submit">Enviar mensagem</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="section-title">Pagamento</div>
+        <div id="paymentStatusBox"></div>
+      </div>
+    </section>
+
+    <section id="walkerDashboard" class="screen">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-title">Painel do Passeador</h2>
+          <div id="walkerSessionInfo" class="session-pill">Passeador conectado</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="dashboard-header">
+            <div class="section-title" style="margin:0;">Solicitações disponíveis</div>
+            <button id="refreshWalkerBtn" type="button" class="secondary-btn">Atualizar tela</button>
+          </div>
+          <div id="walkerRequestsInfo"></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">Chat do passeador</div>
+          <p id="walkerChatHeaderLabel" class="inline-note">Abra o chat de uma solicitação.</p>
+          <div id="walkerChatList" class="chat-box"></div>
+          <form id="walkerMessageForm" novalidate>
+            <textarea id="walker_chat_text" placeholder="Digite sua mensagem"></textarea>
+            <button class="primary-btn" id="walkerMessageSubmitBtn" type="submit">Enviar mensagem</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section id="adminDashboard" class="screen">
+      <div class="dashboard-header">
+        <div>
+          <h2 class="dashboard-title">Painel Administrativo</h2>
+          <div id="adminSessionInfo" class="session-pill">Admin conectado</div>
+        </div>
+        <div class="actions-row">
+          <button id="refreshAdminBtn" type="button" class="secondary-btn">Atualizar dashboard</button>
+          <button id="expireBtn" type="button" class="ghost-btn">Expirar convites</button>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <div class="metric"><div class="metric-label">Total de usuários</div><div id="metricTotalUsers" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Clientes</div><div id="metricClients" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Passeadores</div><div id="metricWalkers" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Receita</div><div id="metricRevenue" class="metric-value">R$ 0,00</div></div>
+        <div class="metric"><div class="metric-label">Solicitações</div><div id="metricRequests" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Concluídas</div><div id="metricCompleted" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">Pagas</div><div id="metricPaid" class="metric-value">0</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="section-title">Usuários</div>
+        <div id="adminUsersList"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=60"></script>
+</body>
+</html>
