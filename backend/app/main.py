@@ -14,16 +14,7 @@ from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
 
-from app.db.migrations import add_phone_column
-
-@app.on_event("startup")
-def startup():
-    db = SessionLocal()
-    add_phone_column(db)
-    db.close()
-
-app = FastAPI(title=settings.APP_NAME, version="9.1.0")
-
+app = FastAPI(title=settings.APP_NAME, version="9.4.0")
 
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 260_000
@@ -78,9 +69,7 @@ def create_admin() -> None:
     try:
         admin_email = "admin@amigopet.com"
         admin_password = "123456"
-
         existing = db.query(User).filter(User.email == admin_email).first()
-
         if existing:
             existing.full_name = "Administrador"
             existing.role = "admin"
