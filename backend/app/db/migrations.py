@@ -3,10 +3,8 @@ from app.db.session import engine
 
 
 def ensure_sqlite_columns():
-    if not str(engine.url).startswith("sqlite"):
-        return
-
-    stmts = [
+    stmts_sqlite = [
+        "ALTER TABLE users ADD COLUMN phone VARCHAR(30)",
         "ALTER TABLE users ADD COLUMN accepted_terms BOOLEAN DEFAULT 0",
         "ALTER TABLE users ADD COLUMN accepted_terms_at DATETIME",
         "ALTER TABLE users ADD COLUMN terms_version VARCHAR(80)",
@@ -24,17 +22,31 @@ def ensure_sqlite_columns():
         "ALTER TABLE walk_requests ADD COLUMN payment_updated_at DATETIME",
     ]
 
+    stmts_postgres = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms_at TIMESTAMP NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version VARCHAR(80)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms_items TEXT",
+        "ALTER TABLE pets ADD COLUMN IF NOT EXISTS photo_url VARCHAR(255)",
+        "ALTER TABLE pets ADD COLUMN IF NOT EXISTS dog_count INTEGER DEFAULT 1",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(120)",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_role VARCHAR(20)",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_photo VARCHAR(255)",
+        "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS dog_count INTEGER DEFAULT 1",
+        "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_id VARCHAR(80)",
+        "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(30) DEFAULT 'mercado_pago'",
+        "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_link TEXT",
+        "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL",
+        "ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS payment_updated_at TIMESTAMP NULL",
+    ]
+
+    is_sqlite = str(engine.url).startswith("sqlite")
+    statements = stmts_sqlite if is_sqlite else stmts_postgres
+
     with engine.begin() as conn:
-        for stmt in stmts:
+        for stmt in statements:
             try:
                 conn.execute(text(stmt))
             except Exception:
                 pass
-                
-                def add_phone_column(db):
-    try:
-        db.execute("ALTER TABLE users ADD COLUMN phone VARCHAR(30);")
-        db.commit()
-        print("✅ coluna phone criada")
-    except Exception as e:
-        print("⚠️ talvez já exista:", e)
