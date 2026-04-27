@@ -50,3 +50,29 @@ def ensure_sqlite_columns():
                 conn.execute(text(stmt))
             except Exception:
                 pass
+
+
+def add_phone_column(db=None):
+    """Compatibilidade com main.py antigo. Cria a coluna phone se ainda não existir."""
+    statement = (
+        "ALTER TABLE users ADD COLUMN phone VARCHAR(30)"
+        if str(engine.url).startswith("sqlite")
+        else "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30)"
+    )
+
+    if db is not None:
+        try:
+            db.execute(text(statement))
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return
+
+    with engine.begin() as conn:
+        try:
+            conn.execute(text(statement))
+        except Exception:
+            pass
