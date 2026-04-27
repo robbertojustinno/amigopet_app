@@ -132,6 +132,7 @@ async function loadPets() {
 
   try {
     availablePets = await api(`/pets/${currentUser.id}`);
+    renderPets(availablePets);
     select.innerHTML = `<option value="">Selecione um pet</option>`;
 
     availablePets.forEach((pet) => {
@@ -436,10 +437,8 @@ function renderAdminUsers(items) {
         </div>
       </div>
 
-      <div class="admin-user-details">
-        <div><strong>Cidade</strong><span>${item.city || "-"}</span></div>
-        <div><strong>Bairro</strong><span>${item.neighborhood || "-"}</span></div>
-        <div><strong>Endereço</strong><span>${item.address || "-"}</span></div>
+      <div class="admin-user-details single-line">
+        <span>📍 ${item.city || "-"} • ${item.neighborhood || "-"} • ${item.address || "-"} • 📞 ${item.phone || "-"}</span>
         <div><strong>Termos</strong><span>${item.terms_version || "-"} ${item.accepted_terms_at ? "• " + safeDateLabel(item.accepted_terms_at) : ""}</span></div>
       </div>
 
@@ -730,7 +729,8 @@ async function handleRegisterSubmit(e) {
       neighborhood: byId("neighborhood")?.value || "",
       city: byId("city")?.value || "",
       address: byId("address")?.value || "",
-      profile_photo: byId("profile_photo")?.value.trim() || null
+      profile_photo: byId("profile_photo")?.value.trim() || null,
+      phone: byId("phone")?.value || ""
     };
 
     let data = await api("/users/register", {
@@ -1003,3 +1003,22 @@ window.addEventListener("load", () => {
     renderSession(null);
   }
 });
+
+function renderPets(pets) {
+  const box = document.getElementById("petList");
+  if (!box) return;
+
+  box.innerHTML = "";
+  pets.forEach((pet) => {
+    const div = document.createElement("div");
+    div.className = "pet-mini-card";
+    div.innerHTML = `
+      <img src="${pet.photo_url || ''}" />
+      <div>
+        <div>${pet.name}</div>
+        <div>${pet.breed || ""}</div>
+      </div>
+    `;
+    box.appendChild(div);
+  });
+}
