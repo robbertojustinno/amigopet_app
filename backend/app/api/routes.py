@@ -1115,18 +1115,15 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="E-mail já cadastrado.")
 
     user = User(
-        **_build_user_kwargs(
-            full_name=normalized_full_name,
-            email=normalized_email,
-            password=normalized_password,
-            role=payload.role,
-            neighborhood=(payload.neighborhood or "").strip(),
-            city=(payload.city or "").strip(),
-            address=(payload.address or settings.DEFAULT_ADDRESS).strip(),
-            profile_photo=payload.profile_photo,
-            online=False,
-            active=(payload.role != "walker"),
-        )
+    full_name=data.full_name,
+    email=data.email,
+    password=data.password,
+    role=data.role,
+    phone=data.phone,  # ✅ NOVO
+    neighborhood=data.neighborhood,
+    city=data.city,
+    address=data.address
+)
     )
     db.add(user)
     db.commit()

@@ -30,3 +30,11 @@ def ensure_sqlite_columns():
                 conn.execute(text(stmt))
             except Exception:
                 pass
+                
+                def add_phone_column(db):
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN phone VARCHAR(30);")
+        db.commit()
+        print("✅ coluna phone criada")
+    except Exception as e:
+        print("⚠️ talvez já exista:", e)

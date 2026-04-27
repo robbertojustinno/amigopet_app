@@ -352,3 +352,39 @@ body,input,select,textarea,button{font-size:14px} h1{font-size:18px} h2{font-siz
     grid-template-columns: 1fr;
   }
 }
+/* 🔥 COMPACTAR TUDO */
+
+input, select, textarea {
+  padding: 8px !important;
+  font-size: 12px !important;
+  border-radius: 10px !important;
+}
+
+button {
+  padding: 8px !important;
+  font-size: 12px !important;
+}
+
+.panel {
+  padding: 12px !important;
+}
+
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pet-mini-card {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 10px;
+  background: #f0f4ff;
+}
+
+.pet-mini-card img {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}

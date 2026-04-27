@@ -14,6 +14,14 @@ from app.db.migrations import ensure_sqlite_columns
 from app.db.session import Base, SessionLocal, engine
 from app.models.user import User
 
+from app.db.migrations import add_phone_column
+
+@app.on_event("startup")
+def startup():
+    db = SessionLocal()
+    add_phone_column(db)
+    db.close()
+
 app = FastAPI(title=settings.APP_NAME, version="9.1.0")
 
 
