@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 from passlib.context import CryptContext
 
@@ -219,6 +219,71 @@ def walk_to_dict(w: WalkRequest):
         "created_at": w.created_at.isoformat(),
     }
 
+def _ddl_type(kind: str) -> str:
+    if kind == "int":
+        return "INTEGER"
+    if kind == "float":
+        return "DOUBLE PRECISION" if not DATABASE_URL.startswith("sqlite") else "REAL"
+    if kind == "bool":
+        return "BOOLEAN"
+    if kind == "datetime":
+        return "TIMESTAMP" if not DATABASE_URL.startswith("sqlite") else "DATETIME"
+    if kind == "text":
+        return "TEXT"
+    return "VARCHAR(255)"
+
+def _add_missing_column(conn, table_name: str, column_name: str, kind: str):
+    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {_ddl_type(kind)}"))
+
+def run_lightweight_migrations():
+    """Adiciona colunas novas em bancos antigos do Render sem apagar dados."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return
+
+    expected_columns = {
+        "users": {
+            "full_name": "str", "email": "str", "password_hash": "str", "role": "str",
+            "phone": "str", "photo": "text", "document": "str", "address": "text",
+            "neighborhood": "str", "city": "str", "lat": "float", "lng": "float",
+            "rating": "float", "available": "bool", "bio": "text", "created_at": "datetime",
+        },
+        "pets": {
+            "owner_id": "int", "name": "str", "species": "str", "breed": "str",
+            "size": "str", "age": "str", "photo": "text", "notes": "text",
+        },
+        "walk_requests": {
+            "client_id": "int", "walker_id": "int", "pet_id": "int", "address": "text",
+            "pickup_lat": "float", "pickup_lng": "float", "walker_lat": "float", "walker_lng": "float",
+            "duration_minutes": "int", "dogs_count": "int", "estimated_price": "float", "distance_km": "float",
+            "status": "str", "payment_status": "str", "pix_code": "text", "notes": "text",
+            "expires_at": "datetime", "started_at": "datetime", "finished_at": "datetime", "created_at": "datetime",
+        },
+        "messages": {
+            "request_id": "int", "sender_id": "int", "text": "text", "created_at": "datetime",
+        },
+    }
+
+    with engine.begin() as conn:
+        for table_name, columns in expected_columns.items():
+            if table_name not in existing_tables:
+                continue
+            current_columns = {c["name"] for c in inspect(engine).get_columns(table_name)}
+            for column_name, kind in columns.items():
+                if column_name not in current_columns:
+                    _add_missing_column(conn, table_name, column_name, kind)
+
+        if "users" in existing_tables:
+            default_hash = hash_password("123456")
+            conn.execute(
+                text("UPDATE users SET password_hash = :ph WHERE password_hash IS NULL OR password_hash = ''"),
+                {"ph": default_hash},
+            )
+            conn.execute(text("UPDATE users SET role = 'client' WHERE role IS NULL OR role = ''"))
+            conn.execute(text("UPDATE users SET rating = 5.0 WHERE rating IS NULL"))
+            conn.execute(text("UPDATE users SET available = TRUE WHERE available IS NULL"))
+
 def seed_data():
     db = SessionLocal()
     try:
@@ -239,6 +304,7 @@ def seed_data():
         db.close()
 
 Base.metadata.create_all(bind=engine)
+run_lightweight_migrations()
 seed_data()
 
 @app.websocket("/ws")

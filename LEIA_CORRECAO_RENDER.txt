@@ -1,0 +1,27 @@
+AMIGOPET V6 - CORREÇÃO RENDER
+
+Arquivos corrigidos:
+- backend/app/main.py
+- frontend/app.js
+- requirements.txt
+- backend/requirements.txt
+- runtime.txt
+- render.yaml
+
+Correções:
+1. API do frontend aponta para https://amigopet-6td8.onrender.com
+2. WebSocket aponta para wss://amigopet-6td8.onrender.com/ws
+3. requirements com passlib[bcrypt] e bcrypt
+4. runtime travado em Python 3.11.9
+5. Backend agora corrige banco antigo automaticamente quando faltar users.password_hash.
+
+Como aplicar:
+Copie as pastas/arquivos por cima do seu projeto.
+Depois rode:
+
+git add .
+git commit -m "Fix Render banco e frontend completo"
+git push
+
+No Render:
+Manual Deploy -> Clear build cache & deploy
