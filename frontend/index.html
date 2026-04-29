@@ -6,7 +6,7 @@
   <title>AmigoPet V8 • Mapa Tempo Real</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-map" />
+  <link rel="stylesheet" href="/static/styles.css?v=v8-auth1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -19,12 +19,13 @@
     <div class="status-pill" id="liveStatus">Conectando tempo real...</div>
   </header>
 
-  <nav class="nav">
-    <button class="nav-btn active" data-view="home">Início</button>
-    <button class="nav-btn" data-view="request">Cliente</button>
-    <button class="nav-btn" data-view="walker">Passeador</button>
-    <button class="nav-btn" data-view="tracking">Mapa</button>
-    <button class="nav-btn" data-view="admin">Admin</button>
+  <nav class="nav" id="mainNav">
+    <button class="nav-btn active" data-view="home" data-roles="guest,client,walker,admin">Início</button>
+    <button class="nav-btn role-client" data-view="request" data-roles="client,admin">Cliente</button>
+    <button class="nav-btn role-walker" data-view="walker" data-roles="walker,admin">Passeador</button>
+    <button class="nav-btn role-tracking" data-view="tracking" data-roles="client,walker,admin">Mapa</button>
+    <button class="nav-btn role-admin" data-view="admin" data-roles="admin">Admin</button>
+    <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
   <main>
@@ -45,7 +46,7 @@
             <button onclick="login()">Entrar</button>
             <button class="secondary" onclick="loginWalker()">Entrar como passeador</button>
           </div>
-          <div id="loggedUser" class="notice">Nenhum usuário conectado.</div>
+          <div id="loggedUser" class="notice">Nenhum usuário conectado. Faça login para liberar sua área.</div>
         </div>
 
         <div class="grid metrics">
@@ -56,7 +57,7 @@
       </div>
     </section>
 
-    <section id="request" class="view">
+    <section id="request" class="view protected-view" data-roles="client,admin">
       <div class="grid two">
         <div class="card">
           <h2>Cadastro do pet</h2>
@@ -98,7 +99,7 @@
       </div>
     </section>
 
-    <section id="walker" class="view">
+    <section id="walker" class="view protected-view" data-roles="walker,admin">
       <div class="card">
         <h2>Central do passeador</h2>
         <p class="muted">Aceite/recuse convites, confirme etapas e use GPS real durante o passeio.</p>
@@ -106,7 +107,7 @@
       </div>
     </section>
 
-    <section id="tracking" class="view">
+    <section id="tracking" class="view protected-view" data-roles="client,walker,admin">
       <div class="grid two tracking-grid">
         <div class="card">
           <h2>Mapa em tempo real</h2>
@@ -131,7 +132,7 @@
       </div>
     </section>
 
-    <section id="admin" class="view">
+    <section id="admin" class="view protected-view" data-roles="admin">
       <div class="grid metrics">
         <div class="metric"><strong id="sUsers">0</strong><span>Usuários</span></div>
         <div class="metric"><strong id="sClients">0</strong><span>Clientes</span></div>
@@ -167,6 +168,6 @@
   <footer>Powered by Just Engine • AmigoPet V8</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=v8-map"></script>
+  <script src="/static/app.js?v=v8-auth1"></script>
 </body>
 </html>

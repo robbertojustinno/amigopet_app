@@ -13,6 +13,55 @@ let pickupMarker = null;
 let gpsWatchId = null;
 
 const $ = (id) => document.getElementById(id);
+const ROLE_LABELS = {client:'Cliente', walker:'Passeador', admin:'Administrador'};
+const VIEW_ROLES = {
+  home: ['guest','client','walker','admin'],
+  request: ['client','admin'],
+  walker: ['walker','admin'],
+  tracking: ['client','walker','admin'],
+  admin: ['admin']
+};
+
+function getRole(){ return currentUser?.role || 'guest'; }
+function hasAccess(viewId){ return (VIEW_ROLES[viewId] || ['admin']).includes(getRole()); }
+function requireLogin(){
+  if(currentUser) return true;
+  toast('Faça login para acessar esta área.');
+  showView('home', true);
+  return false;
+}
+function requireRole(roles){
+  if(!requireLogin()) return false;
+  if(roles.includes(currentUser.role) || currentUser.role === 'admin') return true;
+  toast('Acesso bloqueado para este perfil.');
+  showView('home', true);
+  return false;
+}
+function saveSession(){ if(currentUser) localStorage.setItem('amigopet_user', JSON.stringify(currentUser)); }
+function restoreSession(){ try{ const saved = localStorage.getItem('amigopet_user'); if(saved) currentUser = JSON.parse(saved); }catch(e){ currentUser = null; } }
+function logout(){
+  currentUser = null; currentRequestId = null; selectedWalkerId = null; lastWalk = null;
+  localStorage.removeItem('amigopet_user');
+  updateAuthUI(); showView('home', true); toast('Sessão encerrada.');
+}
+function updateAuthUI(){
+  const role = getRole();
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    const roles = (btn.dataset.roles || '').split(',').filter(Boolean);
+    if(btn.id === 'logoutBtn'){
+      btn.style.display = currentUser ? 'inline-flex' : 'none';
+      return;
+    }
+    btn.style.display = roles.length === 0 || roles.includes(role) ? 'inline-flex' : 'none';
+  });
+  const logged = $('loggedUser');
+  if(logged){
+    logged.innerHTML = currentUser
+      ? `<strong>${currentUser.full_name}</strong> conectado como <strong>${ROLE_LABELS[currentUser.role] || currentUser.role}</strong>`
+      : 'Nenhum usuário conectado. Faça login para liberar sua área.';
+  }
+}
+
 
 function toast(msg){
   const el = $('toast');
@@ -32,7 +81,11 @@ function fillLogin(){
   $('loginPassword').value = '123456';
 }
 
-function showView(id){
+function showView(id, force=false){
+  if(!force && !hasAccess(id)){
+    toast(currentUser ? 'Seu perfil não tem acesso a esta tela.' : 'Faça login para acessar esta área.');
+    id = 'home';
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const view = $(id);
@@ -41,6 +94,7 @@ function showView(id){
   refreshAll().catch(()=>{});
   if(id === 'tracking') setTimeout(()=> { initMap(); if(lastWalk) renderMap(lastWalk); }, 250);
 }
+
 
 document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.view)));
 
@@ -96,11 +150,16 @@ function connectWS(){
 async function login(){
   try{
     currentUser = await api('/api/auth/login', {method:'POST', body: JSON.stringify({email:$('loginEmail').value, password:$('loginPassword').value})});
-    $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>${currentUser.role}</strong>`;
+    saveSession();
+    updateAuthUI();
     toast('Login realizado.');
     await refreshAll();
+    if(currentUser.role === 'admin') showView('admin', true);
+    else if(currentUser.role === 'walker') showView('walker', true);
+    else showView('request', true);
   }catch(err){ toast(err.message); }
 }
+
 
 async function loginWalker(){
   $('loginEmail').value = 'passeador@amigopet.com';
@@ -110,7 +169,7 @@ async function loginWalker(){
 
 async function createPet(){
   try{
-    if(!currentUser) await login();
+    if(!requireRole(['client'])) return;
     const pet = await api('/api/pets', {method:'POST', body: JSON.stringify({
       owner_id: currentUser.id,
       name:$('petName').value,
@@ -136,7 +195,7 @@ function selectWalker(id){
 
 async function createWalk(){
   try{
-    if(!currentUser) await login();
+    if(!requireRole(['client'])) return;
     const data = {
       client_id: currentUser.id,
       walker_id: Number($('walkerSelect').value) || selectedWalkerId || null,
@@ -161,6 +220,7 @@ async function createWalk(){
 
 async function acceptWalk(id){
   try{
+    if(!requireRole(['walker'])) return;
     const walkers = await api('/api/users?role=walker');
     const walkerId = (currentUser && currentUser.role === 'walker') ? currentUser.id : (lastWalk?.walker_id || selectedWalkerId || walkers[0]?.id || 3);
     const walk = await api(`/api/walks/${id}/accept?walker_id=${walkerId}`, {method:'POST'});
@@ -172,6 +232,7 @@ async function acceptWalk(id){
 
 async function rejectWalk(id){
   try{
+    if(!requireRole(['walker'])) return;
     const walk = await api(`/api/walks/${id}/reject`, {method:'POST'});
     lastWalk = walk; renderCurrentWalk(walk); renderMap(walk);
     toast('Convite recusado.');
@@ -181,6 +242,7 @@ async function rejectWalk(id){
 
 async function payWalk(id){
   try{
+    if(!requireRole(['client','admin'])) return;
     const walk = await api(`/api/walks/${id}/pay`, {method:'POST'});
     lastWalk = walk; currentRequestId = id; renderCurrentWalk(walk); renderMap(walk);
     toast('PIX confirmado.');
@@ -190,6 +252,7 @@ async function payWalk(id){
 
 async function startWalk(id){
   try{
+    if(!requireRole(['walker'])) return;
     const walk = await api(`/api/walks/${id}/start`, {method:'POST'});
     lastWalk = walk; renderCurrentWalk(walk); renderMap(walk);
     toast('Passeio iniciado.');
@@ -199,6 +262,7 @@ async function startWalk(id){
 
 async function finishWalk(id){
   try{
+    if(!requireRole(['walker'])) return;
     const walk = await api(`/api/walks/${id}/finish`, {method:'POST'});
     lastWalk = walk; renderCurrentWalk(walk); renderMap(walk);
     toast('Passeio finalizado.');
@@ -261,6 +325,7 @@ function renderMap(w){
 }
 
 async function simulateMove(){
+  if(!requireRole(['walker','admin'])) return;
   if(!currentRequestId) return toast('Crie ou selecione um pedido primeiro.');
   const target = lastWalk ? [Number(lastWalk.pickup_lat), Number(lastWalk.pickup_lng)] : [-22.5884, -43.1847];
   const start = lastWalk ? [Number(lastWalk.walker_lat), Number(lastWalk.walker_lng)] : [-22.5900, -43.1810];
@@ -275,6 +340,7 @@ async function simulateMove(){
 }
 
 function startGps(){
+  if(!requireRole(['walker'])) return;
   if(!currentRequestId) return toast('Abra uma solicitação primeiro.');
   if(!navigator.geolocation) return toast('GPS não suportado neste aparelho/navegador.');
   if(gpsWatchId) return toast('GPS já está ativo.');
@@ -357,6 +423,7 @@ async function loadWalk(id){
 }
 
 async function refreshAll(){
+  updateAuthUI();
   const [users, walkers, walks] = await Promise.all([api('/api/users'), api('/api/users?role=walker'), api('/api/walks')]);
   const clients = users.filter(u => u.role === 'client');
 
@@ -388,9 +455,24 @@ async function refreshAll(){
     $('petSelect').innerHTML = `<option value="">Escolha o pet</option>` + pets.map(p => `<option value="${p.id}">${p.name} • ${p.size}</option>`).join('');
   }
 
-  if($('walkerRequests')) $('walkerRequests').innerHTML = walks.length ? walks.map(w => walkItem(w)).join('') : '<div class="notice">Sem solicitações.</div>';
-  if($('adminWalks')) $('adminWalks').innerHTML = walks.length ? walks.map(w => walkItem(w)).join('') : '<div class="notice">Nenhum pedido criado.</div>';
-  if($('adminUsers')) $('adminUsers').innerHTML = users.map(u => `<div class="item"><strong>${u.full_name}</strong><br><span class="muted">${u.email}</span><br>Tipo: ${u.role} • Cidade: ${u.city || '-'} • ⭐ ${u.rating}</div>`).join('');
+  if($('walkerRequests')){
+    if(currentUser?.role === 'walker' || currentUser?.role === 'admin'){
+      const visibleWalks = currentUser.role === 'walker' ? walks.filter(w => !w.walker_id || w.walker_id === currentUser.id) : walks;
+      $('walkerRequests').innerHTML = visibleWalks.length ? visibleWalks.map(w => walkItem(w, true)).join('') : '<div class="notice">Sem solicitações para este passeador.</div>';
+    }else{
+      $('walkerRequests').innerHTML = '<div class="notice">Faça login como passeador para ver convites.</div>';
+    }
+  }
+  if($('adminWalks')){
+    $('adminWalks').innerHTML = currentUser?.role === 'admin'
+      ? (walks.length ? walks.map(w => walkItem(w)).join('') : '<div class="notice">Nenhum pedido criado.</div>')
+      : '<div class="notice">Área exclusiva do administrador.</div>';
+  }
+  if($('adminUsers')){
+    $('adminUsers').innerHTML = currentUser?.role === 'admin'
+      ? users.map(u => `<div class="item"><strong>${u.full_name}</strong><br><span class="muted">${u.email}</span><br>Tipo: ${u.role} • Cidade: ${u.city || '-'} • ⭐ ${u.rating}</div>`).join('')
+      : '<div class="notice">Área exclusiva do administrador.</div>';
+  }
 
   if(!lastWalk && walks[0]){
     lastWalk = walks[0];
@@ -422,8 +504,8 @@ async function loadMessages(){
 
 async function sendMessage(){
   try{
+    if(!requireLogin()) return;
     if(!currentRequestId) return toast('Abra uma solicitação primeiro.');
-    if(!currentUser) await login();
     const text = $('chatText').value.trim();
     if(!text) return;
     await api('/api/messages', {method:'POST', body: JSON.stringify({request_id: currentRequestId, sender_id: currentUser.id, text})});
@@ -432,6 +514,8 @@ async function sendMessage(){
   }catch(err){ toast(err.message); }
 }
 
+restoreSession();
+updateAuthUI();
 connectWS();
 refreshAll().catch(() => toast('Backend iniciando ou indisponível.'));
 setInterval(refreshAll, 10000);
