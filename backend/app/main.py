@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,17 +18,25 @@ from passlib.context import CryptContext
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v7.db")
-MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "").strip()
-MP_WEBHOOK_URL = os.getenv("MP_WEBHOOK_URL", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v8.db")
+
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-app = FastAPI(title="AmigoPet V7 Uber PIX", version="7.0.0")
+# PBKDF2 evita o bug do bcrypt no Python 3.14 do Render.
+# Também consegue verificar hashes antigos em bcrypt, se existirem.
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256", "bcrypt"],
+    deprecated=["bcrypt"],
+)
+
+app = FastAPI(title="AmigoPet V8 Mapa Tempo Real", version="8.0.0")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
@@ -36,8 +45,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class User(Base):
     __tablename__ = "users"
+
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String(120), nullable=False)
     email = Column(String(180), unique=True, index=True, nullable=False)
@@ -56,8 +67,10 @@ class User(Base):
     bio = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 class Pet(Base):
     __tablename__ = "pets"
+
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String(100), nullable=False)
@@ -69,8 +82,10 @@ class Pet(Base):
     notes = Column(Text, default="")
     owner = relationship("User")
 
+
 class WalkRequest(Base):
     __tablename__ = "walk_requests"
+
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     walker_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -80,6 +95,8 @@ class WalkRequest(Base):
     pickup_lng = Column(Float, default=-43.1847)
     walker_lat = Column(Float, default=-22.5900)
     walker_lng = Column(Float, default=-43.1810)
+    destination_lat = Column(Float, default=-22.5884)
+    destination_lng = Column(Float, default=-43.1847)
     duration_minutes = Column(Integer, default=30)
     dogs_count = Column(Integer, default=1)
     estimated_price = Column(Float, default=25.0)
@@ -87,25 +104,26 @@ class WalkRequest(Base):
     status = Column(String(40), default="pendente")
     payment_status = Column(String(40), default="aguardando")
     pix_code = Column(Text, default="")
-    pix_qr_base64 = Column(Text, default="")
-    mp_payment_id = Column(String(80), default="")
-    mp_status = Column(String(80), default="")
     notes = Column(Text, default="")
     expires_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
     client = relationship("User", foreign_keys=[client_id])
     walker = relationship("User", foreign_keys=[walker_id])
     pet = relationship("Pet")
 
+
 class Message(Base):
     __tablename__ = "messages"
+
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(Integer, ForeignKey("walk_requests.id"), nullable=False)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class RegisterIn(BaseModel):
     full_name: str
@@ -120,9 +138,11 @@ class RegisterIn(BaseModel):
     city: str = ""
     bio: str = ""
 
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
 
 class PetIn(BaseModel):
     owner_id: int
@@ -133,6 +153,7 @@ class PetIn(BaseModel):
     age: str = ""
     photo: str = ""
     notes: str = ""
+
 
 class WalkIn(BaseModel):
     client_id: int
@@ -145,14 +166,17 @@ class WalkIn(BaseModel):
     dogs_count: int = 1
     notes: str = ""
 
+
 class MessageIn(BaseModel):
     request_id: int
     sender_id: int
     text: str
 
+
 class LocationIn(BaseModel):
     lat: float
     lng: float
+
 
 class ConnectionManager:
     def __init__(self):
@@ -176,7 +200,9 @@ class ConnectionManager:
         for ws in dead:
             self.disconnect(ws)
 
+
 manager = ConnectionManager()
+
 
 def get_db():
     db = SessionLocal()
@@ -185,216 +211,260 @@ def get_db():
     finally:
         db.close()
 
+
 def hash_password(password: str) -> str:
-    # PBKDF2 evita instabilidade do bcrypt em alguns ambientes Python 3.14 no Render.
     return pwd_context.hash((password or "")[:72])
 
+
 def verify_password(password: str, password_hash: str) -> bool:
+    if not password_hash:
+        return False
     try:
-        if not password_hash:
-            return False
-        if password_hash.startswith("$2"):
-            # Compatibilidade emergencial com bancos antigos criados com bcrypt.
-            return password == "123456"
         return pwd_context.verify((password or "")[:72], password_hash)
     except Exception:
         return False
 
+
 def user_to_dict(u: User):
     return {
-        "id": u.id, "full_name": u.full_name, "email": u.email, "role": u.role,
-        "phone": u.phone, "photo": u.photo, "document": u.document, "address": u.address,
-        "neighborhood": u.neighborhood, "city": u.city, "lat": u.lat, "lng": u.lng,
-        "rating": u.rating, "available": u.available, "bio": u.bio,
+        "id": u.id,
+        "full_name": u.full_name,
+        "email": u.email,
+        "role": u.role,
+        "phone": u.phone,
+        "photo": u.photo,
+        "document": u.document,
+        "address": u.address,
+        "neighborhood": u.neighborhood,
+        "city": u.city,
+        "lat": u.lat,
+        "lng": u.lng,
+        "rating": u.rating,
+        "available": u.available,
+        "bio": u.bio,
     }
 
+
 def pet_to_dict(p: Pet):
-    return {"id": p.id, "owner_id": p.owner_id, "name": p.name, "species": p.species, "breed": p.breed, "size": p.size, "age": p.age, "photo": p.photo, "notes": p.notes}
+    return {
+        "id": p.id,
+        "owner_id": p.owner_id,
+        "name": p.name,
+        "species": p.species,
+        "breed": p.breed,
+        "size": p.size,
+        "age": p.age,
+        "photo": p.photo,
+        "notes": p.notes,
+    }
+
 
 def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
-    return f"000201-AMIGOPET-PIX-SIMULADO-ID{walk_id}-VALOR{amount:.2f}-TOKEN{token}"
+    return f"000201-AMIGOPET-PIX-ID{walk_id}-VALOR{amount:.2f}-TOKEN{token}"
 
-def create_mercado_pago_pix(walk: WalkRequest) -> dict:
-    """Cria cobrança PIX no Mercado Pago quando MP_ACCESS_TOKEN estiver configurado.
-    Se não houver token, devolve PIX simulado para manter o app funcionando.
-    """
-    if not MP_ACCESS_TOKEN:
-        return {
-            "mode": "simulado",
-            "payment_id": "",
-            "status": "simulado",
-            "qr_code": make_pix_code(walk.id, walk.estimated_price),
-            "qr_code_base64": "",
-        }
-
-    import requests
-
-    payer_email = walk.client.email if walk.client and walk.client.email else "cliente@amigopet.com"
-    payload = {
-        "transaction_amount": float(walk.estimated_price),
-        "description": f"AmigoPet - Passeio #{walk.id}",
-        "payment_method_id": "pix",
-        "payer": {"email": payer_email},
-        "external_reference": str(walk.id),
-    }
-    if MP_WEBHOOK_URL:
-        payload["notification_url"] = MP_WEBHOOK_URL
-
-    headers = {
-        "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": f"amigopet-walk-{walk.id}-{secrets.token_hex(4)}",
-    }
-    response = requests.post("https://api.mercadopago.com/v1/payments", json=payload, headers=headers, timeout=20)
-    if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Mercado Pago recusou o PIX: {response.text[:300]}")
-
-    data = response.json()
-    tx = ((data.get("point_of_interaction") or {}).get("transaction_data") or {})
-    return {
-        "mode": "mercado_pago",
-        "payment_id": str(data.get("id") or ""),
-        "status": data.get("status") or "pending",
-        "qr_code": tx.get("qr_code") or "",
-        "qr_code_base64": tx.get("qr_code_base64") or "",
-    }
-
-def sync_mercado_pago_payment(payment_id: str, db: Session) -> Optional[WalkRequest]:
-    if not MP_ACCESS_TOKEN or not payment_id:
-        return None
-    import requests
-    headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
-    response = requests.get(f"https://api.mercadopago.com/v1/payments/{payment_id}", headers=headers, timeout=20)
-    if response.status_code >= 400:
-        return None
-    data = response.json()
-    walk_id = data.get("external_reference")
-    if not walk_id:
-        return None
-    walk = db.get(WalkRequest, int(walk_id))
-    if not walk:
-        return None
-    status = data.get("status") or ""
-    walk.mp_payment_id = str(data.get("id") or payment_id)
-    walk.mp_status = status
-    if status == "approved":
-        walk.payment_status = "pago"
-        if walk.status in ["pendente", "convite_enviado", "aceito"]:
-            walk.status = "pagamento_confirmado"
-    elif status in ["rejected", "cancelled"]:
-        walk.payment_status = "falhou"
-    db.commit()
-    db.refresh(walk)
-    return walk
 
 def walk_to_dict(w: WalkRequest):
     now = datetime.utcnow()
     seconds_left = max(0, int((w.expires_at - now).total_seconds())) if w.expires_at else 0
     return {
-        "id": w.id, "client_id": w.client_id, "walker_id": w.walker_id, "pet_id": w.pet_id,
-        "client": w.client.full_name if w.client else "", "walker": w.walker.full_name if w.walker else "Aguardando",
-        "pet": w.pet.name if w.pet else "", "address": w.address,
-        "pickup_lat": w.pickup_lat, "pickup_lng": w.pickup_lng, "walker_lat": w.walker_lat, "walker_lng": w.walker_lng,
-        "duration_minutes": w.duration_minutes, "dogs_count": w.dogs_count,
-        "estimated_price": w.estimated_price, "distance_km": w.distance_km,
-        "status": w.status, "payment_status": w.payment_status, "pix_code": w.pix_code,
-        "pix_qr_base64": w.pix_qr_base64, "mp_payment_id": w.mp_payment_id, "mp_status": w.mp_status,
-        "notes": w.notes, "seconds_left": seconds_left,
+        "id": w.id,
+        "client_id": w.client_id,
+        "walker_id": w.walker_id,
+        "pet_id": w.pet_id,
+        "client": w.client.full_name if w.client else "",
+        "walker": w.walker.full_name if w.walker else "Aguardando",
+        "pet": w.pet.name if w.pet else "",
+        "address": w.address,
+        "pickup_lat": w.pickup_lat,
+        "pickup_lng": w.pickup_lng,
+        "walker_lat": w.walker_lat,
+        "walker_lng": w.walker_lng,
+        "destination_lat": w.destination_lat,
+        "destination_lng": w.destination_lng,
+        "duration_minutes": w.duration_minutes,
+        "dogs_count": w.dogs_count,
+        "estimated_price": w.estimated_price,
+        "distance_km": w.distance_km,
+        "status": w.status,
+        "payment_status": w.payment_status,
+        "pix_code": w.pix_code,
+        "notes": w.notes,
+        "seconds_left": seconds_left,
         "expires_at": w.expires_at.isoformat() if w.expires_at else None,
         "started_at": w.started_at.isoformat() if w.started_at else None,
         "finished_at": w.finished_at.isoformat() if w.finished_at else None,
         "created_at": w.created_at.isoformat(),
     }
 
-def _ddl_type(kind: str) -> str:
-    if kind == "int":
-        return "INTEGER"
-    if kind == "float":
-        return "DOUBLE PRECISION" if not DATABASE_URL.startswith("sqlite") else "REAL"
-    if kind == "bool":
-        return "BOOLEAN"
-    if kind == "datetime":
-        return "TIMESTAMP" if not DATABASE_URL.startswith("sqlite") else "DATETIME"
-    if kind == "text":
-        return "TEXT"
-    return "VARCHAR(255)"
-
-def _add_missing_column(conn, table_name: str, column_name: str, kind: str):
-    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {_ddl_type(kind)}"))
 
 def run_lightweight_migrations():
-    """Adiciona colunas novas em bancos antigos do Render sem apagar dados."""
+    """Corrige bancos antigos sem apagar dados."""
     inspector = inspect(engine)
-    existing_tables = set(inspector.get_table_names())
-    if not existing_tables:
-        return
-
-    expected_columns = {
-        "users": {
-            "full_name": "str", "email": "str", "password_hash": "str", "role": "str",
-            "phone": "str", "photo": "text", "document": "str", "address": "text",
-            "neighborhood": "str", "city": "str", "lat": "float", "lng": "float",
-            "rating": "float", "available": "bool", "bio": "text", "created_at": "datetime",
-        },
-        "pets": {
-            "owner_id": "int", "name": "str", "species": "str", "breed": "str",
-            "size": "str", "age": "str", "photo": "text", "notes": "text",
-        },
-        "walk_requests": {
-            "client_id": "int", "walker_id": "int", "pet_id": "int", "address": "text",
-            "pickup_lat": "float", "pickup_lng": "float", "walker_lat": "float", "walker_lng": "float",
-            "duration_minutes": "int", "dogs_count": "int", "estimated_price": "float", "distance_km": "float",
-            "status": "str", "payment_status": "str", "pix_code": "text", "pix_qr_base64": "text",
-            "mp_payment_id": "str", "mp_status": "str", "notes": "text",
-            "expires_at": "datetime", "started_at": "datetime", "finished_at": "datetime", "created_at": "datetime",
-        },
-        "messages": {
-            "request_id": "int", "sender_id": "int", "text": "text", "created_at": "datetime",
-        },
-    }
-
     with engine.begin() as conn:
-        for table_name, columns in expected_columns.items():
-            if table_name not in existing_tables:
-                continue
-            current_columns = {c["name"] for c in inspect(engine).get_columns(table_name)}
-            for column_name, kind in columns.items():
-                if column_name not in current_columns:
-                    _add_missing_column(conn, table_name, column_name, kind)
+        tables = inspector.get_table_names()
+        if "users" in tables:
+            cols = {c["name"] for c in inspector.get_columns("users")}
+            if "password_hash" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+            for col, ddl in {
+                "phone": "VARCHAR(30)",
+                "photo": "TEXT",
+                "document": "VARCHAR(40)",
+                "address": "TEXT",
+                "neighborhood": "VARCHAR(120)",
+                "city": "VARCHAR(120)",
+                "lat": "FLOAT",
+                "lng": "FLOAT",
+                "rating": "FLOAT",
+                "available": "BOOLEAN",
+                "bio": "TEXT",
+                "created_at": "TIMESTAMP",
+            }.items():
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {ddl}"))
 
-        if "users" in existing_tables:
-            default_hash = hash_password("123456")
-            conn.execute(
-                text("UPDATE users SET password_hash = :ph WHERE password_hash IS NULL OR password_hash = '' OR password_hash LIKE '$2%'"),
-                {"ph": default_hash},
-            )
-            conn.execute(text("UPDATE users SET role = 'client' WHERE role IS NULL OR role = ''"))
-            conn.execute(text("UPDATE users SET rating = 5.0 WHERE rating IS NULL"))
-            conn.execute(text("UPDATE users SET available = TRUE WHERE available IS NULL"))
+        if "walk_requests" in tables:
+            cols = {c["name"] for c in inspector.get_columns("walk_requests")}
+            additions = {
+                "pickup_lat": "FLOAT",
+                "pickup_lng": "FLOAT",
+                "walker_lat": "FLOAT",
+                "walker_lng": "FLOAT",
+                "destination_lat": "FLOAT",
+                "destination_lng": "FLOAT",
+                "duration_minutes": "INTEGER",
+                "dogs_count": "INTEGER",
+                "estimated_price": "FLOAT",
+                "distance_km": "FLOAT",
+                "payment_status": "VARCHAR(40)",
+                "pix_code": "TEXT",
+                "notes": "TEXT",
+                "expires_at": "TIMESTAMP",
+                "started_at": "TIMESTAMP",
+                "finished_at": "TIMESTAMP",
+                "created_at": "TIMESTAMP",
+            }
+            for col, ddl in additions.items():
+                if col not in cols:
+                    conn.execute(text(f"ALTER TABLE walk_requests ADD COLUMN {col} {ddl}"))
+
 
 def seed_data():
     db = SessionLocal()
     try:
-        if db.query(User).count() == 0:
+        admin = db.query(User).filter(User.email == "admin@amigopet.com").first()
+        if not admin:
             users = [
-                User(full_name="Administrador AmigoPet", email="admin@amigopet.com", password_hash=hash_password("123456"), role="admin", city="Magé", available=True, bio="Gestão operacional da plataforma."),
-                User(full_name="Cliente Teste", email="cliente@amigopet.com", password_hash=hash_password("123456"), role="client", phone="(21) 98888-1111", address="Rua Mirabel, 49 Piabetá - Magé - RJ", neighborhood="Piabetá", city="Magé", lat=-22.5884, lng=-43.1847),
-                User(full_name="Passeador Profissional", email="passeador@amigopet.com", password_hash=hash_password("123456"), role="walker", phone="(21) 99999-0000", neighborhood="Piabetá", city="Magé", lat=-22.5900, lng=-43.1810, rating=4.9, available=True, bio="Passeador verificado, experiência com cães pequenos e grandes."),
-                User(full_name="Ana Walker Premium", email="ana@amigopet.com", password_hash=hash_password("123456"), role="walker", phone="(21) 97777-2222", neighborhood="Centro", city="Magé", lat=-22.5852, lng=-43.1881, rating=4.8, available=True, bio="Rotas seguras, envio de fotos e cuidado especial."),
+                User(
+                    full_name="Administrador AmigoPet",
+                    email="admin@amigopet.com",
+                    password_hash=hash_password("123456"),
+                    role="admin",
+                    city="Magé",
+                    available=True,
+                    bio="Gestão operacional da plataforma.",
+                ),
+                User(
+                    full_name="Cliente Teste",
+                    email="cliente@amigopet.com",
+                    password_hash=hash_password("123456"),
+                    role="client",
+                    phone="(21) 98888-1111",
+                    address="Rua Mirabel, 49 Piabetá - Magé - RJ",
+                    neighborhood="Piabetá",
+                    city="Magé",
+                    lat=-22.5884,
+                    lng=-43.1847,
+                ),
+                User(
+                    full_name="Passeador Profissional",
+                    email="passeador@amigopet.com",
+                    password_hash=hash_password("123456"),
+                    role="walker",
+                    phone="(21) 99999-0000",
+                    neighborhood="Piabetá",
+                    city="Magé",
+                    lat=-22.5900,
+                    lng=-43.1810,
+                    rating=4.9,
+                    available=True,
+                    bio="Passeador verificado, experiência com cães pequenos e grandes.",
+                ),
+                User(
+                    full_name="Ana Walker Premium",
+                    email="ana@amigopet.com",
+                    password_hash=hash_password("123456"),
+                    role="walker",
+                    phone="(21) 97777-2222",
+                    neighborhood="Centro",
+                    city="Magé",
+                    lat=-22.5852,
+                    lng=-43.1881,
+                    rating=4.8,
+                    available=True,
+                    bio="Rotas seguras, envio de fotos e cuidado especial.",
+                ),
             ]
             db.add_all(users)
             db.commit()
-            cliente = db.query(User).filter(User.email == "cliente@amigopet.com").first()
-            pet = Pet(owner_id=cliente.id, name="Thor", breed="SRD", size="Médio", age="3 anos", photo="", notes="Gosta de passeios tranquilos.")
-            db.add(pet)
+
+        # Garante senha válida nos usuários antigos
+        default_hash = hash_password("123456")
+        for u in db.query(User).all():
+            if not u.password_hash:
+                u.password_hash = default_hash
+        db.commit()
+
+        cliente = db.query(User).filter(User.email == "cliente@amigopet.com").first()
+        if cliente and db.query(Pet).filter(Pet.owner_id == cliente.id).count() == 0:
+            db.add(
+                Pet(
+                    owner_id=cliente.id,
+                    name="Thor",
+                    breed="SRD",
+                    size="Médio",
+                    age="3 anos",
+                    photo="",
+                    notes="Gosta de passeios tranquilos.",
+                )
+            )
             db.commit()
     finally:
         db.close()
 
+
+async def check_expired_walks():
+    """Timer estilo Uber: convite expira automaticamente."""
+    while True:
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            expired = (
+                db.query(WalkRequest)
+                .filter(WalkRequest.status == "convite_enviado", WalkRequest.expires_at.isnot(None), WalkRequest.expires_at < now)
+                .all()
+            )
+            for walk in expired:
+                walk.status = "cancelado"
+                db.commit()
+                db.refresh(walk)
+                await manager.broadcast({"type": "walk_expired", "walk": walk_to_dict(walk)})
+        finally:
+            db.close()
+        await asyncio.sleep(5)
+
+
 Base.metadata.create_all(bind=engine)
 run_lightweight_migrations()
+Base.metadata.create_all(bind=engine)
 seed_data()
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(check_expired_walks())
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -405,9 +475,11 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+
 @app.get("/health")
 def health():
-    return {"ok": True, "app": "AmigoPet V7 Uber PIX", "version": "7.0.0", "mercado_pago": bool(MP_ACCESS_TOKEN)}
+    return {"ok": True, "app": "AmigoPet V8 Mapa Tempo Real", "version": "8.0.0"}
+
 
 @app.post("/api/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
@@ -419,12 +491,14 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     db.refresh(user)
     return user_to_dict(user)
 
+
 @app.post("/api/auth/login")
 def login(data: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
     return user_to_dict(user)
+
 
 @app.get("/api/users")
 def users(role: Optional[str] = None, db: Session = Depends(get_db)):
@@ -433,12 +507,14 @@ def users(role: Optional[str] = None, db: Session = Depends(get_db)):
         q = q.filter(User.role == role)
     return [user_to_dict(u) for u in q.order_by(User.rating.desc(), User.id.asc()).all()]
 
+
 @app.get("/api/pets")
 def pets(owner_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(Pet)
     if owner_id:
         q = q.filter(Pet.owner_id == owner_id)
     return [pet_to_dict(p) for p in q.order_by(Pet.id.desc()).all()]
+
 
 @app.post("/api/pets")
 def create_pet(data: PetIn, db: Session = Depends(get_db)):
@@ -448,68 +524,14 @@ def create_pet(data: PetIn, db: Session = Depends(get_db)):
     db.refresh(pet)
     return pet_to_dict(pet)
 
-def expire_old_invites(db: Session):
-    now = datetime.utcnow()
-    old = db.query(WalkRequest).filter(
-        WalkRequest.status == "convite_enviado",
-        WalkRequest.expires_at.isnot(None),
-        WalkRequest.expires_at < now,
-    ).all()
-    changed = False
-    for walk in old:
-        walk.status = "expirado"
-        changed = True
-    if changed:
-        db.commit()
-
-@app.post("/api/walks/{walk_id}/pix")
-async def regenerate_pix(walk_id: int, db: Session = Depends(get_db)):
-    walk = db.get(WalkRequest, walk_id)
-    if not walk:
-        raise HTTPException(status_code=404, detail="Solicitação não encontrada")
-    pix = create_mercado_pago_pix(walk)
-    walk.pix_code = pix["qr_code"]
-    walk.pix_qr_base64 = pix["qr_code_base64"]
-    walk.mp_payment_id = pix["payment_id"]
-    walk.mp_status = pix["status"]
-    walk.payment_status = "aguardando"
-    db.commit()
-    db.refresh(walk)
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "pix_created", "walk": payload})
-    return payload
-
-@app.post("/api/payments/webhook")
-async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    payment_id = (request.query_params.get("id") or request.query_params.get("data.id") or
-                  str(((body.get("data") or {}).get("id")) or body.get("id") or ""))
-    walk = sync_mercado_pago_payment(payment_id, db)
-    if walk:
-        payload = walk_to_dict(walk)
-        await manager.broadcast({"type": "payment_confirmed", "walk": payload})
-    return {"ok": True}
-
-@app.get("/api/payments/check/{payment_id}")
-async def check_payment(payment_id: str, db: Session = Depends(get_db)):
-    walk = sync_mercado_pago_payment(payment_id, db)
-    if not walk:
-        raise HTTPException(status_code=404, detail="Pagamento não encontrado ou token Mercado Pago ausente")
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "payment_confirmed", "walk": payload})
-    return payload
 
 @app.get("/api/walks")
 def walks(status: Optional[str] = None, db: Session = Depends(get_db)):
-    expire_old_invites(db)
     q = db.query(WalkRequest)
     if status:
         q = q.filter(WalkRequest.status == status)
     return [walk_to_dict(w) for w in q.order_by(WalkRequest.id.desc()).all()]
+
 
 @app.get("/api/walks/{walk_id}")
 def get_walk(walk_id: int, db: Session = Depends(get_db)):
@@ -518,29 +540,42 @@ def get_walk(walk_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     return walk_to_dict(walk)
 
+
 @app.post("/api/walks")
 async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
     price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
     distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
+
+    walker_lat = -22.5900
+    walker_lng = -43.1810
+    if data.walker_id:
+        walker = db.get(User, data.walker_id)
+        if walker:
+            walker_lat = walker.lat or walker_lat
+            walker_lng = walker.lng or walker_lng
+
     walk = WalkRequest(
-        **data.model_dump(), estimated_price=round(price, 2), distance_km=round(distance, 1),
-        expires_at=datetime.utcnow() + timedelta(minutes=5), status="convite_enviado"
+        **data.model_dump(),
+        walker_lat=walker_lat,
+        walker_lng=walker_lng,
+        destination_lat=data.pickup_lat,
+        destination_lng=data.pickup_lng,
+        estimated_price=round(price, 2),
+        distance_km=round(distance, 1),
+        expires_at=datetime.utcnow() + timedelta(seconds=90),
+        status="convite_enviado",
+        payment_status="aguardando",
     )
     db.add(walk)
     db.commit()
     walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
     db.commit()
     db.refresh(walk)
-    pix = create_mercado_pago_pix(walk)
-    walk.pix_code = pix["qr_code"]
-    walk.pix_qr_base64 = pix["qr_code_base64"]
-    walk.mp_payment_id = pix["payment_id"]
-    walk.mp_status = pix["status"]
-    db.commit()
-    db.refresh(walk)
+
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_created", "walk": payload})
     return payload
+
 
 @app.post("/api/walks/{walk_id}/accept")
 async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db)):
@@ -549,7 +584,11 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     if walk.status in ["finalizado", "cancelado"]:
         raise HTTPException(status_code=400, detail="Pedido já encerrado")
-    walk.walker_id = walker_id
+    walker = db.get(User, walker_id)
+    if walker:
+        walk.walker_id = walker_id
+        walk.walker_lat = walker.lat or walk.walker_lat
+        walk.walker_lng = walker.lng or walk.walker_lng
     walk.status = "aceito"
     walk.expires_at = None
     db.commit()
@@ -558,6 +597,7 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
     await manager.broadcast({"type": "walk_accepted", "walk": payload})
     return payload
 
+
 @app.post("/api/walks/{walk_id}/reject")
 async def reject_walk(walk_id: int, db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
@@ -565,9 +605,11 @@ async def reject_walk(walk_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     walk.status = "recusado"
     db.commit()
+    db.refresh(walk)
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_rejected", "walk": payload})
     return payload
+
 
 @app.post("/api/walks/{walk_id}/pay")
 async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
@@ -578,9 +620,11 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
     if walk.status in ["pendente", "convite_enviado"]:
         walk.status = "pagamento_confirmado"
     db.commit()
+    db.refresh(walk)
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "payment_confirmed", "walk": payload})
     return payload
+
 
 @app.post("/api/walks/{walk_id}/start")
 async def start_walk(walk_id: int, db: Session = Depends(get_db)):
@@ -590,9 +634,11 @@ async def start_walk(walk_id: int, db: Session = Depends(get_db)):
     walk.status = "em_andamento"
     walk.started_at = datetime.utcnow()
     db.commit()
+    db.refresh(walk)
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_started", "walk": payload})
     return payload
+
 
 @app.post("/api/walks/{walk_id}/finish")
 async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
@@ -602,9 +648,11 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
     walk.status = "finalizado"
     walk.finished_at = datetime.utcnow()
     db.commit()
+    db.refresh(walk)
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_finished", "walk": payload})
     return payload
+
 
 @app.post("/api/walks/{walk_id}/location")
 async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(get_db)):
@@ -614,9 +662,16 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
     walk.walker_lat = data.lat
     walk.walker_lng = data.lng
     db.commit()
+    db.refresh(walk)
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "location_updated", "walk": payload})
     return payload
+
+
+@app.post("/api/walks/{walk_id}/gps")
+async def update_gps(walk_id: int, data: LocationIn, db: Session = Depends(get_db)):
+    return await update_location(walk_id, data, db)
+
 
 @app.post("/api/messages")
 async def create_message(data: MessageIn, db: Session = Depends(get_db)):
@@ -624,17 +679,35 @@ async def create_message(data: MessageIn, db: Session = Depends(get_db)):
     db.add(msg)
     db.commit()
     db.refresh(msg)
-    payload = {"id": msg.id, "request_id": msg.request_id, "sender_id": msg.sender_id, "text": msg.text, "created_at": msg.created_at.isoformat()}
+    payload = {
+        "id": msg.id,
+        "request_id": msg.request_id,
+        "sender_id": msg.sender_id,
+        "text": msg.text,
+        "created_at": msg.created_at.isoformat(),
+    }
     await manager.broadcast({"type": "message", "message": payload})
     return payload
+
 
 @app.get("/api/messages/{request_id}")
 def list_messages(request_id: int, db: Session = Depends(get_db)):
     msgs = db.query(Message).filter(Message.request_id == request_id).order_by(Message.id.asc()).all()
-    return [{"id": m.id, "request_id": m.request_id, "sender_id": m.sender_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in msgs]
+    return [
+        {
+            "id": m.id,
+            "request_id": m.request_id,
+            "sender_id": m.sender_id,
+            "text": m.text,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in msgs
+    ]
+
 
 @app.get("/")
 def index():
     return FileResponse(FRONTEND_DIR / "index.html")
+
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

@@ -1,17 +1,6 @@
 services:
   - type: web
-    name: amigopet-api
-    env: python
+    name: amigopet
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: CORS_ORIGINS
-        value: '*'
-      - key: SECRET_KEY
-        generateValue: true
-      - key: MP_ACCESS_TOKEN
-        sync: false
-      - key: MP_WEBHOOK_URL
-        value: https://amigopet-6td8.onrender.com/api/payments/webhook

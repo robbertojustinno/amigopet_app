@@ -1,0 +1,11 @@
+# AmigoPet V8 - Mapa em tempo real
+
+Arquivos prontos para substituir no projeto existente.
+
+Comandos:
+git add .
+git commit -m "V8 mapa tempo real"
+git push
+
+No Render:
+Manual Deploy -> Clear build cache & deploy
