@@ -1,287 +1,113 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f766e" />
   <title>AmigoPet Pro</title>
-  <link rel="stylesheet" href="/styles.css?v=260426-fix3" />
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="logo">AP</div>
-    <div>
-      <p class="brand-title">AmigoPet Pro</p>
-      <p class="brand-subtitle">Seu pet bem cuidado, seu negócio pronto para crescer</p>
-    </div>
-    <div style="margin-left:auto;">
-      <button id="logoutBtn" class="ghost-btn hidden" type="button">Sair</button>
-    </div>
+    <div class="brand"><span class="logo">🐶</span><div><strong>AmigoPet Pro</strong><small>Passeios, confiança e cuidado em cada rota</small></div></div>
+    <nav>
+      <button data-view="home" class="nav-btn active">Início</button>
+      <button data-view="client" class="nav-btn">Cliente</button>
+      <button data-view="walker" class="nav-btn">Passeador</button>
+      <button data-view="admin" class="nav-btn">Admin</button>
+    </nav>
   </header>
 
-  <main class="page">
-    <section id="welcomeScreen" class="screen active">
-      <div class="hero">
-        <div class="panel">
-          <div class="badge">Base profissional em evolução</div>
-          <h1>Entre na sua conta</h1>
-          <p class="muted">Cliente, passeador e admin usando o mesmo backend central e o mesmo banco.</p>
-
-          <div class="preview-box">
-            <div class="preview-header">
-              <span>AmigoPet Pro</span>
-              <span>Planos • Entrar • Criar conta</span>
-            </div>
-            <div class="preview-content">
-              <div class="preview-card">
-                <div style="font-size:40px; margin-bottom:8px;">🐶 💚</div>
-                <div style="font-size:28px;">AmigoPet Pro</div>
-                <div style="font-size:14px; opacity:.9; margin-top:8px;">Passeios, confiança e cuidado em cada rota</div>
-              </div>
-
-              <div class="preview-grid">
-                <div class="preview-mini"><strong>24h</strong><br>Pronto para evoluir aos poucos</div>
-                <div class="preview-mini"><strong>3</strong><br>Planos comerciais iniciais</div>
-                <div class="preview-mini"><strong>5★</strong><br>Sistema de reputação para passeadores</div>
-              </div>
-            </div>
-          </div>
+  <main>
+    <section id="home" class="view active hero">
+      <div class="hero-card">
+        <span class="pill">Plataforma profissional</span>
+        <h1>Um app estilo Uber para passeios com pets.</h1>
+        <p>Cadastro completo, escolha de passeador, solicitação de passeio, aceite/recusa, pagamento simulado, chat interno e painel administrativo.</p>
+        <div class="hero-actions">
+          <button class="primary" onclick="showView('client')">Solicitar passeio</button>
+          <button class="secondary" onclick="showView('admin')">Ver painel</button>
         </div>
+      </div>
+      <div class="phone-card">
+        <div class="phone-top"></div>
+        <h3>Resumo ao vivo</h3>
+        <div class="metric"><span>Clientes</span><strong id="mClients">0</strong></div>
+        <div class="metric"><span>Passeadores</span><strong id="mWalkers">0</strong></div>
+        <div class="metric"><span>Solicitações</span><strong id="mWalks">0</strong></div>
+      </div>
+    </section>
 
-        <div class="panel">
-          <div class="role-switch">
-            <button type="button" class="role-chip active" data-role="client">Cliente</button>
-            <button type="button" class="role-chip" data-role="walker">Passeador</button>
-          </div>
+    <section id="client" class="view grid-two">
+      <div class="card">
+        <h2>Entrar / Criar conta</h2>
+        <div class="form-grid">
+          <input id="loginEmail" placeholder="E-mail" value="cliente@amigopet.com" />
+          <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
+          <button class="primary" onclick="login()">Entrar</button>
+        </div>
+        <div id="loggedUser" class="notice">Nenhum usuário conectado.</div>
+      </div>
 
-          <h2 id="loginScreenTitle" class="right-title">Entrar como Cliente</h2>
-          <p id="loginScreenSubtitle" class="muted">Acesse sua área de cliente</p>
+      <div class="card">
+        <h2>Cadastrar pet</h2>
+        <div class="form-grid">
+          <input id="petName" placeholder="Nome do pet" value="Thor" />
+          <input id="petBreed" placeholder="Raça" value="SRD" />
+          <select id="petSize"><option>Pequeno</option><option selected>Médio</option><option>Grande</option></select>
+          <input id="petAge" placeholder="Idade" value="3 anos" />
+          <textarea id="petNotes" placeholder="Observações">Gosta de passeio tranquilo.</textarea>
+          <button class="primary" onclick="createPet()">Salvar pet</button>
+        </div>
+      </div>
 
-          <form id="loginForm" novalidate>
-            <input id="login_email" name="login_email" type="email" autocomplete="username" placeholder="E-mail" required />
-            <input id="login_password" name="login_password" type="password" autocomplete="current-password" placeholder="Senha" required />
-            <button class="primary-btn" id="loginSubmitBtn" type="submit">Entrar</button>
-          </form>
-
-          <div class="actions-row" style="margin-top:8px;">
-            <button id="goToRegisterBtn" type="button" class="ghost-btn">Criar conta</button>
-          </div>
+      <div class="card wide">
+        <h2>Solicitar passeio</h2>
+        <div class="form-grid three">
+          <select id="walkerSelect"></select>
+          <select id="petSelect"></select>
+          <select id="duration"><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select>
+          <input id="dogsCount" type="number" min="1" value="1" placeholder="Qtd. cães" />
+          <input id="address" value="Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854" placeholder="Endereço" />
+          <button class="primary" onclick="createWalk()">Criar solicitação</button>
         </div>
       </div>
     </section>
 
-    <section id="registerScreen" class="screen">
-      <div class="panel">
-        <div class="dashboard-header">
-          <div>
-            <h2 id="registerScreenTitle" class="dashboard-title">Criar conta de Cliente</h2>
-            <p id="registerScreenSubtitle" class="muted">Cadastre-se para pedir passeios</p>
-          </div>
-          <button id="backToWelcomeBtn" type="button" class="ghost-btn">Voltar</button>
-        </div>
-
-        <form id="registerForm" novalidate>
-          <div class="grid-2">
-            <div>
-              <input id="full_name" type="text" placeholder="Nome completo" required />
-              <input id="email" type="email" placeholder="E-mail" required />
-              <input id="password" type="password" placeholder="Senha" required />
-              <input id="phone" type="tel" placeholder="Telefone / WhatsApp" autocomplete="tel" />
-              <div class="form-row-2">
-                <input id="neighborhood" type="text" placeholder="Bairro" />
-                <input id="city" type="text" placeholder="Cidade" />
-              </div>
-              <input id="address" type="text" placeholder="Endereço" />
-              <input id="role" type="hidden" value="client" />
-            </div>
-
-            <div>
-              <div id="walkerPhotoArea" class="hidden">
-                <div class="section-title">Foto do passeador</div>
-                <div class="actions-row">
-                  <button id="choosePhotoBtn" type="button" class="secondary-btn">Escolher foto</button>
-                  <button id="clearPhotoBtn" type="button" class="ghost-btn">Limpar</button>
-                </div>
-                <input id="profile_photo_file" type="file" accept="image/*" class="hidden" />
-                <input id="profile_photo" type="hidden" />
-                <p id="photoUploadStatus" class="inline-note">Nenhuma foto selecionada.</p>
-                <div id="photoPreviewWrap" class="hidden">
-                  <img id="photoPreview" class="avatar" alt="Foto do passeador" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <button class="primary-btn" id="registerSubmitBtn" type="submit">Criar conta</button>
-        </form>
+    <section id="walker" class="view">
+      <div class="card">
+        <h2>Painel do Passeador</h2>
+        <p class="muted">Aceite ou recuse solicitações. O botão simula o comportamento inicial antes de integrar push/Redis.</p>
+        <div id="walkerRequests" class="list"></div>
       </div>
     </section>
 
-    <section id="clientDashboard" class="screen">
-      <div class="dashboard-header">
-        <div>
-          <h2 class="dashboard-title">Painel do Cliente</h2>
-          <div id="clientSessionInfo" class="session-pill">Cliente conectado</div>
-        </div>
+    <section id="admin" class="view">
+      <div class="stats">
+        <div class="stat"><span>Total usuários</span><strong id="sUsers">0</strong></div>
+        <div class="stat"><span>Clientes</span><strong id="sClients">0</strong></div>
+        <div class="stat"><span>Passeadores</span><strong id="sWalkers">0</strong></div>
+        <div class="stat"><span>Pedidos</span><strong id="sWalks">0</strong></div>
       </div>
-
-      <div class="grid-2">
-        <div class="panel">
-          <div class="section-title">Cadastrar pet</div>
-          <form id="petForm" novalidate>
-            <input id="pet_name" type="text" placeholder="Nome do pet" required />
-            <input id="pet_breed" type="text" placeholder="Raça" />
-            <select id="pet_size">
-              <option value="pequeno">Pequeno</option>
-              <option value="medio" selected>Médio</option>
-              <option value="grande">Grande</option>
-            </select>
-            <textarea id="pet_notes" placeholder="Observações"></textarea>
-
-            <div class="actions-row">
-              <button id="choosePetPhotoBtn" type="button" class="secondary-btn">Escolher foto do pet</button>
-              <button id="clearPetPhotoBtn" type="button" class="ghost-btn">Limpar</button>
-            </div>
-            <input id="pet_photo_file" type="file" accept="image/*" class="hidden" />
-            <input id="pet_photo" type="hidden" />
-            <p id="petPhotoUploadStatus" class="inline-note">Nenhuma foto selecionada.</p>
-            <div id="petPhotoPreviewWrap" class="hidden">
-              <img id="petPhotoPreview" class="avatar" alt="Foto do pet" />
-            </div>
-
-            <button class="primary-btn" id="petSubmitBtn" type="submit">Salvar pet</button>
-          </form>
-
-          <div class="pet-list-header">
-            <div class="section-title compact-title">Pets cadastrados</div>
-            <button id="refreshPetsBtn" type="button" class="ghost-btn tiny-btn">Atualizar</button>
-          </div>
-          <div id="petList" class="mini-list"></div>
-        </div>
-
-        <div class="panel">
-          <div class="section-title">Solicitar passeio</div>
-          <form id="walkForm" novalidate>
-            <input id="pickup_address" type="text" placeholder="Endereço de retirada" />
-            <input id="mapAddress" type="text" placeholder="Endereço para o mapa" />
-            <div class="actions-row">
-              <button id="loadMapBtn" type="button" class="secondary-btn">Carregar mapa</button>
-            </div>
-            <iframe id="mapFrame" title="Mapa"></iframe>
-
-            <input id="walk_neighborhood" type="text" placeholder="Bairro" />
-            <input id="walk_city" type="text" placeholder="Cidade" />
-
-            <div class="actions-row">
-              <button id="loadWalkersBtn" type="button" class="secondary-btn">Buscar passeadores</button>
-            </div>
-            <select id="selected_walker_id">
-              <option value="">Selecione um passeador</option>
-            </select>
-
-            <select id="selected_pet_id">
-              <option value="">Selecione um pet</option>
-            </select>
-
-            <input id="scheduled_at" type="datetime-local" />
-            <select id="duration_minutes">
-              <option value="15">15 minutos</option>
-              <option value="30" selected>30 minutos</option>
-              <option value="45">45 minutos</option>
-              <option value="60">60 minutos</option>
-            </select>
-            <input id="dog_count" type="number" min="1" value="1" placeholder="Quantidade de cães" />
-            <input id="price" type="number" readonly placeholder="Preço estimado" />
-            <textarea id="walk_notes" placeholder="Observações do passeio"></textarea>
-
-            <button class="primary-btn" id="walkSubmitBtn" type="submit">Criar solicitação</button>
-          </form>
-        </div>
+      <div class="card">
+        <h2>Solicitações</h2>
+        <div id="adminWalks" class="list"></div>
       </div>
-
-      <div class="grid-2" style="margin-top:18px;">
-        <div class="panel">
-          <div class="dashboard-header">
-            <div class="section-title" style="margin:0;">Solicitações</div>
-            <button id="loadRequestsBtn" type="button" class="secondary-btn">Atualizar</button>
-          </div>
-          <div id="requestList"></div>
-        </div>
-
-        <div class="panel">
-          <div class="section-title">Chat</div>
-          <p id="chatHeaderLabel" class="inline-note">Abra o chat de uma solicitação.</p>
-          <div id="chatList" class="chat-box"></div>
-          <form id="messageForm" novalidate>
-            <textarea id="chat_text" placeholder="Digite sua mensagem"></textarea>
-            <button class="primary-btn" id="messageSubmitBtn" type="submit">Enviar mensagem</button>
-          </form>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-top:18px;">
-        <div class="section-title">Pagamento</div>
-        <div id="paymentStatusBox"></div>
-      </div>
-    </section>
-
-    <section id="walkerDashboard" class="screen">
-      <div class="dashboard-header">
-        <div>
-          <h2 class="dashboard-title">Painel do Passeador</h2>
-          <div id="walkerSessionInfo" class="session-pill">Passeador conectado</div>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div class="panel">
-          <div class="dashboard-header">
-            <div class="section-title" style="margin:0;">Solicitações disponíveis</div>
-            <button id="refreshWalkerBtn" type="button" class="secondary-btn">Atualizar tela</button>
-          </div>
-          <div id="walkerRequestsInfo"></div>
-        </div>
-
-        <div class="panel">
-          <div class="section-title">Chat do passeador</div>
-          <p id="walkerChatHeaderLabel" class="inline-note">Abra o chat de uma solicitação.</p>
-          <div id="walkerChatList" class="chat-box"></div>
-          <form id="walkerMessageForm" novalidate>
-            <textarea id="walker_chat_text" placeholder="Digite sua mensagem"></textarea>
-            <button class="primary-btn" id="walkerMessageSubmitBtn" type="submit">Enviar mensagem</button>
-          </form>
-        </div>
-      </div>
-    </section>
-
-    <section id="adminDashboard" class="screen">
-      <div class="dashboard-header">
-        <div>
-          <h2 class="dashboard-title">Painel Administrativo</h2>
-          <div id="adminSessionInfo" class="session-pill">Admin conectado</div>
-        </div>
-        <div class="actions-row">
-          <button id="refreshAdminBtn" type="button" class="secondary-btn">Atualizar dashboard</button>
-          <button id="expireBtn" type="button" class="ghost-btn">Expirar convites</button>
-        </div>
-      </div>
-
-      <div class="grid-3">
-        <div class="metric"><div class="metric-label">Total de usuários</div><div id="metricTotalUsers" class="metric-value">0</div></div>
-        <div class="metric"><div class="metric-label">Clientes</div><div id="metricClients" class="metric-value">0</div></div>
-        <div class="metric"><div class="metric-label">Passeadores</div><div id="metricWalkers" class="metric-value">0</div></div>
-        <div class="metric"><div class="metric-label">Receita</div><div id="metricRevenue" class="metric-value">R$ 0,00</div></div>
-        <div class="metric"><div class="metric-label">Solicitações</div><div id="metricRequests" class="metric-value">0</div></div>
-        <div class="metric"><div class="metric-label">Concluídas</div><div id="metricCompleted" class="metric-value">0</div></div>
-        <div class="metric"><div class="metric-label">Pagas</div><div id="metricPaid" class="metric-value">0</div></div>
-      </div>
-
-      <div class="panel" style="margin-top:18px;">
-        <div class="section-title">Usuários</div>
-        <div id="adminUsersList"></div>
+      <div class="card">
+        <h2>Usuários</h2>
+        <div id="adminUsers" class="list"></div>
       </div>
     </section>
   </main>
 
-  <script src="/app.js?v=260426-fix3"></script>
+  <section class="chat card" id="chatBox">
+    <div class="chat-header"><strong>Chat interno</strong><button onclick="toggleChat()">×</button></div>
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input"><input id="chatText" placeholder="Digite uma mensagem" /><button onclick="sendMessage()">Enviar</button></div>
+  </section>
+
+  <button class="floating" onclick="toggleChat()">💬</button>
+  <div id="toast"></div>
+  <script src="/static/app.js"></script>
 </body>
 </html>

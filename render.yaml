@@ -1,25 +1,7 @@
 services:
   - type: web
     name: amigopet-pro
-    env: docker
-    plan: free
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: .
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
-    envVars:
-      - key: ENV
-        value: production
-      - key: SECRET_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: DEFAULT_ADDRESS
-        value: Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854
-      - key: MERCADO_PAGO_ACCESS_TOKEN
-        sync: false
-      - key: MERCADO_PAGO_PUBLIC_KEY
-        sync: false
-      - key: WEBHOOK_BASE_URL
-        sync: false

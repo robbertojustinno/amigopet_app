@@ -1,0 +1,27 @@
+COMANDOS PARA RODAR O AMIGOPET PRO NO WINDOWS
+
+1) Entre na pasta do projeto:
+cd E:\amigopet_profissional
+
+2) Crie o ambiente virtual:
+python -m venv .venv
+
+3) Se o PowerShell bloquear:
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+4) Ative o ambiente:
+.\.venv\Scripts\Activate.ps1
+
+5) Instale as dependências:
+pip install -r requirements.txt
+
+6) Rode o servidor:
+python -m uvicorn backend.app.main:app --reload
+
+7) Abra no navegador:
+http://127.0.0.1:8000
+
+LOGIN DE TESTE
+Admin: admin@amigopet.com / 123456
+Cliente: cliente@amigopet.com / 123456
+Passeador: passeador@amigopet.com / 123456

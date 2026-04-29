@@ -1,0 +1,25 @@
+PARTE 1 - BACKEND REAL RESTAURADO
+
+Este pacote restaura o backend real do backup bckp_amigopet_260426.zip e corrige:
+- routes.py real restaurado
+- user.py real restaurado
+- schemas reais restaurados
+- migrations.py compatível com PostgreSQL e SQLite
+- main.py sem passlib/bcrypt para evitar erro no Render/Python 3.14
+- admin automático com senha 123456
+- rota /admin não dá 404 mesmo sem admin.html
+
+Substitua no projeto:
+- backend/app/
+- backend/requirements.txt
+- requirements.txt
+- render.yaml
+
+Comandos:
+git add backend/app backend/requirements.txt requirements.txt render.yaml
+git commit -m "restore real backend base"
+git pull origin main --rebase
+git push
+
+Render:
+Manual Deploy > Clear build cache & deploy

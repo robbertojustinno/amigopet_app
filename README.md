@@ -1,75 +1,38 @@
-# AmigoPet V8 REAL
+# AmigoPet Pro
 
-Plataforma web estilo marketplace/Uber para passeadores de cachorro, com:
+Plataforma profissional inicial para passeio de pets: cliente, passeador e admin no mesmo frontend, com backend FastAPI e SQLite.
 
-- cadastro de cliente e passeador
-- foto obrigatória do passeador
-- busca por bairro/cidade
-- convite para passeador com contagem regressiva
-- aceite/recusa com tempo limite
-- chat interno no app
-- pagamento com Mercado Pago (base pronta para integração real)
-- mapa automático via OpenStreetMap
-- deploy profissional com Docker e Render
+## Rodar no Windows PowerShell
 
-## Stack
-
-- **Backend:** FastAPI + SQLAlchemy + Pydantic
-- **Frontend:** HTML + CSS + JavaScript puro
-- **Banco:** SQLite local / PostgreSQL em produção
-- **Fila/tempo real:** Redis (pub/sub e cache)
-- **Deploy:** Docker / Render
-
-## Estrutura
-
-```bash
-amigopet-v8-real/
-├─ backend/
-├─ frontend/
-├─ docker-compose.yml
-├─ .env.example
-├─ render.yaml
-└─ MANUAL_DEPLOY.md
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn backend.app.main:app --reload
 ```
 
-## O que já está pronto
+Abra:
 
-### Funcional real implementada
-- API REST
-- persistência de usuários, pets, solicitações e mensagens
-- validação de foto obrigatória do passeador
-- endereço padrão:
-  **Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854**
-- geração automática do mapa quando o endereço é digitado
-- fluxo de solicitação com status:
-  `pending -> invited -> accepted / declined / expired / paid / completed`
-- cron de expiração de convite
-- chat por solicitação
-- frontend navegável e editável
+http://127.0.0.1:8000
 
-### Pontos que exigem chave externa
-- Mercado Pago real
-- serviço de push notification real
-- storage de imagens em nuvem (opcional em produção)
+## Login rápido
 
-## Rodando localmente
+O sistema cria dados iniciais automaticamente:
 
-### 1) copiar variáveis
+- Admin: admin@amigopet.com / 123456
+- Cliente: cliente@amigopet.com / 123456
+- Passeador: passeador@amigopet.com / 123456
+
+## Deploy Render
+
+Build Command:
+
 ```bash
-cp .env.example .env
+pip install -r requirements.txt
 ```
 
-### 2) subir com Docker
+Start Command:
+
 ```bash
-docker compose up --build
+uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
 ```
-
-### 3) acessar
-- Frontend: http://localhost:8080
-- API docs: http://localhost:8000/docs
-
-## Login de demonstração
-Crie contas pelo próprio frontend.
-
-## Observação importante
-Este pacote está **pronto como base profissional real**, mas integrações externas como pagamento e push dependem das suas credenciais.
