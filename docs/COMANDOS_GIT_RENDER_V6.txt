@@ -1,0 +1,23 @@
+COMANDOS PARA SUBIR A V6 NO GITHUB E ACIONAR DEPLOY NO RENDER
+
+1) Entre na pasta:
+cd E:\amigopet_app
+
+2) Copie os arquivos da V6 para dentro dessa pasta, substituindo os antigos.
+
+3) Confira:
+git status
+
+4) Adicione tudo:
+git add .
+
+5) Commit:
+git commit -m "V6 nivel Uber AmigoPet"
+
+6) Push:
+git push
+
+7) No Render, se já estiver conectado, ele fará deploy automaticamente.
+
+START COMMAND DO BACKEND:
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT

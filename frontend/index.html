@@ -2,18 +2,19 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0f766e" />
-  <title>AmigoPet Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>AmigoPet V6 Uber</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo">🐶</span><div><strong>AmigoPet Pro</strong><small>Passeios, confiança e cuidado em cada rota</small></div></div>
+    <div class="brand"><span class="logo">🐾</span><div><strong>AmigoPet V6</strong><small>Experiência estilo Uber para pets</small></div></div>
     <nav>
       <button data-view="home" class="nav-btn active">Início</button>
       <button data-view="client" class="nav-btn">Cliente</button>
       <button data-view="walker" class="nav-btn">Passeador</button>
+      <button data-view="tracking" class="nav-btn">Rota</button>
       <button data-view="admin" class="nav-btn">Admin</button>
     </nav>
   </header>
@@ -21,27 +22,34 @@
   <main>
     <section id="home" class="view active hero">
       <div class="hero-card">
-        <span class="pill">Plataforma profissional</span>
-        <h1>Um app estilo Uber para passeios com pets.</h1>
-        <p>Cadastro completo, escolha de passeador, solicitação de passeio, aceite/recusa, pagamento simulado, chat interno e painel administrativo.</p>
+        <span class="pill">V6 nível Uber</span>
+        <h1>Solicitação, aceite, pagamento e rota em tempo real.</h1>
+        <p>Plataforma completa com escolha de passeador, convite com contador, status ao vivo, PIX simulado, chat interno, rastreamento visual e painel admin.</p>
         <div class="hero-actions">
           <button class="primary" onclick="showView('client')">Solicitar passeio</button>
-          <button class="secondary" onclick="showView('admin')">Ver painel</button>
+          <button class="secondary" onclick="showView('walker')">Painel passeador</button>
         </div>
+        <div class="live-line"><span></span><strong id="liveStatus">Conectando tempo real...</strong></div>
       </div>
       <div class="phone-card">
         <div class="phone-top"></div>
-        <h3>Resumo ao vivo</h3>
+        <h3>Operação ao vivo</h3>
         <div class="metric"><span>Clientes</span><strong id="mClients">0</strong></div>
         <div class="metric"><span>Passeadores</span><strong id="mWalkers">0</strong></div>
-        <div class="metric"><span>Solicitações</span><strong id="mWalks">0</strong></div>
+        <div class="metric"><span>Pedidos</span><strong id="mWalks">0</strong></div>
+        <div class="mini-map"><div class="pin client">🏠</div><div class="route-line"></div><div class="pin walker">🚶</div></div>
       </div>
     </section>
 
     <section id="client" class="view grid-two">
       <div class="card">
-        <h2>Entrar / Criar conta</h2>
+        <h2>Login rápido</h2>
         <div class="form-grid">
+          <select id="quickLogin" onchange="fillLogin()">
+            <option value="cliente@amigopet.com">Cliente Teste</option>
+            <option value="passeador@amigopet.com">Passeador Profissional</option>
+            <option value="admin@amigopet.com">Admin</option>
+          </select>
           <input id="loginEmail" placeholder="E-mail" value="cliente@amigopet.com" />
           <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
           <button class="primary" onclick="login()">Entrar</button>
@@ -50,35 +58,55 @@
       </div>
 
       <div class="card">
-        <h2>Cadastrar pet</h2>
-        <div class="form-grid">
+        <h2>Cadastro completo do pet</h2>
+        <div class="form-grid two">
           <input id="petName" placeholder="Nome do pet" value="Thor" />
           <input id="petBreed" placeholder="Raça" value="SRD" />
           <select id="petSize"><option>Pequeno</option><option selected>Médio</option><option>Grande</option></select>
           <input id="petAge" placeholder="Idade" value="3 anos" />
+          <input id="petPhoto" placeholder="URL da foto do pet" />
           <textarea id="petNotes" placeholder="Observações">Gosta de passeio tranquilo.</textarea>
-          <button class="primary" onclick="createPet()">Salvar pet</button>
+          <button class="primary span2" onclick="createPet()">Salvar pet</button>
         </div>
       </div>
 
       <div class="card wide">
-        <h2>Solicitar passeio</h2>
+        <h2>1. Escolha o passeador antes de pedir</h2>
+        <div id="walkerCards" class="walker-cards"></div>
+      </div>
+
+      <div class="card wide">
+        <h2>2. Solicitar passeio</h2>
         <div class="form-grid three">
           <select id="walkerSelect"></select>
           <select id="petSelect"></select>
-          <select id="duration"><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select>
+          <select id="duration"><option value="30">30 min • R$ 30+</option><option value="45">45 min • R$ 38+</option><option value="60">60 min • R$ 46+</option></select>
           <input id="dogsCount" type="number" min="1" value="1" placeholder="Qtd. cães" />
           <input id="address" value="Rua Mirabel, 49 Piabetá - Magé - RJ CEP 25931-854" placeholder="Endereço" />
-          <button class="primary" onclick="createWalk()">Criar solicitação</button>
+          <button class="primary" onclick="createWalk()">Enviar convite</button>
         </div>
+        <div class="notice">O pedido cria um convite com contador para o passeador, como um chamado de corrida.</div>
       </div>
     </section>
 
     <section id="walker" class="view">
       <div class="card">
-        <h2>Painel do Passeador</h2>
-        <p class="muted">Aceite ou recuse solicitações. O botão simula o comportamento inicial antes de integrar push/Redis.</p>
+        <div class="section-title"><div><h2>Painel do Passeador</h2><p class="muted">Aceite/recuse pedidos, confirme chegada, inicie e finalize o passeio.</p></div><button class="secondary" onclick="loginWalker()">Entrar como passeador</button></div>
         <div id="walkerRequests" class="list"></div>
+      </div>
+    </section>
+
+    <section id="tracking" class="view grid-two">
+      <div class="card">
+        <h2>Rastreamento visual</h2>
+        <div id="routeMap" class="route-map"><div class="street s1"></div><div class="street s2"></div><div id="clientPin" class="map-pin house">🏠</div><div id="walkerPin" class="map-pin dog">🚶</div><div class="map-card">Rota simulada ao vivo</div></div>
+        <div class="actions"><button onclick="simulateMove()">Simular movimento</button><button class="ok" onclick="startCurrentWalk()">Iniciar passeio</button><button class="warn" onclick="finishCurrentWalk()">Finalizar</button></div>
+      </div>
+      <div class="card">
+        <h2>Pedido atual</h2>
+        <div id="currentWalkBox" class="notice">Nenhum pedido selecionado.</div>
+        <h3>PIX simulado</h3>
+        <div id="pixBox" class="pix-box">Crie um pedido para gerar o PIX.</div>
       </div>
     </section>
 
@@ -89,14 +117,8 @@
         <div class="stat"><span>Passeadores</span><strong id="sWalkers">0</strong></div>
         <div class="stat"><span>Pedidos</span><strong id="sWalks">0</strong></div>
       </div>
-      <div class="card">
-        <h2>Solicitações</h2>
-        <div id="adminWalks" class="list"></div>
-      </div>
-      <div class="card">
-        <h2>Usuários</h2>
-        <div id="adminUsers" class="list"></div>
-      </div>
+      <div class="card"><h2>Solicitações</h2><div id="adminWalks" class="list"></div></div>
+      <div class="card"><h2>Usuários</h2><div id="adminUsers" class="list users-grid"></div></div>
     </section>
   </main>
 

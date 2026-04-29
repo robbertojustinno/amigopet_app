@@ -1,38 +1,37 @@
-# AmigoPet Pro
+# AmigoPet V6 nível Uber
 
-Plataforma profissional inicial para passeio de pets: cliente, passeador e admin no mesmo frontend, com backend FastAPI e SQLite.
+Plataforma FastAPI + HTML/CSS/JS com fluxo estilo Uber para passeios com pets.
 
-## Rodar no Windows PowerShell
+## Recursos
+- Login cliente, passeador e admin
+- Cadastro de pet
+- Escolha do passeador antes da solicitação
+- Convite com contador
+- Aceitar/recusar pedido
+- PIX simulado
+- Chat interno
+- Rastreamento visual simulado
+- WebSocket para atualizações em tempo real
+- Painel admin
 
+## Rodar local
 ```powershell
+cd E:\amigopet_app
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python -m uvicorn backend.app.main:app --reload
 ```
 
-Abra:
+Abra: http://127.0.0.1:8000
 
-http://127.0.0.1:8000
+## Logins
+- admin@amigopet.com / 123456
+- cliente@amigopet.com / 123456
+- passeador@amigopet.com / 123456
+- ana@amigopet.com / 123456
 
-## Login rápido
-
-O sistema cria dados iniciais automaticamente:
-
-- Admin: admin@amigopet.com / 123456
-- Cliente: cliente@amigopet.com / 123456
-- Passeador: passeador@amigopet.com / 123456
-
-## Deploy Render
-
-Build Command:
-
+## Render start command
 ```bash
-pip install -r requirements.txt
-```
-
-Start Command:
-
-```bash
-uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
 ```
