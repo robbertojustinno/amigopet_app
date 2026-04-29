@@ -49,7 +49,7 @@ function connectWS(){
     ws.onopen = () => $('liveStatus').textContent = 'Tempo real conectado';
     ws.onmessage = async (ev) => {
       const data = JSON.parse(ev.data);
-      const labels = {walk_created:'Novo convite criado', walk_accepted:'Passeador aceitou', walk_rejected:'Passeador recusou', payment_confirmed:'Pagamento confirmado', walk_started:'Passeio iniciado', walk_finished:'Passeio finalizado', location_updated:'Localização atualizada', message:'Nova mensagem'};
+      const labels = {walk_created:'Novo convite criado', walk_accepted:'Passeador aceitou', walk_rejected:'Passeador recusou', payment_confirmed:'Pagamento confirmado', pix_created:'PIX gerado', walk_started:'Passeio iniciado', walk_finished:'Passeio finalizado', location_updated:'Localização atualizada', message:'Nova mensagem'};
       toast(labels[data.type] || 'Atualização recebida');
       if(data.walk){ lastWalk = data.walk; currentRequestId = data.walk.id; renderCurrentWalk(data.walk); }
       await refreshAll();
@@ -129,8 +129,25 @@ async function rejectWalk(id){
   try{ const walk = await api(`/api/walks/${id}/reject`, {method:'POST'}); lastWalk = walk; renderCurrentWalk(walk); toast('Convite recusado.'); await refreshAll(); }
   catch(err){ toast(err.message); }
 }
+async function generatePix(id){
+  try{
+    const walk = await api(`/api/walks/${id}/pix`, {method:'POST'});
+    lastWalk = walk; currentRequestId = id; renderCurrentWalk(walk);
+    toast(walk.mp_payment_id ? 'PIX Mercado Pago gerado.' : 'PIX simulado gerado. Configure MP_ACCESS_TOKEN para PIX real.');
+    await refreshAll();
+  }catch(err){ toast(err.message); }
+}
+async function checkPix(id){
+  try{
+    if(!lastWalk || !lastWalk.mp_payment_id) return toast('Pagamento Mercado Pago ainda não foi gerado para este pedido.');
+    const walk = await api(`/api/payments/check/${lastWalk.mp_payment_id}`);
+    lastWalk = walk; currentRequestId = id; renderCurrentWalk(walk);
+    toast(walk.payment_status === 'pago' ? 'Pagamento confirmado pelo Mercado Pago.' : `Status Mercado Pago: ${walk.mp_status || walk.payment_status}`);
+    await refreshAll();
+  }catch(err){ toast(err.message); }
+}
 async function payWalk(id){
-  try{ const walk = await api(`/api/walks/${id}/pay`, {method:'POST'}); lastWalk = walk; currentRequestId = id; renderCurrentWalk(walk); toast('PIX simulado confirmado.'); await refreshAll(); }
+  try{ const walk = await api(`/api/walks/${id}/pay`, {method:'POST'}); lastWalk = walk; currentRequestId = id; renderCurrentWalk(walk); toast('Pagamento marcado como pago manualmente.'); await refreshAll(); }
   catch(err){ toast(err.message); }
 }
 async function startWalk(id){
@@ -157,8 +174,11 @@ async function simulateMove(){
 
 function renderCurrentWalk(w){
   if(!w) return;
-  $('currentWalkBox').innerHTML = `<strong>#${w.id} • ${w.pet || 'Pet'}</strong><br>Cliente: ${w.client}<br>Passeador: ${w.walker}<br>Status: <span class="badge ${w.status}">${w.status}</span><br>Pagamento: <span class="badge ${w.payment_status}">${w.payment_status}</span><br>Distância: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price).toFixed(2)}`;
-  $('pixBox').textContent = w.pix_code || 'PIX será gerado ao criar o pedido.';
+  const mpInfo = w.mp_payment_id ? `<br>Mercado Pago: <strong>${w.mp_status || 'pending'}</strong> • ID ${w.mp_payment_id}` : '<br>Mercado Pago: modo simulado ou token ausente';
+  $('currentWalkBox').innerHTML = `<strong>#${w.id} • ${w.pet || 'Pet'}</strong><br>Cliente: ${w.client}<br>Passeador: ${w.walker}<br>Status: <span class="badge ${w.status}">${w.status}</span><br>Pagamento: <span class="badge ${w.payment_status}">${w.payment_status}</span>${mpInfo}<br>Distância: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price).toFixed(2)}`;
+  const qrImg = w.pix_qr_base64 ? `<img alt="QR Code PIX" style="max-width:220px;width:100%;border-radius:18px;background:white;padding:10px;margin:10px 0;" src="data:image/png;base64,${w.pix_qr_base64}">` : '';
+  const code = w.pix_code ? `<div style="word-break:break-all;white-space:normal;">${w.pix_code}</div>` : '<div>PIX será gerado ao criar o pedido.</div>';
+  $('pixBox').innerHTML = `${qrImg}${code}<div class="actions" style="margin-top:10px"><button class="warn" onclick="generatePix(${w.id})">Gerar/Regerar PIX</button><button onclick="checkPix(${w.id})">Checar Mercado Pago</button></div>`;
 }
 
 function walkItem(w, withActions=true){
@@ -169,7 +189,7 @@ function walkItem(w, withActions=true){
       <div><span class="badge ${w.status}">${w.status}</span> <span class="badge ${w.payment_status}">${w.payment_status}</span>${timer}</div>
     </div>
     <div class="muted">${w.duration_minutes} min • ${w.dogs_count} cão(s) • ${w.distance_km} km • R$ ${Number(w.estimated_price).toFixed(2)}</div>
-    ${withActions ? `<div class="actions"><button class="ok" onclick="acceptWalk(${w.id})">Aceitar</button><button class="danger" onclick="rejectWalk(${w.id})">Recusar</button><button class="warn" onclick="payWalk(${w.id})">Confirmar PIX</button><button onclick="startWalk(${w.id})">Iniciar</button><button onclick="finishWalk(${w.id})">Finalizar</button><button onclick="openChat(${w.id})">Chat</button><button onclick="currentRequestId=${w.id}; lastWalk=${JSON.stringify(w).replaceAll('"','&quot;')}; renderCurrentWalk(lastWalk); showView('tracking')">Rota</button></div>` : ''}
+    ${withActions ? `<div class="actions"><button class="ok" onclick="acceptWalk(${w.id})">Aceitar</button><button class="danger" onclick="rejectWalk(${w.id})">Recusar</button><button class="warn" onclick="generatePix(${w.id})">Gerar PIX</button><button class="warn" onclick="checkPix(${w.id})">Checar PIX</button><button onclick="payWalk(${w.id})">Pago manual</button><button onclick="startWalk(${w.id})">Iniciar</button><button onclick="finishWalk(${w.id})">Finalizar</button><button onclick="openChat(${w.id})">Chat</button><button onclick="currentRequestId=${w.id}; lastWalk=${JSON.stringify(w).replaceAll('"','&quot;')}; renderCurrentWalk(lastWalk); showView('tracking')">Rota</button></div>` : ''}
   </div>`;
 }
 

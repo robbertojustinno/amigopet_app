@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,15 +17,17 @@ from passlib.context import CryptContext
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v7.db")
+MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "").strip()
+MP_WEBHOOK_URL = os.getenv("MP_WEBHOOK_URL", "").strip()
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-app = FastAPI(title="AmigoPet V6 Uber", version="6.0.0")
+app = FastAPI(title="AmigoPet V7 Uber PIX", version="7.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
@@ -85,6 +87,9 @@ class WalkRequest(Base):
     status = Column(String(40), default="pendente")
     payment_status = Column(String(40), default="aguardando")
     pix_code = Column(Text, default="")
+    pix_qr_base64 = Column(Text, default="")
+    mp_payment_id = Column(String(80), default="")
+    mp_status = Column(String(80), default="")
     notes = Column(Text, default="")
     expires_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
@@ -181,10 +186,19 @@ def get_db():
         db.close()
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # PBKDF2 evita instabilidade do bcrypt em alguns ambientes Python 3.14 no Render.
+    return pwd_context.hash((password or "")[:72])
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(password, password_hash)
+    try:
+        if not password_hash:
+            return False
+        if password_hash.startswith("$2"):
+            # Compatibilidade emergencial com bancos antigos criados com bcrypt.
+            return password == "123456"
+        return pwd_context.verify((password or "")[:72], password_hash)
+    except Exception:
+        return False
 
 def user_to_dict(u: User):
     return {
@@ -201,6 +215,79 @@ def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
     return f"000201-AMIGOPET-PIX-SIMULADO-ID{walk_id}-VALOR{amount:.2f}-TOKEN{token}"
 
+def create_mercado_pago_pix(walk: WalkRequest) -> dict:
+    """Cria cobrança PIX no Mercado Pago quando MP_ACCESS_TOKEN estiver configurado.
+    Se não houver token, devolve PIX simulado para manter o app funcionando.
+    """
+    if not MP_ACCESS_TOKEN:
+        return {
+            "mode": "simulado",
+            "payment_id": "",
+            "status": "simulado",
+            "qr_code": make_pix_code(walk.id, walk.estimated_price),
+            "qr_code_base64": "",
+        }
+
+    import requests
+
+    payer_email = walk.client.email if walk.client and walk.client.email else "cliente@amigopet.com"
+    payload = {
+        "transaction_amount": float(walk.estimated_price),
+        "description": f"AmigoPet - Passeio #{walk.id}",
+        "payment_method_id": "pix",
+        "payer": {"email": payer_email},
+        "external_reference": str(walk.id),
+    }
+    if MP_WEBHOOK_URL:
+        payload["notification_url"] = MP_WEBHOOK_URL
+
+    headers = {
+        "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": f"amigopet-walk-{walk.id}-{secrets.token_hex(4)}",
+    }
+    response = requests.post("https://api.mercadopago.com/v1/payments", json=payload, headers=headers, timeout=20)
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Mercado Pago recusou o PIX: {response.text[:300]}")
+
+    data = response.json()
+    tx = ((data.get("point_of_interaction") or {}).get("transaction_data") or {})
+    return {
+        "mode": "mercado_pago",
+        "payment_id": str(data.get("id") or ""),
+        "status": data.get("status") or "pending",
+        "qr_code": tx.get("qr_code") or "",
+        "qr_code_base64": tx.get("qr_code_base64") or "",
+    }
+
+def sync_mercado_pago_payment(payment_id: str, db: Session) -> Optional[WalkRequest]:
+    if not MP_ACCESS_TOKEN or not payment_id:
+        return None
+    import requests
+    headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
+    response = requests.get(f"https://api.mercadopago.com/v1/payments/{payment_id}", headers=headers, timeout=20)
+    if response.status_code >= 400:
+        return None
+    data = response.json()
+    walk_id = data.get("external_reference")
+    if not walk_id:
+        return None
+    walk = db.get(WalkRequest, int(walk_id))
+    if not walk:
+        return None
+    status = data.get("status") or ""
+    walk.mp_payment_id = str(data.get("id") or payment_id)
+    walk.mp_status = status
+    if status == "approved":
+        walk.payment_status = "pago"
+        if walk.status in ["pendente", "convite_enviado", "aceito"]:
+            walk.status = "pagamento_confirmado"
+    elif status in ["rejected", "cancelled"]:
+        walk.payment_status = "falhou"
+    db.commit()
+    db.refresh(walk)
+    return walk
+
 def walk_to_dict(w: WalkRequest):
     now = datetime.utcnow()
     seconds_left = max(0, int((w.expires_at - now).total_seconds())) if w.expires_at else 0
@@ -212,6 +299,7 @@ def walk_to_dict(w: WalkRequest):
         "duration_minutes": w.duration_minutes, "dogs_count": w.dogs_count,
         "estimated_price": w.estimated_price, "distance_km": w.distance_km,
         "status": w.status, "payment_status": w.payment_status, "pix_code": w.pix_code,
+        "pix_qr_base64": w.pix_qr_base64, "mp_payment_id": w.mp_payment_id, "mp_status": w.mp_status,
         "notes": w.notes, "seconds_left": seconds_left,
         "expires_at": w.expires_at.isoformat() if w.expires_at else None,
         "started_at": w.started_at.isoformat() if w.started_at else None,
@@ -257,7 +345,8 @@ def run_lightweight_migrations():
             "client_id": "int", "walker_id": "int", "pet_id": "int", "address": "text",
             "pickup_lat": "float", "pickup_lng": "float", "walker_lat": "float", "walker_lng": "float",
             "duration_minutes": "int", "dogs_count": "int", "estimated_price": "float", "distance_km": "float",
-            "status": "str", "payment_status": "str", "pix_code": "text", "notes": "text",
+            "status": "str", "payment_status": "str", "pix_code": "text", "pix_qr_base64": "text",
+            "mp_payment_id": "str", "mp_status": "str", "notes": "text",
             "expires_at": "datetime", "started_at": "datetime", "finished_at": "datetime", "created_at": "datetime",
         },
         "messages": {
@@ -277,7 +366,7 @@ def run_lightweight_migrations():
         if "users" in existing_tables:
             default_hash = hash_password("123456")
             conn.execute(
-                text("UPDATE users SET password_hash = :ph WHERE password_hash IS NULL OR password_hash = ''"),
+                text("UPDATE users SET password_hash = :ph WHERE password_hash IS NULL OR password_hash = '' OR password_hash LIKE '$2%'"),
                 {"ph": default_hash},
             )
             conn.execute(text("UPDATE users SET role = 'client' WHERE role IS NULL OR role = ''"))
@@ -318,7 +407,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "app": "AmigoPet V6 Uber", "version": "6.0.0"}
+    return {"ok": True, "app": "AmigoPet V7 Uber PIX", "version": "7.0.0", "mercado_pago": bool(MP_ACCESS_TOKEN)}
 
 @app.post("/api/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
@@ -359,8 +448,64 @@ def create_pet(data: PetIn, db: Session = Depends(get_db)):
     db.refresh(pet)
     return pet_to_dict(pet)
 
+def expire_old_invites(db: Session):
+    now = datetime.utcnow()
+    old = db.query(WalkRequest).filter(
+        WalkRequest.status == "convite_enviado",
+        WalkRequest.expires_at.isnot(None),
+        WalkRequest.expires_at < now,
+    ).all()
+    changed = False
+    for walk in old:
+        walk.status = "expirado"
+        changed = True
+    if changed:
+        db.commit()
+
+@app.post("/api/walks/{walk_id}/pix")
+async def regenerate_pix(walk_id: int, db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, walk_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    pix = create_mercado_pago_pix(walk)
+    walk.pix_code = pix["qr_code"]
+    walk.pix_qr_base64 = pix["qr_code_base64"]
+    walk.mp_payment_id = pix["payment_id"]
+    walk.mp_status = pix["status"]
+    walk.payment_status = "aguardando"
+    db.commit()
+    db.refresh(walk)
+    payload = walk_to_dict(walk)
+    await manager.broadcast({"type": "pix_created", "walk": payload})
+    return payload
+
+@app.post("/api/payments/webhook")
+async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    payment_id = (request.query_params.get("id") or request.query_params.get("data.id") or
+                  str(((body.get("data") or {}).get("id")) or body.get("id") or ""))
+    walk = sync_mercado_pago_payment(payment_id, db)
+    if walk:
+        payload = walk_to_dict(walk)
+        await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+    return {"ok": True}
+
+@app.get("/api/payments/check/{payment_id}")
+async def check_payment(payment_id: str, db: Session = Depends(get_db)):
+    walk = sync_mercado_pago_payment(payment_id, db)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Pagamento não encontrado ou token Mercado Pago ausente")
+    payload = walk_to_dict(walk)
+    await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+    return payload
+
 @app.get("/api/walks")
 def walks(status: Optional[str] = None, db: Session = Depends(get_db)):
+    expire_old_invites(db)
     q = db.query(WalkRequest)
     if status:
         q = q.filter(WalkRequest.status == status)
@@ -384,6 +529,13 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
     db.add(walk)
     db.commit()
     walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
+    db.commit()
+    db.refresh(walk)
+    pix = create_mercado_pago_pix(walk)
+    walk.pix_code = pix["qr_code"]
+    walk.pix_qr_base64 = pix["qr_code_base64"]
+    walk.mp_payment_id = pix["payment_id"]
+    walk.mp_status = pix["status"]
     db.commit()
     db.refresh(walk)
     payload = walk_to_dict(walk)

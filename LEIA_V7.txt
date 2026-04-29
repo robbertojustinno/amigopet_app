@@ -1,0 +1,24 @@
+AMIGOPET V7 - Mercado Pago PIX + Notificação estilo Uber
+
+Substitua estes arquivos no projeto:
+- backend/app/main.py
+- frontend/app.js
+- requirements.txt
+- backend/requirements.txt
+- runtime.txt
+- backend/runtime.txt
+- render.yaml
+
+Depois rode:
+
+git add .
+git commit -m "V7 Mercado Pago PIX e notificacao Uber"
+git push
+
+No Render:
+1. Environment > adicione MP_ACCESS_TOKEN com seu token do Mercado Pago.
+2. MP_WEBHOOK_URL deve ser: https://amigopet-6td8.onrender.com/api/payments/webhook
+3. Manual Deploy > Clear build cache & deploy.
+
+Sem MP_ACCESS_TOKEN, o app continua funcionando em modo PIX simulado.
+Com MP_ACCESS_TOKEN, o endpoint cria PIX real via Mercado Pago e exibe QR Code/base64 quando retornado pela API.
