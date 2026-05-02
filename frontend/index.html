@@ -3,59 +3,105 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>AmigoPet V8 • Mapa Tempo Real</title>
+  <title>AmigoPet • ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-admin1" />
+  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-secure2" />
 </head>
 <body>
   <div id="toast"></div>
 
-  <header class="topbar">
-    <div>
-      <h1>🐾 AmigoPet</h1>
-      <p>V8 • Passeio estilo Uber com mapa em tempo real</p>
+  <header class="topbar brand-top">
+    <div class="brand-area">
+      <div class="brand-logo">🐾</div>
+      <div>
+        <h1>AmigoPet Pro</h1>
+        <p>Seu pet bem cuidado, sua operação pronta para crescer</p>
+      </div>
     </div>
     <div class="status-pill" id="liveStatus">Conectando tempo real...</div>
   </header>
 
   <nav class="nav" id="mainNav">
-    <button class="nav-btn active" data-view="home" data-roles="guest,client,walker,admin">Início</button>
-    <button class="nav-btn nav-btn-small role-client" data-view="request" data-roles="client">Cliente</button>
-    <button class="nav-btn nav-btn-small role-walker" data-view="walker" data-roles="walker">Passeador</button>
-    <button class="nav-btn nav-btn-small role-tracking" data-view="tracking" data-roles="client,walker">Mapa</button>
+    <button class="nav-btn active" data-view="home" data-roles="guest,client,walker">Início</button>
+    <button class="nav-btn role-client compact-nav" data-view="request" data-roles="client">Cliente</button>
+    <button class="nav-btn role-walker compact-nav" data-view="walker" data-roles="walker">Passeador</button>
+    <button class="nav-btn role-tracking compact-nav" data-view="tracking" data-roles="client,walker">Mapa</button>
     <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
   <main>
     <section id="home" class="view active">
-      <div class="grid two">
-        <div class="card hero">
-          <h2>Plataforma profissional de passeio pet</h2>
-          <p>Cliente escolhe passeador, envia convite, acompanha aceite, pagamento, chat e localização em tempo real.</p>
+      <div class="landing-card">
+        <div class="landing-badge">Base profissional em evolução</div>
+        <h2>Entre na sua conta</h2>
+        <p class="landing-subtitle">Cliente e passeador usando o mesmo backend central, com mapa, chat, pagamento e localização em tempo real.</p>
 
-          <div class="login-box">
-            <select id="quickLogin" onchange="fillLogin()">
-              <option value="cliente@amigopet.com">Cliente</option>
-              <option value="passeador@amigopet.com">Passeador</option>
-            </select>
-            <input id="loginEmail" placeholder="E-mail" value="cliente@amigopet.com" />
-            <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
-            <button onclick="login()">Entrar</button>
-            <button class="secondary" onclick="loginWalker()">Entrar como passeador</button>
+        <div class="preview-stack" aria-label="Prévia comercial do AmigoPet">
+          <div class="preview-panel">
+            <div class="preview-head">
+              <strong>AmigoPet Pro</strong>
+              <span>Planos • Entrar • Criar conta</span>
+            </div>
+            <div class="preview-body">
+              <div>
+                <span class="mini-badge">V8 comercial pronta para crescer</span>
+                <h3>Transforme sua ideia em um serviço real de passeios para pets.</h3>
+                <p>Agendamento, pagamento, avaliação, chat e rota ao vivo.</p>
+              </div>
+              <div class="preview-brand">🐶 💚<br><strong>AmigoPet Pro</strong><small>Passeios, confiança e cuidado em cada rota</small></div>
+            </div>
+            <div class="preview-metrics">
+              <span><strong>24h</strong> pronto para evoluir</span>
+              <span><strong>GPS</strong> mapa em tempo real</span>
+              <span><strong>5★</strong> reputação</span>
+            </div>
           </div>
-          <div id="loggedUser" class="notice">Nenhum usuário conectado. Faça login para liberar sua área.</div>
+
+          <div class="preview-panel small">
+            <div class="preview-head">
+              <strong>Planos e preços</strong>
+              <span>ROVIX</span>
+            </div>
+            <div class="pricing-preview">
+              <span><strong>Essencial</strong><br>R$ 29,90</span>
+              <span><strong>Plus</strong><br>R$ 59,90</span>
+              <span><strong>Premium</strong><br>R$ 99,90</span>
+            </div>
+          </div>
         </div>
 
-        <div class="grid metrics">
-          <div class="metric"><strong id="mClients">0</strong><span>Clientes</span></div>
-          <div class="metric"><strong id="mWalkers">0</strong><span>Passeadores</span></div>
-          <div class="metric"><strong id="mWalks">0</strong><span>Pedidos</span></div>
+        <div class="role-switch">
+          <button class="role-choice active" type="button" onclick="selectLoginRole('client')">Cliente</button>
+          <button class="role-choice" type="button" onclick="selectLoginRole('walker')">Passeador</button>
+        </div>
+
+        <div class="grid two login-grid">
+          <div class="card login-card">
+            <h3 id="loginTitle">Entrar como Cliente</h3>
+            <p class="muted">Use seu e-mail e senha para acessar apenas sua área.</p>
+            <div class="login-box">
+              <select id="quickLogin" onchange="fillLogin()">
+                <option value="cliente@amigopet.com" data-role="client">Cliente teste</option>
+                <option value="passeador@amigopet.com" data-role="walker">Passeador teste</option>
+              </select>
+              <input id="loginEmail" placeholder="E-mail" value="cliente@amigopet.com" />
+              <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
+              <button onclick="login()">Entrar</button>
+            </div>
+            <div id="loggedUser" class="notice">Nenhum usuário conectado. Faça login para liberar sua área.</div>
+          </div>
+
+          <div class="metrics compact-metrics">
+            <div class="metric"><strong id="mClients">0</strong><span>Clientes</span></div>
+            <div class="metric"><strong id="mWalkers">0</strong><span>Passeadores</span></div>
+            <div class="metric"><strong id="mWalks">0</strong><span>Pedidos</span></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="request" class="view protected-view" data-roles="client,admin">
+    <section id="request" class="view protected-view" data-roles="client">
       <div class="grid two">
         <div class="card">
           <h2>Cadastro do pet</h2>
@@ -97,15 +143,15 @@
       </div>
     </section>
 
-    <section id="walker" class="view protected-view" data-roles="walker,admin">
+    <section id="walker" class="view protected-view" data-roles="walker">
       <div class="card">
         <h2>Central do passeador</h2>
-        <p class="muted">Aceite/recuse convites, confirme etapas e use GPS real durante o passeio.</p>
+        <p class="muted">Aceite ou recuse convites, confirme etapas e use GPS real durante o passeio.</p>
         <div id="walkerRequests"></div>
       </div>
     </section>
 
-    <section id="tracking" class="view protected-view" data-roles="client,walker,admin">
+    <section id="tracking" class="view protected-view" data-roles="client,walker">
       <div class="grid two tracking-grid">
         <div class="card">
           <h2>Mapa em tempo real</h2>
@@ -129,26 +175,6 @@
         </div>
       </div>
     </section>
-
-    <section id="admin" class="view protected-view" data-roles="admin">
-      <div class="grid metrics">
-        <div class="metric"><strong id="sUsers">0</strong><span>Usuários</span></div>
-        <div class="metric"><strong id="sClients">0</strong><span>Clientes</span></div>
-        <div class="metric"><strong id="sWalkers">0</strong><span>Passeadores</span></div>
-        <div class="metric"><strong id="sWalks">0</strong><span>Pedidos</span></div>
-      </div>
-
-      <div class="grid two">
-        <div class="card">
-          <h2>Pedidos</h2>
-          <div id="adminWalks"></div>
-        </div>
-        <div class="card">
-          <h2>Usuários</h2>
-          <div id="adminUsers"></div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <aside id="chatBox" class="chat-box">
@@ -166,6 +192,6 @@
   <footer>Powered by ROVIX • AmigoPet V8</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=v8-rovix-admin1"></script>
+  <script src="/static/app.js?v=v8-rovix-secure2"></script>
 </body>
 </html>

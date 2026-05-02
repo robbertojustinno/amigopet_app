@@ -3,131 +3,52 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>AmigoPet Admin • ROVIX</title>
+  <title>Admin • AmigoPet ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-admin1" />
+  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-secure2" />
 </head>
-<body>
+<body class="admin-page">
   <div id="toast"></div>
 
-  <header class="topbar">
-    <div>
-      <h1>🐾 AmigoPet</h1>
-      <p>Administração segura • acesso exclusivo pelo link /admin</p>
+  <header class="topbar brand-top">
+    <div class="brand-area">
+      <div class="brand-logo">🔐</div>
+      <div>
+        <h1>AmigoPet Admin</h1>
+        <p>Painel administrativo exclusivo • Powered by ROVIX</p>
+      </div>
     </div>
     <div class="status-pill" id="liveStatus">Conectando tempo real...</div>
   </header>
 
   <nav class="nav" id="mainNav">
-    <button class="nav-btn active" data-view="home" data-roles="guest,admin">Login Admin</button>
-    <button class="nav-btn role-admin" data-view="admin" data-roles="admin">Admin</button>
+    <button class="nav-btn active" data-view="adminLogin" data-roles="guest">Login Admin</button>
+    <button class="nav-btn" data-view="admin" data-roles="admin">Dashboard</button>
     <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
   <main>
-    <section id="home" class="view active">
-      <div class="grid two">
-        <div class="card hero">
-          <h2>Painel administrativo AmigoPet</h2>
-          <p>Acesso restrito ao administrador. Área de usuários, pedidos e operação da plataforma.</p>
+    <section id="adminLogin" class="view active">
+      <div class="card admin-login-card">
+        <span class="landing-badge">Acesso restrito</span>
+        <h2>Entrar no painel Admin</h2>
+        <p class="muted">Esta área não aparece na interface de cliente ou passeador.</p>
 
-          <div class="login-box">
-            <select id="quickLogin" onchange="fillLogin()">
-              <option value="admin@amigopet.com">Admin</option>
-            </select>
-            <input id="loginEmail" placeholder="E-mail" value="admin@amigopet.com" />
-            <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
-            <button onclick="login()">Entrar</button>
-          </div>
-          <div id="loggedUser" class="notice">Nenhum administrador conectado. Faça login para liberar o painel.</div>
-        </div>
-
-        <div class="grid metrics">
-          <div class="metric"><strong id="mClients">0</strong><span>Clientes</span></div>
-          <div class="metric"><strong id="mWalkers">0</strong><span>Passeadores</span></div>
-          <div class="metric"><strong id="mWalks">0</strong><span>Pedidos</span></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="request" class="view protected-view" data-roles="client,admin">
-      <div class="grid two">
-        <div class="card">
-          <h2>Cadastro do pet</h2>
-          <input id="petName" placeholder="Nome do pet" value="Thor" />
-          <input id="petBreed" placeholder="Raça" value="SRD" />
-          <select id="petSize">
-            <option>Pequeno</option>
-            <option selected>Médio</option>
-            <option>Grande</option>
+        <div class="login-box admin-login-box">
+          <select id="quickLogin" onchange="fillLogin()">
+            <option value="admin@amigopet.com" data-role="admin">Administrador</option>
           </select>
-          <input id="petAge" placeholder="Idade" value="3 anos" />
-          <input id="petPhoto" placeholder="URL da foto do pet" />
-          <textarea id="petNotes" placeholder="Observações">Gosta de passeios tranquilos.</textarea>
-          <button onclick="createPet()">Cadastrar pet</button>
+          <input id="loginEmail" placeholder="E-mail" value="admin@amigopet.com" />
+          <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
+          <button onclick="login()">Entrar como Admin</button>
         </div>
 
-        <div class="card">
-          <h2>Solicitar passeio</h2>
-          <label>Pet</label>
-          <select id="petSelect"></select>
-          <label>Passeador</label>
-          <select id="walkerSelect"></select>
-          <input id="address" placeholder="Endereço" value="Rua Mirabel, 49 Piabetá - Magé - RJ" />
-          <label>Duração</label>
-          <select id="duration">
-            <option value="30">30 min</option>
-            <option value="45">45 min</option>
-            <option value="60">60 min</option>
-          </select>
-          <label>Quantidade de cães</label>
-          <input id="dogsCount" type="number" value="1" min="1" />
-          <button onclick="createWalk()">Enviar convite estilo Uber</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Escolha visual do passeador</h2>
-        <div id="walkerCards" class="walker-grid"></div>
-      </div>
-    </section>
-
-    <section id="walker" class="view protected-view" data-roles="walker,admin">
-      <div class="card">
-        <h2>Central do passeador</h2>
-        <p class="muted">Aceite/recuse convites, confirme etapas e use GPS real durante o passeio.</p>
-        <div id="walkerRequests"></div>
-      </div>
-    </section>
-
-    <section id="tracking" class="view protected-view" data-roles="client,walker,admin">
-      <div class="grid two tracking-grid">
-        <div class="card">
-          <h2>Mapa em tempo real</h2>
-          <div id="map"></div>
-          <div class="actions">
-            <button onclick="startGps()">Ativar GPS real</button>
-            <button class="secondary" onclick="stopGps()">Parar GPS</button>
-            <button class="warn" onclick="simulateMove()">Simular movimento</button>
-            <button onclick="startCurrentWalk()">Iniciar passeio</button>
-            <button class="ok" onclick="finishCurrentWalk()">Finalizar passeio</button>
-          </div>
-          <div id="gpsStatus" class="notice">GPS aguardando.</div>
-        </div>
-
-        <div class="card">
-          <h2>Pedido atual</h2>
-          <div id="currentWalkBox" class="notice">Nenhum pedido selecionado.</div>
-          <h3>PIX / Pagamento</h3>
-          <pre id="pixBox">PIX será gerado ao criar o pedido.</pre>
-          <button onclick="toggleChat()">Abrir chat</button>
-        </div>
+        <div id="loggedUser" class="notice">Nenhum administrador conectado.</div>
       </div>
     </section>
 
     <section id="admin" class="view protected-view" data-roles="admin">
-      <div class="grid metrics">
+      <div class="grid metrics admin-metrics">
         <div class="metric"><strong id="sUsers">0</strong><span>Usuários</span></div>
         <div class="metric"><strong id="sClients">0</strong><span>Clientes</span></div>
         <div class="metric"><strong id="sWalkers">0</strong><span>Passeadores</span></div>
@@ -147,21 +68,7 @@
     </section>
   </main>
 
-  <aside id="chatBox" class="chat-box">
-    <div class="chat-head">
-      <strong>Chat interno</strong>
-      <button onclick="toggleChat()">×</button>
-    </div>
-    <div id="chatMessages" class="chat-messages"></div>
-    <div class="chat-send">
-      <input id="chatText" placeholder="Digite sua mensagem..." />
-      <button onclick="sendMessage()">Enviar</button>
-    </div>
-  </aside>
-
-  <footer>Powered by ROVIX • AmigoPet V8</footer>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=v8-rovix-admin1"></script>
+  <footer>Powered by ROVIX • Admin AmigoPet</footer>
+  <script src="/static/app.js?v=v8-rovix-secure2"></script>
 </body>
 </html>
