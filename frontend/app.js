@@ -1,5 +1,6 @@
 const API = 'https://amigopet-6td8.onrender.com';
 const WS_URL = 'wss://amigopet-6td8.onrender.com/ws';
+const IS_ADMIN_PAGE = window.location.pathname.replace(/\/$/, '') === '/admin';
 
 let currentUser = null;
 let currentRequestId = null;
@@ -16,14 +17,18 @@ const $ = (id) => document.getElementById(id);
 const ROLE_LABELS = {client:'Cliente', walker:'Passeador', admin:'Administrador'};
 const VIEW_ROLES = {
   home: ['guest','client','walker','admin'],
-  request: ['client','admin'],
-  walker: ['walker','admin'],
-  tracking: ['client','walker','admin'],
+  request: ['client'],
+  walker: ['walker'],
+  tracking: ['client','walker'],
   admin: ['admin']
 };
 
 function getRole(){ return currentUser?.role || 'guest'; }
-function hasAccess(viewId){ return (VIEW_ROLES[viewId] || ['admin']).includes(getRole()); }
+function hasAccess(viewId){
+  if(viewId === 'admin' && !IS_ADMIN_PAGE) return false;
+  if(IS_ADMIN_PAGE && viewId !== 'home' && viewId !== 'admin') return false;
+  return (VIEW_ROLES[viewId] || ['admin']).includes(getRole());
+}
 function requireLogin(){
   if(currentUser) return true;
   toast('Faça login para acessar esta área.');
@@ -32,7 +37,7 @@ function requireLogin(){
 }
 function requireRole(roles){
   if(!requireLogin()) return false;
-  if(roles.includes(currentUser.role) || currentUser.role === 'admin') return true;
+  if(roles.includes(currentUser.role)) return true;
   toast('Acesso bloqueado para este perfil.');
   showView('home', true);
   return false;
@@ -48,8 +53,17 @@ function updateAuthUI(){
   const role = getRole();
   document.querySelectorAll('.nav-btn').forEach(btn => {
     const roles = (btn.dataset.roles || '').split(',').filter(Boolean);
+    const view = btn.dataset.view;
     if(btn.id === 'logoutBtn'){
       btn.style.display = currentUser ? 'inline-flex' : 'none';
+      return;
+    }
+    if(view === 'admin' && !IS_ADMIN_PAGE){
+      btn.style.display = 'none';
+      return;
+    }
+    if(IS_ADMIN_PAGE && view !== 'home' && view !== 'admin'){
+      btn.style.display = 'none';
       return;
     }
     btn.style.display = roles.length === 0 || roles.includes(role) ? 'inline-flex' : 'none';
@@ -77,11 +91,17 @@ function safeText(id, value){
 }
 
 function fillLogin(){
-  $('loginEmail').value = $('quickLogin').value;
+  const quick = $('quickLogin');
+  if(!quick) return;
+  $('loginEmail').value = quick.value;
   $('loginPassword').value = '123456';
 }
 
 function showView(id, force=false){
+  if(id === 'admin' && !IS_ADMIN_PAGE){
+    window.location.href = '/admin';
+    return;
+  }
   if(!force && !hasAccess(id)){
     toast(currentUser ? 'Seu perfil não tem acesso a esta tela.' : 'Faça login para acessar esta área.');
     id = 'home';
@@ -154,7 +174,18 @@ async function login(){
     updateAuthUI();
     toast('Login realizado.');
     await refreshAll();
-    if(currentUser.role === 'admin') showView('admin', true);
+    if(currentUser.role === 'admin'){
+      if(!IS_ADMIN_PAGE){
+        toast('Admin acessa somente pelo link /admin. Redirecionando...');
+        window.location.href = '/admin';
+        return;
+      }
+      showView('admin', true);
+    }
+    else if(IS_ADMIN_PAGE){
+      toast('Este link é exclusivo do administrador.');
+      logout();
+    }
     else if(currentUser.role === 'walker') showView('walker', true);
     else showView('request', true);
   }catch(err){ toast(err.message); }
@@ -515,6 +546,14 @@ async function sendMessage(){
 }
 
 restoreSession();
+if(IS_ADMIN_PAGE && currentUser && currentUser.role !== 'admin'){
+  currentUser = null;
+  localStorage.removeItem('amigopet_user');
+}
+if(!IS_ADMIN_PAGE && currentUser && currentUser.role === 'admin'){
+  currentUser = null;
+  localStorage.removeItem('amigopet_user');
+}
 updateAuthUI();
 connectWS();
 refreshAll().catch(() => toast('Backend iniciando ou indisponível.'));

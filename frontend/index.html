@@ -6,7 +6,7 @@
   <title>AmigoPet V8 • Mapa Tempo Real</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-auth1" />
+  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-admin1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -21,10 +21,9 @@
 
   <nav class="nav" id="mainNav">
     <button class="nav-btn active" data-view="home" data-roles="guest,client,walker,admin">Início</button>
-    <button class="nav-btn role-client" data-view="request" data-roles="client,admin">Cliente</button>
-    <button class="nav-btn role-walker" data-view="walker" data-roles="walker,admin">Passeador</button>
-    <button class="nav-btn role-tracking" data-view="tracking" data-roles="client,walker,admin">Mapa</button>
-    <button class="nav-btn role-admin" data-view="admin" data-roles="admin">Admin</button>
+    <button class="nav-btn nav-btn-small role-client" data-view="request" data-roles="client">Cliente</button>
+    <button class="nav-btn nav-btn-small role-walker" data-view="walker" data-roles="walker">Passeador</button>
+    <button class="nav-btn nav-btn-small role-tracking" data-view="tracking" data-roles="client,walker">Mapa</button>
     <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
@@ -37,7 +36,6 @@
 
           <div class="login-box">
             <select id="quickLogin" onchange="fillLogin()">
-              <option value="admin@amigopet.com">Admin</option>
               <option value="cliente@amigopet.com">Cliente</option>
               <option value="passeador@amigopet.com">Passeador</option>
             </select>
@@ -165,9 +163,9 @@
     </div>
   </aside>
 
-  <footer>Powered by Just Engine • AmigoPet V8</footer>
+  <footer>Powered by ROVIX • AmigoPet V8</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=v8-auth1"></script>
+  <script src="/static/app.js?v=v8-rovix-admin1"></script>
 </body>
 </html>
