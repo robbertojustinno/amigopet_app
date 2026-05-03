@@ -690,10 +690,10 @@ def register_client(data: ClientRegisterIn, db: Session = Depends(get_db)):
     email_result = {"sent": False}
     if EMAIL_CONFIRMATION_REQUIRED:
         try:
-    email_result = send_verification_email(user.email, user.full_name, code)
-except Exception as e:
-    print("[EMAIL FAIL]", e)
-    email_result = {"sent": False, "dev_code": code}
+            email_result = send_verification_email(user.email, user.full_name, code)
+        except Exception as e:
+            print("[EMAIL FAIL]", e)
+            email_result = {"sent": False, "dev_code": code}
 
     response = {
         "ok": True,
@@ -744,7 +744,12 @@ def resend_code(data: ResendCodeIn, db: Session = Depends(get_db)):
     user.verification_expires_at = datetime.utcnow() + timedelta(minutes=VERIFICATION_CODE_MINUTES)
     db.commit()
 
-    email_result = send_verification_email(user.email, user.full_name, code)
+    try:
+        email_result = send_verification_email(user.email, user.full_name, code)
+    except Exception as e:
+        print("[EMAIL FAIL]", e)
+        email_result = {"sent": False, "dev_code": code}
+
     response = {"ok": True, "message": "Novo código enviado", "email_sent": email_result.get("sent", False)}
     if email_result.get("dev_code"):
         response["dev_code"] = email_result["dev_code"]
