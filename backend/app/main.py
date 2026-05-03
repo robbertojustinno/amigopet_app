@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text, text
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -221,7 +221,18 @@ def user_to_dict(u: User):
     }
 
 def pet_to_dict(p: Pet):
-    return {"id": p.id, "owner_id": p.owner_id, "name": p.name, "species": p.species, "breed": p.breed, "size": p.size, "age": p.age, "photo": p.photo, "notes": p.notes}
+    return {
+        "id": p.id,
+        "owner_id": p.owner_id,
+        "name": p.name,
+        "species": p.species,
+        "breed": p.breed,
+        "size": p.size,
+        "age": p.age,
+        "photo": p.photo,
+        "notes": p.notes,
+        "dog_count": p.dog_count,
+    }
 
 def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
@@ -289,23 +300,33 @@ def seed_data():
 def run_lightweight_migrations():
     """Corrige banco antigo sem precisar de Shell no Render Free."""
     Base.metadata.create_all(bind=engine)
+
     with engine.begin() as conn:
         if engine.dialect.name == "postgresql":
             for old_col in ["password", "online"]:
                 try:
                     conn.execute(text(f"ALTER TABLE users DROP COLUMN IF EXISTS {old_col}"))
                 except Exception as e:
-                    print(f"[MIGRATION WARNING] drop old column {old_col}:", e)
+                    print(f"[MIGRATION WARNING] drop old users.{old_col}:", e)
 
             user_columns_sql = [
                 ("password_hash", "VARCHAR(255)"),
+                ("phone", "VARCHAR(30) DEFAULT ''"),
                 ("photo", "TEXT DEFAULT ''"),
                 ("document", "VARCHAR(40) DEFAULT ''"),
+                ("address", "TEXT DEFAULT ''"),
+                ("neighborhood", "VARCHAR(120) DEFAULT ''"),
+                ("city", "VARCHAR(120) DEFAULT ''"),
                 ("zip_code", "VARCHAR(20) DEFAULT ''"),
                 ("street", "VARCHAR(160) DEFAULT ''"),
                 ("number", "VARCHAR(30) DEFAULT ''"),
                 ("complement", "VARCHAR(120) DEFAULT ''"),
                 ("state", "VARCHAR(60) DEFAULT 'RJ'"),
+                ("lat", "DOUBLE PRECISION DEFAULT -22.5884"),
+                ("lng", "DOUBLE PRECISION DEFAULT -43.1847"),
+                ("rating", "DOUBLE PRECISION DEFAULT 5"),
+                ("available", "BOOLEAN DEFAULT TRUE"),
+                ("bio", "TEXT DEFAULT ''"),
                 ("active", "BOOLEAN DEFAULT TRUE"),
                 ("email_verified", "BOOLEAN DEFAULT TRUE"),
                 ("phone_verified", "BOOLEAN DEFAULT TRUE"),
@@ -313,13 +334,14 @@ def run_lightweight_migrations():
                 ("verification_expires_at", "TIMESTAMP NULL"),
                 ("verified_at", "TIMESTAMP NULL"),
             ]
+
             for col, ddl in user_columns_sql:
                 try:
                     conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}"))
                 except Exception as e:
                     print(f"[MIGRATION WARNING] add users.{col}:", e)
 
-            for col in ["active", "email_verified", "phone_verified"]:
+            for col in ["available", "active", "email_verified", "phone_verified"]:
                 try:
                     conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} SET DEFAULT TRUE"))
                     conn.execute(text(f"UPDATE users SET {col}=TRUE WHERE {col} IS NULL"))
@@ -327,12 +349,22 @@ def run_lightweight_migrations():
                 except Exception as e:
                     print(f"[MIGRATION WARNING] normalize users.{col}:", e)
 
+            try:
+                conn.execute(text("UPDATE users SET password_hash='sha256$legacy$invalid' WHERE password_hash IS NULL"))
+                conn.execute(text("ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL"))
+            except Exception as e:
+                print("[MIGRATION WARNING] normalize users.password_hash:", e)
+
             pet_columns_sql = [
                 ("species", "VARCHAR(60) DEFAULT 'Cachorro'"),
+                ("breed", "VARCHAR(100) DEFAULT ''"),
+                ("size", "VARCHAR(50) DEFAULT 'Médio'"),
                 ("age", "VARCHAR(50) DEFAULT ''"),
                 ("photo", "TEXT DEFAULT ''"),
+                ("notes", "TEXT DEFAULT ''"),
                 ("dog_count", "INTEGER DEFAULT 1"),
             ]
+
             for col, ddl in pet_columns_sql:
                 try:
                     conn.execute(text(f"ALTER TABLE pets ADD COLUMN IF NOT EXISTS {col} {ddl}"))
@@ -528,6 +560,13 @@ async def create_message(data: MessageIn, db: Session = Depends(get_db)):
 def list_messages(request_id: int, db: Session = Depends(get_db)):
     msgs = db.query(Message).filter(Message.request_id == request_id).order_by(Message.id.asc()).all()
     return [{"id": m.id, "request_id": m.request_id, "sender_id": m.sender_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in msgs]
+
+@app.get("/admin")
+def admin_page():
+    admin_file = FRONTEND_DIR / "admin.html"
+    if admin_file.exists():
+        return FileResponse(admin_file)
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 @app.get("/")
 def index():
