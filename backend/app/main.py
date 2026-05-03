@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -11,18 +12,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 app = FastAPI(title="AmigoPet V6 Uber", version="6.0.0")
 app.add_middleware(
@@ -180,10 +182,22 @@ def get_db():
         db.close()
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash estável compatível com Python 3.14 no Render."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+    return f"sha256${salt}${digest}"
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(password, password_hash)
+    if not password_hash:
+        return False
+    if password_hash.startswith("sha256$"):
+        try:
+            _, salt, digest = password_hash.split("$", 2)
+            candidate = hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+            return secrets.compare_digest(candidate, digest)
+        except Exception:
+            return False
+    return False
 
 def user_to_dict(u: User):
     return {
@@ -221,23 +235,60 @@ def walk_to_dict(w: WalkRequest):
 def seed_data():
     db = SessionLocal()
     try:
-        if db.query(User).count() == 0:
-            users = [
-                User(full_name="Administrador AmigoPet", email="admin@amigopet.com", password_hash=hash_password("123456"), role="admin", city="Magé", available=True, bio="Gestão operacional da plataforma."),
-                User(full_name="Cliente Teste", email="cliente@amigopet.com", password_hash=hash_password("123456"), role="client", phone="(21) 98888-1111", address="Rua Mirabel, 49 Piabetá - Magé - RJ", neighborhood="Piabetá", city="Magé", lat=-22.5884, lng=-43.1847),
-                User(full_name="Passeador Profissional", email="passeador@amigopet.com", password_hash=hash_password("123456"), role="walker", phone="(21) 99999-0000", neighborhood="Piabetá", city="Magé", lat=-22.5900, lng=-43.1810, rating=4.9, available=True, bio="Passeador verificado, experiência com cães pequenos e grandes."),
-                User(full_name="Ana Walker Premium", email="ana@amigopet.com", password_hash=hash_password("123456"), role="walker", phone="(21) 97777-2222", neighborhood="Centro", city="Magé", lat=-22.5852, lng=-43.1881, rating=4.8, available=True, bio="Rotas seguras, envio de fotos e cuidado especial."),
-            ]
-            db.add_all(users)
-            db.commit()
-            cliente = db.query(User).filter(User.email == "cliente@amigopet.com").first()
-            pet = Pet(owner_id=cliente.id, name="Thor", breed="SRD", size="Médio", age="3 anos", photo="", notes="Gosta de passeios tranquilos.")
+        seed_users = [
+            dict(full_name="Administrador AmigoPet", email="admin@amigopet.com", role="admin", city="Magé", available=True, bio="Gestão operacional da plataforma."),
+            dict(full_name="Cliente Teste", email="cliente@amigopet.com", role="client", phone="(21) 98888-1111", address="Rua Mirabel, 49 Piabetá - Magé - RJ", neighborhood="Piabetá", city="Magé", lat=-22.5884, lng=-43.1847, photo="https://api.dicebear.com/8.x/initials/svg?seed=Cliente"),
+            dict(full_name="Passeador Profissional", email="passeador@amigopet.com", role="walker", phone="(21) 99999-0000", neighborhood="Piabetá", city="Magé", lat=-22.5900, lng=-43.1810, rating=4.9, available=True, bio="Passeador verificado, experiência com cães pequenos e grandes."),
+            dict(full_name="Ana Walker Premium", email="ana@amigopet.com", role="walker", phone="(21) 97777-2222", neighborhood="Centro", city="Magé", lat=-22.5852, lng=-43.1881, rating=4.8, available=True, bio="Rotas seguras, envio de fotos e cuidado especial."),
+        ]
+
+        for data in seed_users:
+            user = db.query(User).filter(User.email == data["email"]).first()
+            if not user:
+                user = User(**data, password_hash=hash_password("123456"))
+                db.add(user)
+            else:
+                user.password_hash = hash_password("123456")
+                for k, v in data.items():
+                    if hasattr(user, k):
+                        setattr(user, k, v)
+
+        db.commit()
+
+        cliente = db.query(User).filter(User.email == "cliente@amigopet.com").first()
+        if cliente and db.query(Pet).filter(Pet.owner_id == cliente.id).count() == 0:
+            pet = Pet(
+                owner_id=cliente.id,
+                name="Thor",
+                breed="SRD",
+                size="Médio",
+                age="3 anos",
+                photo="https://api.dicebear.com/8.x/bottts/svg?seed=Thor",
+                notes="Gosta de passeios tranquilos.",
+            )
             db.add(pet)
             db.commit()
     finally:
         db.close()
 
-Base.metadata.create_all(bind=engine)
+def run_lightweight_migrations():
+    """Corrige banco antigo sem precisar de Shell no Render Free."""
+    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        for old_col in ["password", "online"]:
+            try:
+                if engine.dialect.name == "postgresql":
+                    conn.execute(text(f"ALTER TABLE users DROP COLUMN IF EXISTS {old_col}"))
+            except Exception as e:
+                print(f"[MIGRATION WARNING] drop old column {old_col}:", e)
+
+        try:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)"))
+        except Exception as e:
+            print("[MIGRATION WARNING] add password_hash:", e)
+
+run_lightweight_migrations()
 seed_data()
 
 @app.websocket("/ws")
@@ -286,6 +337,11 @@ def pets(owner_id: Optional[int] = None, db: Session = Depends(get_db)):
 
 @app.post("/api/pets")
 def create_pet(data: PetIn, db: Session = Depends(get_db)):
+    if not data.photo or len(data.photo.strip()) < 10:
+        raise HTTPException(status_code=400, detail="A foto do pet é obrigatória")
+    owner = db.get(User, data.owner_id)
+    if not owner or owner.role != "client":
+        raise HTTPException(status_code=400, detail="Cliente inválido")
     pet = Pet(**data.model_dump())
     db.add(pet)
     db.commit()
