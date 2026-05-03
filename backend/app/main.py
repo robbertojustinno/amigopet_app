@@ -442,7 +442,7 @@ Equipe {APP_BRAND}
         return {"sent": True}
     except Exception as exc:
         print(f"[EMAIL ERROR] {exc}")
-        raise HTTPException(status_code=500, detail="Não foi possível enviar o e-mail de confirmação. Verifique as variáveis SMTP no Render.")
+        return {"sent": False, "dev_code": code, "reason": str(exc)}
 
 
 def add_column_if_missing(conn, table: str, column: str, ddl: str):
@@ -499,6 +499,13 @@ def run_lightweight_migrations():
         }
         for col, ddl in pet_columns.items():
             add_column_if_missing(conn, "pets", col, ddl)
+
+        # Remove coluna antiga "password" se existir.
+        # Ela ficou de versões antigas e causa erro NOT NULL no PostgreSQL.
+        try:
+            conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS password"))
+        except Exception as e:
+            print("[MIGRATION WARNING] drop password column:", e)
 
 
 def ensure_seed_data():
