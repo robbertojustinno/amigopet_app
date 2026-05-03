@@ -3,30 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>AmigoPet • ROVIX</title>
+  <title>AmigoPet Pro • Cliente</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-secure2" />
+  <link rel="stylesheet" href="/static/styles.css?v=v8-cliente-only" />
 </head>
 <body>
   <div id="toast"></div>
 
-  <header class="topbar brand-top">
-    <div class="brand-area">
-      <div class="brand-logo">🐾</div>
-      <div>
-        <h1>AmigoPet Pro</h1>
-        <p>Seu pet bem cuidado, sua operação pronta para crescer</p>
-      </div>
+  <header class="brand-header">
+    <div class="brand-logo">🐾</div>
+    <div>
+      <h1>AmigoPet Pro</h1>
+      <p>Seu pet bem cuidado, sua operação pronta para crescer</p>
     </div>
-    <div class="status-pill" id="liveStatus">Conectando tempo real...</div>
   </header>
 
   <nav class="nav" id="mainNav">
-    <button class="nav-btn active" data-view="home" data-roles="guest,client,walker">Início</button>
-    <button class="nav-btn role-client compact-nav" data-view="request" data-roles="client">Cliente</button>
-    <button class="nav-btn role-walker compact-nav" data-view="walker" data-roles="walker">Passeador</button>
-    <button class="nav-btn role-tracking compact-nav" data-view="tracking" data-roles="client,walker">Mapa</button>
+    <button class="nav-btn active" data-view="home" data-roles="guest,client">Início</button>
+    <button class="nav-btn role-client" data-view="request" data-roles="client">Meu pet</button>
+    <button class="nav-btn role-tracking" data-view="tracking" data-roles="client">Mapa</button>
     <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
@@ -35,68 +31,40 @@
       <div class="landing-card">
         <div class="landing-badge">Base profissional em evolução</div>
         <h2>Entre na sua conta</h2>
-        <p class="landing-subtitle">Cliente e passeador usando o mesmo backend central, com mapa, chat, pagamento e localização em tempo real.</p>
+        <p class="landing-subtitle">Área exclusiva do cliente para cadastrar pets, solicitar passeios, acompanhar pagamento, chat e localização em tempo real.</p>
 
-        <div class="preview-stack" aria-label="Prévia comercial do AmigoPet">
-          <div class="preview-panel">
-            <div class="preview-head">
-              <strong>AmigoPet Pro</strong>
-              <span>Planos • Entrar • Criar conta</span>
-            </div>
-            <div class="preview-body">
-              <div>
-                <span class="mini-badge">V8 comercial pronta para crescer</span>
-                <h3>Transforme sua ideia em um serviço real de passeios para pets.</h3>
-                <p>Agendamento, pagamento, avaliação, chat e rota ao vivo.</p>
-              </div>
-              <div class="preview-brand">🐶 💚<br><strong>AmigoPet Pro</strong><small>Passeios, confiança e cuidado em cada rota</small></div>
-            </div>
-            <div class="preview-metrics">
-              <span><strong>24h</strong> pronto para evoluir</span>
-              <span><strong>GPS</strong> mapa em tempo real</span>
-              <span><strong>5★</strong> reputação</span>
-            </div>
+        <div class="preview-panel">
+          <div class="preview-top">
+            <span class="preview-dot"></span>
+            <strong>AmigoPet Pro</strong>
+            <small>Cliente</small>
           </div>
-
-          <div class="preview-panel small">
-            <div class="preview-head">
-              <strong>Planos e preços</strong>
-              <span>ROVIX</span>
+          <div class="preview-body">
+            <div class="preview-block">
+              <span>🐶</span>
+              <strong>Solicite passeio</strong>
+              <small>Escolha pet, duração e passeador</small>
             </div>
-            <div class="pricing-preview">
-              <span><strong>Essencial</strong><br>R$ 29,90</span>
-              <span><strong>Plus</strong><br>R$ 59,90</span>
-              <span><strong>Premium</strong><br>R$ 99,90</span>
+            <div class="preview-block">
+              <span>📍</span>
+              <strong>Acompanhe no mapa</strong>
+              <small>Localização em tempo real</small>
+            </div>
+            <div class="preview-block">
+              <span>💬</span>
+              <strong>Chat interno</strong>
+              <small>Sem WhatsApp externo</small>
             </div>
           </div>
         </div>
 
-        <div class="role-switch">
-          <button class="role-choice active" type="button" onclick="selectLoginRole('client')">Cliente</button>
-          <button class="role-choice" type="button" onclick="selectLoginRole('walker')">Passeador</button>
-        </div>
-
-        <div class="grid two login-grid">
-          <div class="card login-card">
-            <h3 id="loginTitle">Entrar como Cliente</h3>
-            <p class="muted">Use seu e-mail e senha para acessar apenas sua área.</p>
-            <div class="login-box">
-              <select id="quickLogin" onchange="fillLogin()">
-                <option value="cliente@amigopet.com" data-role="client">Cliente teste</option>
-                <option value="passeador@amigopet.com" data-role="walker">Passeador teste</option>
-              </select>
-              <input id="loginEmail" placeholder="E-mail" value="cliente@amigopet.com" />
-              <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
-              <button onclick="login()">Entrar</button>
-            </div>
-            <div id="loggedUser" class="notice">Nenhum usuário conectado. Faça login para liberar sua área.</div>
-          </div>
-
-          <div class="metrics compact-metrics">
-            <div class="metric"><strong id="mClients">0</strong><span>Clientes</span></div>
-            <div class="metric"><strong id="mWalkers">0</strong><span>Passeadores</span></div>
-            <div class="metric"><strong id="mWalks">0</strong><span>Pedidos</span></div>
-          </div>
+        <div class="client-login-card">
+          <h3>Entrar como Cliente</h3>
+          <p>Use seu e-mail e senha para acessar sua área.</p>
+          <input id="loginEmail" placeholder="E-mail do cliente" value="cliente@amigopet.com" />
+          <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
+          <button onclick="login()">Entrar na minha conta</button>
+          <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
         </div>
       </div>
     </section>
@@ -133,37 +101,26 @@
           </select>
           <label>Quantidade de cães</label>
           <input id="dogsCount" type="number" value="1" min="1" />
-          <button onclick="createWalk()">Enviar convite estilo Uber</button>
+          <button onclick="createWalk()">Enviar convite ao passeador</button>
         </div>
       </div>
 
       <div class="card">
-        <h2>Escolha visual do passeador</h2>
+        <h2>Escolha seu passeador</h2>
         <div id="walkerCards" class="walker-grid"></div>
       </div>
     </section>
 
-    <section id="walker" class="view protected-view" data-roles="walker">
-      <div class="card">
-        <h2>Central do passeador</h2>
-        <p class="muted">Aceite ou recuse convites, confirme etapas e use GPS real durante o passeio.</p>
-        <div id="walkerRequests"></div>
-      </div>
-    </section>
-
-    <section id="tracking" class="view protected-view" data-roles="client,walker">
+    <section id="tracking" class="view protected-view" data-roles="client">
       <div class="grid two tracking-grid">
         <div class="card">
           <h2>Mapa em tempo real</h2>
           <div id="map"></div>
           <div class="actions">
-            <button onclick="startGps()">Ativar GPS real</button>
-            <button class="secondary" onclick="stopGps()">Parar GPS</button>
             <button class="warn" onclick="simulateMove()">Simular movimento</button>
-            <button onclick="startCurrentWalk()">Iniciar passeio</button>
-            <button class="ok" onclick="finishCurrentWalk()">Finalizar passeio</button>
+            <button onclick="toggleChat()">Abrir chat</button>
           </div>
-          <div id="gpsStatus" class="notice">GPS aguardando.</div>
+          <div id="gpsStatus" class="notice">Acompanhamento aguardando.</div>
         </div>
 
         <div class="card">
@@ -171,7 +128,6 @@
           <div id="currentWalkBox" class="notice">Nenhum pedido selecionado.</div>
           <h3>PIX / Pagamento</h3>
           <pre id="pixBox">PIX será gerado ao criar o pedido.</pre>
-          <button onclick="toggleChat()">Abrir chat</button>
         </div>
       </div>
     </section>
@@ -189,9 +145,9 @@
     </div>
   </aside>
 
-  <footer>Powered by ROVIX • AmigoPet V8</footer>
+  <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=v8-rovix-secure2"></script>
+  <script src="/static/app.js?v=v8-cliente-only"></script>
 </body>
 </html>

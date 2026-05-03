@@ -15,31 +15,8 @@ function toast(msg){
 }
 
 function fillLogin(){
-  const quick = $('quickLogin');
-  if(!quick) return;
-  $('loginEmail').value = quick.value;
+  $('loginEmail').value = $('quickLogin').value;
   $('loginPassword').value = '123456';
-  const opt = quick.options[quick.selectedIndex];
-  if(opt?.dataset?.role) setLoginRoleVisual(opt.dataset.role);
-}
-
-function setLoginRoleVisual(role){
-  document.querySelectorAll('.role-choice').forEach(btn => btn.classList.remove('active'));
-  const labels = {client:'Entrar como Cliente', walker:'Entrar como Passeador', admin:'Entrar como Admin'};
-  const title = $('loginTitle');
-  if(title) title.textContent = labels[role] || 'Entrar';
-  document.querySelectorAll('.role-choice').forEach(btn => {
-    if(btn.textContent.trim().toLowerCase().includes(role === 'client' ? 'cliente' : 'passeador')) btn.classList.add('active');
-  });
-}
-
-function selectLoginRole(role){
-  const quick = $('quickLogin');
-  if(!quick) return;
-  const wanted = role === 'walker' ? 'passeador@amigopet.com' : 'cliente@amigopet.com';
-  quick.value = wanted;
-  fillLogin();
-  setLoginRoleVisual(role);
 }
 
 function showView(id){
@@ -84,18 +61,24 @@ function connectWS(){
 
 async function login(){
   try{
-    currentUser = await api('/api/auth/login', {method:'POST', body: JSON.stringify({email:$('loginEmail').value, password:$('loginPassword').value})});
-    $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>${currentUser.role}</strong>`;
+    const user = await api('/api/auth/login', {method:'POST', body: JSON.stringify({email:$('loginEmail').value, password:$('loginPassword').value})});
+    if(user.role !== 'client'){
+      currentUser = null;
+      localStorage.removeItem('amigopet_user');
+      toast('Este app é exclusivo para clientes. O passeador terá um app separado.');
+      return;
+    }
+    currentUser = user;
+    saveSession();
+    updateAuthUI();
     toast('Login realizado.');
     await refreshAll();
+    showView('request', true);
   }catch(err){ toast(err.message); }
 }
 
 async function loginWalker(){
-  if(IS_ADMIN_PAGE) return toast('Use o login de administrador.');
-  $('loginEmail').value = 'passeador@amigopet.com';
-  $('loginPassword').value = '123456';
-  await login();
+  toast('O acesso do passeador será feito em um app separado.');
 }
 
 async function createPet(){

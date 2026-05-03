@@ -3,57 +3,172 @@
 .logout-btn{background:#991b1b;color:white;margin-left:auto}.protected-view{min-height:360px}@media(max-width:820px){.logout-btn{margin-left:0}}
 
 
-/* ===== ROVIX V8 - UI segura, login por perfil e apresentação profissional ===== */
-.brand-top{background:#fff;color:#0f172a;border-bottom:1px solid #e5edf5;box-shadow:0 12px 28px rgba(15,23,42,.08)}
-.brand-area{display:flex;align-items:center;gap:14px}
-.brand-logo{width:62px;height:62px;border-radius:18px;background:linear-gradient(135deg,#0f766e,#22c55e);display:grid;place-items:center;font-size:30px;box-shadow:0 12px 30px rgba(15,118,110,.2)}
-.brand-top h1{font-size:30px}
-.brand-top p{color:#64748b;opacity:1;font-size:18px}
-.landing-card{background:white;border:1px solid #dbe4ef;border-radius:30px;padding:28px;box-shadow:0 18px 45px rgba(15,23,42,.08)}
-.landing-badge,.mini-badge{display:inline-flex;align-items:center;border-radius:999px;background:#dcfce7;color:#166534;font-weight:900;padding:8px 16px;margin-bottom:12px}
-.landing-card h2{font-size:42px;line-height:1.05;margin:0 0 12px}
-.landing-subtitle{font-size:22px;line-height:1.35;color:#64748b;max-width:850px}
-.preview-stack{display:grid;gap:18px;margin:22px 0}
-.preview-panel{border:1px solid #dbe4ef;background:#f8fafc;border-radius:24px;padding:18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)}
-.preview-panel.small{padding:16px}
-.preview-head{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#64748b;margin-bottom:14px}
-.preview-body{display:grid;grid-template-columns:1fr .8fr;gap:16px;align-items:stretch}
-.preview-body h3{font-size:28px;line-height:1.05;margin:10px 0}
-.preview-brand{border-radius:20px;display:grid;place-items:center;text-align:center;background:linear-gradient(135deg,#2563eb,#10b981);color:white;min-height:150px;font-size:34px;font-weight:900}
-.preview-brand small{display:block;font-size:12px;font-weight:700;margin-top:8px}
-.preview-metrics,.pricing-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
-.preview-metrics span,.pricing-preview span{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:14px;font-size:13px;color:#64748b}
-.preview-metrics strong,.pricing-preview strong{display:block;color:#0f172a;font-size:20px}
-.role-switch{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:24px 0}
-.role-choice{font-size:28px;border-radius:22px;background:white;color:#0f172a;border:1px solid #dbe4ef;box-shadow:none;padding:18px}
-.role-choice.active{background:linear-gradient(135deg,#22c55e,#06b6d4);color:white;border-color:transparent;box-shadow:0 16px 35px rgba(6,182,212,.24)}
-.login-grid{align-items:start}
-.login-card h3{font-size:28px;margin:0 0 6px}
-.compact-metrics{grid-template-columns:repeat(3,1fr)}
-.compact-metrics .metric{padding:14px;border-radius:18px;min-height:auto}
-.compact-metrics .metric strong{font-size:26px}
-.compact-metrics .metric span{font-size:13px}
-.compact-nav{padding:8px 13px;border-radius:14px;font-size:14px}
-.nav .role-admin{display:none!important}
-.admin-login-card{max-width:620px;margin:0 auto}
-.admin-login-box{grid-template-columns:1fr}
-.admin-metrics .metric{padding:16px;min-height:auto}
-.admin-page .nav-btn[data-view="adminLogin"]{display:inline-flex}
+/* ===== V8 CLIENTE ONLY / ROVIX ===== */
+.brand-header{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:16px 22px;
+  background:white;
+  border-bottom:1px solid #dbe4ef;
+}
+.brand-logo{
+  width:62px;
+  height:62px;
+  border-radius:18px;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(135deg,#16a34a,#06b6d4);
+  font-size:28px;
+  box-shadow:0 16px 32px rgba(15,118,110,.18);
+}
+.brand-header h1{
+  margin:0;
+  font-size:30px;
+  line-height:1.05;
+  color:#020617;
+}
+.brand-header p{
+  margin:6px 0 0;
+  color:#64748b;
+  font-size:17px;
+}
+.landing-card{
+  background:white;
+  border:1px solid #e5edf5;
+  border-radius:28px;
+  padding:28px;
+  box-shadow:0 20px 50px rgba(15,23,42,.08);
+}
+.landing-badge{
+  display:inline-flex;
+  background:#dcfce7;
+  color:#166534;
+  font-weight:900;
+  padding:10px 18px;
+  border-radius:999px;
+  margin-bottom:10px;
+}
+.landing-card h2{
+  font-size:44px;
+  margin:0 0 12px;
+  letter-spacing:-1px;
+}
+.landing-subtitle{
+  font-size:21px;
+  color:#64748b;
+  max-width:820px;
+  line-height:1.35;
+}
+.preview-panel{
+  border:1px solid #dbe4ef;
+  border-radius:24px;
+  padding:14px;
+  background:#f8fafc;
+  margin:22px 0;
+}
+.preview-top{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 10px 14px;
+  color:#0f172a;
+}
+.preview-dot{
+  width:22px;
+  height:22px;
+  border-radius:8px;
+  background:linear-gradient(135deg,#16a34a,#06b6d4);
+  display:inline-block;
+}
+.preview-top small{
+  margin-left:auto;
+  color:#64748b;
+  font-weight:800;
+}
+.preview-body{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+}
+.preview-block{
+  background:white;
+  border:1px solid #e2e8f0;
+  border-radius:20px;
+  padding:18px;
+  min-height:130px;
+  display:grid;
+  align-content:start;
+  gap:8px;
+}
+.preview-block span{
+  font-size:30px;
+}
+.preview-block strong{
+  font-size:20px;
+}
+.preview-block small{
+  color:#64748b;
+}
+.client-login-card{
+  margin-top:20px;
+  max-width:620px;
+  background:#ffffff;
+  border:1px solid #dbe4ef;
+  border-radius:24px;
+  padding:22px;
+  box-shadow:0 12px 32px rgba(15,23,42,.06);
+}
+.client-login-card h3{
+  margin:0 0 6px;
+  font-size:30px;
+}
+.client-login-card p{
+  margin:0 0 12px;
+  color:#64748b;
+}
+.nav .role-walker,
+.nav .role-admin{
+  display:none!important;
+}
+.metric{
+  padding:14px!important;
+  min-height:110px!important;
+}
+.metric strong{
+  font-size:26px!important;
+}
+.metric span{
+  font-size:13px!important;
+}
 @media(max-width:820px){
-  .brand-top{padding:14px 16px}
-  .brand-logo{width:54px;height:54px}
-  .brand-top h1{font-size:25px}
-  .brand-top p{font-size:16px}
-  .landing-card{padding:18px;border-radius:24px}
-  .landing-card h2{font-size:38px}
-  .landing-subtitle{font-size:22px}
-  .preview-body{grid-template-columns:1fr}
-  .preview-body h3{font-size:25px}
-  .preview-metrics,.pricing-preview{grid-template-columns:1fr}
-  .role-switch{gap:12px}
-  .role-choice{font-size:25px;padding:16px 10px}
-  .compact-metrics{grid-template-columns:repeat(3,1fr)}
-  .compact-metrics .metric{padding:11px 6px;border-radius:16px}
-  .compact-metrics .metric strong{font-size:23px}
-  .compact-metrics .metric span{font-size:11px}
+  .brand-header{
+    padding:14px 16px;
+  }
+  .brand-logo{
+    width:54px;
+    height:54px;
+  }
+  .brand-header h1{
+    font-size:27px;
+  }
+  .brand-header p{
+    font-size:16px;
+  }
+  .landing-card{
+    border-radius:24px;
+    padding:22px;
+  }
+  .landing-card h2{
+    font-size:38px;
+  }
+  .landing-subtitle{
+    font-size:20px;
+  }
+  .preview-body{
+    grid-template-columns:1fr;
+  }
+  .client-login-card{
+    padding:18px;
+  }
 }
