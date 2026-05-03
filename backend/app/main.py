@@ -77,6 +77,7 @@ class Pet(Base):
     age = Column(String(50), default="")
     photo = Column(Text, default="")
     notes = Column(Text, default="")
+    dog_count = Column(Integer, default=1, nullable=False)
     owner = relationship("User")
 
 class WalkRequest(Base):
@@ -140,6 +141,7 @@ class PetIn(BaseModel):
     age: str = ""
     photo: str = ""
     notes: str = ""
+    dog_count: int = 1
 
 class WalkIn(BaseModel):
     client_id: int
@@ -268,7 +270,16 @@ def seed_data():
 
         cliente = db.query(User).filter(User.email == "cliente@amigopet.com").first()
         if cliente and db.query(Pet).filter(Pet.owner_id == cliente.id).count() == 0:
-            pet = Pet(owner_id=cliente.id, name="Thor", breed="SRD", size="Médio", age="3 anos", photo="https://api.dicebear.com/8.x/bottts/svg?seed=Thor", notes="Gosta de passeios tranquilos.")
+            pet = Pet(
+                owner_id=cliente.id,
+                name="Thor",
+                breed="SRD",
+                size="Médio",
+                age="3 anos",
+                photo="https://api.dicebear.com/8.x/bottts/svg?seed=Thor",
+                notes="Gosta de passeios tranquilos.",
+                dog_count=1,
+            )
             db.add(pet)
             db.commit()
     finally:
@@ -286,7 +297,7 @@ def run_lightweight_migrations():
                 except Exception as e:
                     print(f"[MIGRATION WARNING] drop old column {old_col}:", e)
 
-            columns_sql = [
+            user_columns_sql = [
                 ("password_hash", "VARCHAR(255)"),
                 ("photo", "TEXT DEFAULT ''"),
                 ("document", "VARCHAR(40) DEFAULT ''"),
@@ -302,11 +313,11 @@ def run_lightweight_migrations():
                 ("verification_expires_at", "TIMESTAMP NULL"),
                 ("verified_at", "TIMESTAMP NULL"),
             ]
-            for col, ddl in columns_sql:
+            for col, ddl in user_columns_sql:
                 try:
                     conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}"))
                 except Exception as e:
-                    print(f"[MIGRATION WARNING] add column {col}:", e)
+                    print(f"[MIGRATION WARNING] add users.{col}:", e)
 
             for col in ["active", "email_verified", "phone_verified"]:
                 try:
@@ -314,7 +325,26 @@ def run_lightweight_migrations():
                     conn.execute(text(f"UPDATE users SET {col}=TRUE WHERE {col} IS NULL"))
                     conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} SET NOT NULL"))
                 except Exception as e:
-                    print(f"[MIGRATION WARNING] normalize {col}:", e)
+                    print(f"[MIGRATION WARNING] normalize users.{col}:", e)
+
+            pet_columns_sql = [
+                ("species", "VARCHAR(60) DEFAULT 'Cachorro'"),
+                ("age", "VARCHAR(50) DEFAULT ''"),
+                ("photo", "TEXT DEFAULT ''"),
+                ("dog_count", "INTEGER DEFAULT 1"),
+            ]
+            for col, ddl in pet_columns_sql:
+                try:
+                    conn.execute(text(f"ALTER TABLE pets ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+                except Exception as e:
+                    print(f"[MIGRATION WARNING] add pets.{col}:", e)
+
+            try:
+                conn.execute(text("ALTER TABLE pets ALTER COLUMN dog_count SET DEFAULT 1"))
+                conn.execute(text("UPDATE pets SET dog_count=1 WHERE dog_count IS NULL"))
+                conn.execute(text("ALTER TABLE pets ALTER COLUMN dog_count SET NOT NULL"))
+            except Exception as e:
+                print("[MIGRATION WARNING] normalize pets.dog_count:", e)
 
 run_lightweight_migrations()
 seed_data()
