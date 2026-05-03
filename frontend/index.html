@@ -6,7 +6,7 @@
   <title>AmigoPet Pro • Cliente</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-cliente-only" />
+  <link rel="stylesheet" href="/static/styles.css?v=cliente-home-login-fix2" />
 </head>
 <body>
   <div id="toast"></div>
@@ -20,88 +20,127 @@
   </header>
 
   <nav class="nav" id="mainNav">
-    <button class="nav-btn active" data-view="home" data-roles="guest,client">Início</button>
-    <button class="nav-btn role-client" data-view="request" data-roles="client">Meu pet</button>
-    <button class="nav-btn role-tracking" data-view="tracking" data-roles="client">Mapa</button>
-    <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
+    <button class="nav-btn active" id="btnHome" type="button" data-view="home">Início</button>
+    <button class="nav-btn auth-only" id="btnRequest" type="button" data-view="request" style="display:none">Meu pet</button>
+    <button class="nav-btn auth-only" id="btnTracking" type="button" data-view="tracking" style="display:none">Mapa</button>
+    <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()" style="display:none">Sair</button>
   </nav>
 
   <main>
     <section id="home" class="view active">
       <div class="landing-card">
-        <div class="landing-badge">Base profissional em evolução</div>
-        <h2>Entre na sua conta</h2>
-        <p class="landing-subtitle">Área exclusiva do cliente para cadastrar pets, solicitar passeios, acompanhar pagamento, chat e localização em tempo real.</p>
+        <div class="landing-badge">Aplicativo do cliente</div>
 
-        <div class="preview-panel">
-          <div class="preview-top">
-            <span class="preview-dot"></span>
-            <strong>AmigoPet Pro</strong>
-            <small>Cliente</small>
-          </div>
-          <div class="preview-body">
-            <div class="preview-block">
-              <span>🐶</span>
-              <strong>Solicite passeio</strong>
-              <small>Escolha pet, duração e passeador</small>
-            </div>
-            <div class="preview-block">
-              <span>📍</span>
-              <strong>Acompanhe no mapa</strong>
-              <small>Localização em tempo real</small>
-            </div>
-            <div class="preview-block">
-              <span>💬</span>
-              <strong>Chat interno</strong>
-              <small>Sem WhatsApp externo</small>
-            </div>
-          </div>
-        </div>
+        <div class="landing-grid">
+          <div class="landing-copy">
+            <h2>Solicite passeios para seu pet com acompanhamento em tempo real.</h2>
+            <p class="landing-subtitle">
+              Cadastre seu pet com foto, escolha um passeador, envie o convite, acompanhe o pagamento,
+              converse pelo chat interno e veja a rota no mapa.
+            </p>
 
-        <div class="client-login-card">
-          <h3>Entrar como Cliente</h3>
-          <p>Use seu e-mail e senha para acessar sua área.</p>
-          <input id="loginEmail" placeholder="E-mail do cliente" value="cliente@amigopet.com" />
-          <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
-          <button onclick="login()">Entrar na minha conta</button>
-          <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
+            <div class="benefits-grid">
+              <div class="benefit-card">
+                <span>🐶</span>
+                <strong>Pet completo</strong>
+                <small>Cadastro com foto, porte, idade e observações.</small>
+              </div>
+              <div class="benefit-card">
+                <span>🚶</span>
+                <strong>Passeador</strong>
+                <small>Escolha o profissional disponível.</small>
+              </div>
+              <div class="benefit-card">
+                <span>📍</span>
+                <strong>Mapa em tempo real</strong>
+                <small>Acompanhe a localização do passeio.</small>
+              </div>
+              <div class="benefit-card">
+                <span>💬</span>
+                <strong>Chat interno</strong>
+                <small>Contato dentro do próprio app.</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="client-login-card">
+            <h3>Entrar como Cliente</h3>
+            <p>Use sua conta ou entre com a conta teste.</p>
+
+            <button class="secondary full" type="button" onclick="fillClientDemo()">Usar conta teste</button>
+
+            <input id="loginEmail" placeholder="E-mail do cliente" autocomplete="username" value="cliente@amigopet.com" />
+            <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="123456" />
+
+            <button class="full" type="button" onclick="login()">Entrar na minha conta</button>
+
+            <button class="ghost full" type="button" onclick="toggleRegister()">Criar nova conta cliente</button>
+
+            <div id="registerBox" class="register-box">
+              <h4>Criar conta cliente</h4>
+              <input id="registerName" placeholder="Nome completo" />
+              <input id="registerEmail" placeholder="E-mail" />
+              <input id="registerPassword" placeholder="Senha" type="password" value="123456" />
+              <input id="registerPhone" placeholder="Telefone" />
+              <input id="registerAddress" placeholder="Endereço" value="Rua Mirabel, 49 Piabetá - Magé - RJ" />
+              <input id="registerNeighborhood" placeholder="Bairro" value="Piabetá" />
+              <input id="registerCity" placeholder="Cidade" value="Magé" />
+              <button class="full" type="button" onclick="registerClient()">Criar e entrar</button>
+            </div>
+
+            <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="request" class="view protected-view" data-roles="client">
+    <section id="request" class="view">
       <div class="grid two">
         <div class="card">
           <h2>Cadastro do pet</h2>
+          <p class="muted">A foto do pet é obrigatória para deixar o cadastro seguro e profissional.</p>
+
           <input id="petName" placeholder="Nome do pet" value="Thor" />
           <input id="petBreed" placeholder="Raça" value="SRD" />
+
           <select id="petSize">
             <option>Pequeno</option>
             <option selected>Médio</option>
             <option>Grande</option>
           </select>
+
           <input id="petAge" placeholder="Idade" value="3 anos" />
-          <input id="petPhoto" placeholder="URL da foto do pet" />
+
+          <label class="field-label">Foto do pet</label>
+          <input id="petPhoto" placeholder="Cole a URL da foto do pet" />
+          <div class="photo-help">Por enquanto use uma URL de imagem. Depois colocamos upload real.</div>
+
           <textarea id="petNotes" placeholder="Observações">Gosta de passeios tranquilos.</textarea>
-          <button onclick="createPet()">Cadastrar pet</button>
+          <button class="full" type="button" onclick="createPet()">Cadastrar pet com foto</button>
         </div>
 
         <div class="card">
           <h2>Solicitar passeio</h2>
+
           <label>Pet</label>
           <select id="petSelect"></select>
+
           <label>Passeador</label>
           <select id="walkerSelect"></select>
+
           <input id="address" placeholder="Endereço" value="Rua Mirabel, 49 Piabetá - Magé - RJ" />
+
           <label>Duração</label>
           <select id="duration">
             <option value="30">30 min</option>
             <option value="45">45 min</option>
             <option value="60">60 min</option>
           </select>
+
           <label>Quantidade de cães</label>
           <input id="dogsCount" type="number" value="1" min="1" />
-          <button onclick="createWalk()">Enviar convite ao passeador</button>
+
+          <button class="full" type="button" onclick="createWalk()">Enviar convite ao passeador</button>
         </div>
       </div>
 
@@ -111,21 +150,24 @@
       </div>
     </section>
 
-    <section id="tracking" class="view protected-view" data-roles="client">
+    <section id="tracking" class="view">
       <div class="grid two tracking-grid">
         <div class="card">
           <h2>Mapa em tempo real</h2>
           <div id="map"></div>
+
           <div class="actions">
-            <button class="warn" onclick="simulateMove()">Simular movimento</button>
-            <button onclick="toggleChat()">Abrir chat</button>
+            <button class="warn" type="button" onclick="simulateMove()">Simular movimento</button>
+            <button type="button" onclick="toggleChat()">Abrir chat</button>
           </div>
+
           <div id="gpsStatus" class="notice">Acompanhamento aguardando.</div>
         </div>
 
         <div class="card">
           <h2>Pedido atual</h2>
           <div id="currentWalkBox" class="notice">Nenhum pedido selecionado.</div>
+
           <h3>PIX / Pagamento</h3>
           <pre id="pixBox">PIX será gerado ao criar o pedido.</pre>
         </div>
@@ -136,18 +178,20 @@
   <aside id="chatBox" class="chat-box">
     <div class="chat-head">
       <strong>Chat interno</strong>
-      <button onclick="toggleChat()">×</button>
+      <button type="button" onclick="toggleChat()">×</button>
     </div>
+
     <div id="chatMessages" class="chat-messages"></div>
+
     <div class="chat-send">
       <input id="chatText" placeholder="Digite sua mensagem..." />
-      <button onclick="sendMessage()">Enviar</button>
+      <button type="button" onclick="sendMessage()">Enviar</button>
     </div>
   </aside>
 
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=v8-cliente-only"></script>
+  <script src="/static/app.js?v=cliente-home-login-fix2"></script>
 </body>
 </html>
