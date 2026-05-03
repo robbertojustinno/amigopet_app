@@ -53,6 +53,17 @@ class User(Base):
     rating = Column(Float, default=5.0)
     available = Column(Boolean, default=True)
     bio = Column(Text, default="")
+    zip_code = Column(String(20), default="")
+    street = Column(String(160), default="")
+    number = Column(String(30), default="")
+    complement = Column(String(120), default="")
+    state = Column(String(60), default="RJ")
+    active = Column(Boolean, default=True, nullable=False)
+    email_verified = Column(Boolean, default=True, nullable=False)
+    phone_verified = Column(Boolean, default=True, nullable=False)
+    verification_code_hash = Column(String(255), default="")
+    verification_expires_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Pet(Base):
@@ -236,10 +247,10 @@ def seed_data():
     db = SessionLocal()
     try:
         seed_users = [
-            dict(full_name="Administrador AmigoPet", email="admin@amigopet.com", role="admin", city="Magé", available=True, bio="Gestão operacional da plataforma."),
-            dict(full_name="Cliente Teste", email="cliente@amigopet.com", role="client", phone="(21) 98888-1111", address="Rua Mirabel, 49 Piabetá - Magé - RJ", neighborhood="Piabetá", city="Magé", lat=-22.5884, lng=-43.1847, photo="https://api.dicebear.com/8.x/initials/svg?seed=Cliente"),
-            dict(full_name="Passeador Profissional", email="passeador@amigopet.com", role="walker", phone="(21) 99999-0000", neighborhood="Piabetá", city="Magé", lat=-22.5900, lng=-43.1810, rating=4.9, available=True, bio="Passeador verificado, experiência com cães pequenos e grandes."),
-            dict(full_name="Ana Walker Premium", email="ana@amigopet.com", role="walker", phone="(21) 97777-2222", neighborhood="Centro", city="Magé", lat=-22.5852, lng=-43.1881, rating=4.8, available=True, bio="Rotas seguras, envio de fotos e cuidado especial."),
+            dict(full_name="Administrador AmigoPet", email="admin@amigopet.com", role="admin", city="Magé", available=True, active=True, email_verified=True, phone_verified=True, bio="Gestão operacional da plataforma."),
+            dict(full_name="Cliente Teste", email="cliente@amigopet.com", role="client", phone="(21) 98888-1111", address="Rua Mirabel, 49 Piabetá - Magé - RJ", neighborhood="Piabetá", city="Magé", lat=-22.5884, lng=-43.1847, photo="https://api.dicebear.com/8.x/initials/svg?seed=Cliente", active=True, email_verified=True, phone_verified=True),
+            dict(full_name="Passeador Profissional", email="passeador@amigopet.com", role="walker", phone="(21) 99999-0000", neighborhood="Piabetá", city="Magé", lat=-22.5900, lng=-43.1810, rating=4.9, available=True, active=True, email_verified=True, phone_verified=True, bio="Passeador verificado, experiência com cães pequenos e grandes."),
+            dict(full_name="Ana Walker Premium", email="ana@amigopet.com", role="walker", phone="(21) 97777-2222", neighborhood="Centro", city="Magé", lat=-22.5852, lng=-43.1881, rating=4.8, available=True, active=True, email_verified=True, phone_verified=True, bio="Rotas seguras, envio de fotos e cuidado especial."),
         ]
 
         for data in seed_users:
@@ -257,39 +268,57 @@ def seed_data():
 
         cliente = db.query(User).filter(User.email == "cliente@amigopet.com").first()
         if cliente and db.query(Pet).filter(Pet.owner_id == cliente.id).count() == 0:
-            pet = Pet(
-                owner_id=cliente.id,
-                name="Thor",
-                breed="SRD",
-                size="Médio",
-                age="3 anos",
-                photo="https://api.dicebear.com/8.x/bottts/svg?seed=Thor",
-                notes="Gosta de passeios tranquilos.",
-            )
+            pet = Pet(owner_id=cliente.id, name="Thor", breed="SRD", size="Médio", age="3 anos", photo="https://api.dicebear.com/8.x/bottts/svg?seed=Thor", notes="Gosta de passeios tranquilos.")
             db.add(pet)
             db.commit()
     finally:
         db.close()
 
+
 def run_lightweight_migrations():
     """Corrige banco antigo sem precisar de Shell no Render Free."""
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
-        for old_col in ["password", "online"]:
-            try:
-                if engine.dialect.name == "postgresql":
+        if engine.dialect.name == "postgresql":
+            for old_col in ["password", "online"]:
+                try:
                     conn.execute(text(f"ALTER TABLE users DROP COLUMN IF EXISTS {old_col}"))
-            except Exception as e:
-                print(f"[MIGRATION WARNING] drop old column {old_col}:", e)
+                except Exception as e:
+                    print(f"[MIGRATION WARNING] drop old column {old_col}:", e)
 
-        try:
-            if engine.dialect.name == "postgresql":
-                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)"))
-        except Exception as e:
-            print("[MIGRATION WARNING] add password_hash:", e)
+            columns_sql = [
+                ("password_hash", "VARCHAR(255)"),
+                ("photo", "TEXT DEFAULT ''"),
+                ("document", "VARCHAR(40) DEFAULT ''"),
+                ("zip_code", "VARCHAR(20) DEFAULT ''"),
+                ("street", "VARCHAR(160) DEFAULT ''"),
+                ("number", "VARCHAR(30) DEFAULT ''"),
+                ("complement", "VARCHAR(120) DEFAULT ''"),
+                ("state", "VARCHAR(60) DEFAULT 'RJ'"),
+                ("active", "BOOLEAN DEFAULT TRUE"),
+                ("email_verified", "BOOLEAN DEFAULT TRUE"),
+                ("phone_verified", "BOOLEAN DEFAULT TRUE"),
+                ("verification_code_hash", "VARCHAR(255) DEFAULT ''"),
+                ("verification_expires_at", "TIMESTAMP NULL"),
+                ("verified_at", "TIMESTAMP NULL"),
+            ]
+            for col, ddl in columns_sql:
+                try:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+                except Exception as e:
+                    print(f"[MIGRATION WARNING] add column {col}:", e)
+
+            for col in ["active", "email_verified", "phone_verified"]:
+                try:
+                    conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} SET DEFAULT TRUE"))
+                    conn.execute(text(f"UPDATE users SET {col}=TRUE WHERE {col} IS NULL"))
+                    conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} SET NOT NULL"))
+                except Exception as e:
+                    print(f"[MIGRATION WARNING] normalize {col}:", e)
 
 run_lightweight_migrations()
 seed_data()
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -308,7 +337,7 @@ def health():
 def register(data: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
-    user = User(**data.model_dump(exclude={"password"}), password_hash=hash_password(data.password))
+    user = User(**data.model_dump(exclude={"password"}), password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
     db.add(user)
     db.commit()
     db.refresh(user)
