@@ -41,7 +41,7 @@ function hideAll() {
 
 // ================= LOGIN =================
 async function login() {
-  const res = await fetch(API + "/auth/login", {
+  const res = await fetch(API + "/api/auth/login", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
@@ -50,11 +50,11 @@ async function login() {
     })
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
-  if (data.id) {
+  if (res.ok && data.id) {
     userId = data.id;
-    userName.innerText = data.name;
+    userName.innerText = data.full_name || data.name || "Cliente";
     hideAll();
     dashboard.classList.remove("hidden");
   } else {
@@ -69,28 +69,33 @@ async function register() {
     return;
   }
 
-  const res = await fetch(API + "/auth/register-client", {
+  const res = await fetch(API + "/api/auth/register", {
     method:"POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
       full_name: r_name.value,
       email: r_email.value,
       password: r_pass.value,
+      role: "client",
       phone: r_phone.value,
       address: r_address.value,
+      neighborhood: "",
       city: r_city.value,
       state: r_state.value,
-      photo: photoBase64
+      photo: photoBase64,
+      document: "",
+      bio: ""
     })
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
-  if (data.ok) {
-    alert("Conta criada!");
-    logout();
+  if (res.ok && (data.id || data.email || data.ok)) {
+    alert("Conta criada! Agora faça login.");
+    photoBase64 = "";
+    goHome();
   } else {
-    alert("Erro cadastro");
+    alert(data.detail || "Erro cadastro");
   }
 }
 
@@ -114,13 +119,14 @@ async function createPet() {
     })
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
-  if (data.ok) {
+  if (res.ok && (data.id || data.ok)) {
     alert("Pet cadastrado!");
+    petPhoto = "";
     backDashboard();
   } else {
-    alert("Erro pet");
+    alert(data.detail || "Erro pet");
   }
 }
 

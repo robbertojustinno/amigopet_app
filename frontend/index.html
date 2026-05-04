@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AmigoPet</title>
-  <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="/static/styles.css?v=v9-final"/>
 </head>
 <body>
 
@@ -40,7 +40,7 @@
     <input id="r_state" placeholder="Estado"/>
 
     <label>Foto:</label>
-    <input type="file" id="r_photo" onchange="previewImage(event)">
+    <input type="file" id="r_photo" accept="image/*" capture="environment" onchange="previewImage(event)">
     <img id="preview" class="preview"/>
 
     <button onclick="register()">Cadastrar</button>
@@ -66,7 +66,7 @@
     <input id="p_age" placeholder="Idade"/>
 
     <label>Foto do Pet:</label>
-    <input type="file" id="p_photo" onchange="previewPet(event)">
+    <input type="file" id="p_photo" accept="image/*" capture="environment" onchange="previewPet(event)">
     <img id="previewPet" class="preview"/>
 
     <button onclick="createPet()">Salvar Pet</button>
@@ -75,6 +75,6 @@
 
 </div>
 
-<script src="app.js"></script>
+<script src="/static/app.js?v=v9-final"></script>
 </body>
 </html>
