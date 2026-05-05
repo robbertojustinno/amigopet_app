@@ -1,175 +1,288 @@
 const API = "https://amigopet-6td8.onrender.com";
 
 let userId = null;
+let currentUser = null;
 let photoBase64 = "";
 let petPhoto = "";
 
-// ================= NAV =================
+function el(id) {
+  return document.getElementById(id);
+}
+
+function toast(message) {
+  const box = el("toast");
+  if (!box) {
+    alert(message);
+    return;
+  }
+  box.textContent = message;
+  box.classList.remove("hidden");
+  setTimeout(() => box.classList.add("hidden"), 2800);
+}
+
+function showSection(sectionId) {
+  document.querySelectorAll(".view").forEach((section) => {
+    section.classList.add("hidden");
+  });
+
+  const section = el(sectionId);
+  if (section) {
+    section.classList.remove("hidden");
+  }
+}
+
 function goHome() {
-  hideAll();
-
-  if (userId) {
-    dashboard.classList.remove("hidden");
-  } else {
-    home.classList.remove("hidden");
-  }
+  showSection(userId ? "dashboard" : "home");
 }
 
-function showLogin() {
-  hideAll();
-  login.classList.remove("hidden");
+function showLoginScreen() {
+  showSection("login");
 }
 
-function showRegister() {
-  hideAll();
-  register.classList.remove("hidden");
+function showRegisterScreen() {
+  showSection("register");
 }
 
-function showPet() {
-  hideAll();
-  pet.classList.remove("hidden");
-}
-
-function backDashboard() {
-  hideAll();
-  dashboard.classList.remove("hidden");
-}
-
-function hideAll() {
-  document.querySelectorAll("section").forEach(s => s.classList.add("hidden"));
-}
-
-// ================= LOGIN =================
-async function login() {
-  const res = await fetch(API + "/api/auth/login", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({
-      email: loginEmail.value,
-      password: loginPassword.value
-    })
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (res.ok && data.id) {
-    userId = data.id;
-    userName.innerText = data.full_name || data.name || "Cliente";
-    hideAll();
-    dashboard.classList.remove("hidden");
-  } else {
-    alert("Erro login");
-  }
-}
-
-// ================= REGISTER =================
-async function register() {
-  if (!photoBase64) {
-    alert("Foto obrigatória");
+function showPetScreen() {
+  if (!userId) {
+    toast("Faça login antes de cadastrar um pet.");
+    showSection("login");
     return;
   }
-
-  const res = await fetch(API + "/api/auth/register", {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({
-      full_name: r_name.value,
-      email: r_email.value,
-      password: r_pass.value,
-      role: "client",
-      phone: r_phone.value,
-      address: r_address.value,
-      neighborhood: "",
-      city: r_city.value,
-      state: r_state.value,
-      photo: photoBase64,
-      document: "",
-      bio: ""
-    })
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (res.ok && (data.id || data.email || data.ok)) {
-    alert("Conta criada! Agora faça login.");
-    photoBase64 = "";
-    goHome();
-  } else {
-    alert(data.detail || "Erro cadastro");
-  }
+  showSection("pet");
 }
 
-// ================= PET =================
-async function createPet() {
-  if (!petPhoto) {
-    alert("Foto do pet obrigatória");
-    return;
-  }
-
-  const res = await fetch(API + "/api/pets", {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({
-      owner_id: userId,
-      name: p_name.value,
-      breed: p_breed.value,
-      size: p_size.value,
-      age: p_age.value,
-      photo: petPhoto
-    })
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (res.ok && (data.id || data.ok)) {
-    alert("Pet cadastrado!");
-    petPhoto = "";
-    backDashboard();
-  } else {
-    alert(data.detail || "Erro pet");
-  }
-}
-
-// ================= FOTO CLIENTE =================
-function previewImage(event) {
-  const file = event.target.files[0];
-
-  if (!file) return;
-
-  const reader = new FileReader();
-
-  reader.onload = () => {
-    photoBase64 = reader.result;
-    preview.src = reader.result;
-  };
-
-  reader.readAsDataURL(file);
-}
-
-// ================= FOTO PET =================
-function previewPet(event) {
-  const file = event.target.files[0];
-
-  if (!file) return;
-
-  const reader = new FileReader();
-
-  reader.onload = () => {
-    petPhoto = reader.result;
-    previewPet.src = reader.result;
-  };
-
-  reader.readAsDataURL(file);
-}
-
-// ================= LOGOUT =================
-function logout() {
+function logoutUser() {
   userId = null;
+  currentUser = null;
   photoBase64 = "";
   petPhoto = "";
 
-  goHome();
+  const userName = el("userName");
+  if (userName) userName.textContent = "";
+
+  showSection("home");
 }
 
-// ================= INIT =================
-logout();
+async function loginClient() {
+  const email = el("loginEmail")?.value.trim() || "";
+  const password = el("loginPassword")?.value.trim() || "";
+
+  if (!email || !password) {
+    toast("Preencha email e senha.");
+    return;
+  }
+
+  try {
+    const res = await fetch(API + "/api/auth/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      toast(data.detail || "Erro ao fazer login.");
+      return;
+    }
+
+    if (data.role && data.role !== "client") {
+      toast("Este app é exclusivo para clientes.");
+      return;
+    }
+
+    userId = data.id;
+    currentUser = data;
+
+    const userName = el("userName");
+    if (userName) {
+      userName.textContent = data.full_name || data.name || "Cliente";
+    }
+
+    showSection("dashboard");
+  } catch (error) {
+    toast("Erro de conexão ao fazer login.");
+  }
+}
+
+async function registerClient() {
+  if (!photoBase64) {
+    toast("A foto do cliente é obrigatória.");
+    return;
+  }
+
+  const body = {
+    full_name: el("r_name")?.value.trim() || "",
+    email: el("r_email")?.value.trim() || "",
+    password: el("r_pass")?.value.trim() || "",
+    role: "client",
+    phone: el("r_phone")?.value.trim() || "",
+    address: el("r_address")?.value.trim() || "",
+    neighborhood: "",
+    city: el("r_city")?.value.trim() || "",
+    state: el("r_state")?.value.trim() || "RJ",
+    photo: photoBase64,
+    document: "",
+    bio: ""
+  };
+
+  if (!body.full_name || !body.email || !body.password || !body.phone || !body.address || !body.city || !body.state) {
+    toast("Preencha todos os campos obrigatórios.");
+    return;
+  }
+
+  if (body.password.length < 6) {
+    toast("A senha deve ter pelo menos 6 caracteres.");
+    return;
+  }
+
+  try {
+    const res = await fetch(API + "/api/auth/register", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      toast(data.detail || "Erro ao criar conta.");
+      return;
+    }
+
+    toast("Conta criada com sucesso! Agora faça login.");
+    photoBase64 = "";
+    const preview = el("preview");
+    if (preview) preview.removeAttribute("src");
+    showSection("login");
+  } catch (error) {
+    toast("Erro de conexão ao criar conta.");
+  }
+}
+
+async function createPet() {
+  if (!userId) {
+    toast("Faça login antes de cadastrar um pet.");
+    showSection("login");
+    return;
+  }
+
+  if (!petPhoto) {
+    toast("A foto do pet é obrigatória.");
+    return;
+  }
+
+  const body = {
+    owner_id: userId,
+    name: el("p_name")?.value.trim() || "",
+    breed: el("p_breed")?.value.trim() || "",
+    size: el("p_size")?.value.trim() || "Médio",
+    age: el("p_age")?.value.trim() || "",
+    photo: petPhoto,
+    notes: "",
+    dog_count: 1
+  };
+
+  if (!body.name) {
+    toast("Informe o nome do pet.");
+    return;
+  }
+
+  try {
+    const res = await fetch(API + "/api/pets", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      toast(data.detail || "Erro ao cadastrar pet.");
+      return;
+    }
+
+    toast("Pet cadastrado com sucesso!");
+    petPhoto = "";
+    const previewPetImg = el("previewPet");
+    if (previewPetImg) previewPetImg.removeAttribute("src");
+    showSection("dashboard");
+  } catch (error) {
+    toast("Erro de conexão ao cadastrar pet.");
+  }
+}
+
+function readImageFile(file, callback) {
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    toast("Escolha uma imagem válida.");
+    return;
+  }
+
+  if (file.size > 2000000) {
+    toast("Use uma imagem menor que 2 MB.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => callback(reader.result);
+  reader.onerror = () => toast("Não foi possível carregar a imagem.");
+  reader.readAsDataURL(file);
+}
+
+function handleClientPhoto(event) {
+  const file = event.target.files && event.target.files[0];
+  readImageFile(file, (result) => {
+    photoBase64 = result;
+    const preview = el("preview");
+    if (preview) {
+      preview.src = result;
+      preview.style.display = "block";
+    }
+  });
+}
+
+function handlePetPhoto(event) {
+  const file = event.target.files && event.target.files[0];
+  readImageFile(file, (result) => {
+    petPhoto = result;
+    const previewPetImg = el("previewPet");
+    if (previewPetImg) {
+      previewPetImg.src = result;
+      previewPetImg.style.display = "block";
+    }
+  });
+}
+
+function bindEvents() {
+  const bindings = [
+    ["btnShowLogin", showLoginScreen],
+    ["btnShowRegister", showRegisterScreen],
+    ["btnLogin", loginClient],
+    ["btnLoginBack", goHome],
+    ["btnRegister", registerClient],
+    ["btnRegisterBack", goHome],
+    ["btnShowPet", showPetScreen],
+    ["btnLogout", logoutUser],
+    ["btnCreatePet", createPet],
+    ["btnPetBack", () => showSection("dashboard")]
+  ];
+
+  bindings.forEach(([id, handler]) => {
+    const button = el(id);
+    if (button) button.addEventListener("click", handler);
+  });
+
+  const clientPhotoInput = el("r_photo");
+  if (clientPhotoInput) clientPhotoInput.addEventListener("change", handleClientPhoto);
+
+  const petPhotoInput = el("p_photo");
+  if (petPhotoInput) petPhotoInput.addEventListener("change", handlePetPhoto);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  logoutUser();
+});

@@ -4,60 +4,55 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AmigoPet</title>
-  <link rel="stylesheet" href="/static/styles.css?v=v9-final"/>
+  <link rel="stylesheet" href="/static/styles.css?v=v9.2"/>
 </head>
 <body>
 
 <div id="app">
 
-  <!-- HOME -->
-  <section id="home">
+  <section id="home" class="view">
     <h1>🐾 AmigoPet</h1>
     <p>Conectando você ao melhor cuidado para seu pet</p>
-    <button onclick="showLogin()">Entrar</button>
-    <button onclick="showRegister()">Criar Conta</button>
+    <button id="btnShowLogin" type="button">Entrar</button>
+    <button id="btnShowRegister" type="button">Criar Conta</button>
   </section>
 
-  <!-- LOGIN -->
-  <section id="login" class="hidden">
-    <h2>Login</h2>
-    <input id="loginEmail" placeholder="Email"/>
+  <section id="login" class="view hidden">
+    <h2>Login do Cliente</h2>
+    <input id="loginEmail" type="email" placeholder="Email"/>
     <input id="loginPassword" type="password" placeholder="Senha"/>
-    <button onclick="login()">Entrar</button>
-    <button onclick="goHome()">Voltar</button>
+    <button id="btnLogin" type="button">Entrar</button>
+    <button id="btnLoginBack" type="button">Voltar</button>
   </section>
 
-  <!-- REGISTER -->
-  <section id="register" class="hidden">
+  <section id="register" class="view hidden">
     <h2>Criar Conta</h2>
 
     <input id="r_name" placeholder="Nome completo"/>
-    <input id="r_email" placeholder="Email"/>
+    <input id="r_email" type="email" placeholder="Email"/>
     <input id="r_pass" type="password" placeholder="Senha"/>
     <input id="r_phone" placeholder="Telefone"/>
     <input id="r_address" placeholder="Endereço"/>
     <input id="r_city" placeholder="Cidade"/>
-    <input id="r_state" placeholder="Estado"/>
+    <input id="r_state" placeholder="Estado" value="RJ"/>
 
-    <label>Foto:</label>
-    <input type="file" id="r_photo" accept="image/*" capture="environment" onchange="previewImage(event)">
-    <img id="preview" class="preview"/>
+    <label for="r_photo">Foto do cliente</label>
+    <input type="file" id="r_photo" accept="image/*" capture="environment"/>
+    <img id="preview" class="preview" alt="Prévia da foto do cliente"/>
 
-    <button onclick="register()">Cadastrar</button>
-    <button onclick="goHome()">Voltar</button>
+    <button id="btnRegister" type="button">Cadastrar</button>
+    <button id="btnRegisterBack" type="button">Voltar</button>
   </section>
 
-  <!-- DASHBOARD -->
-  <section id="dashboard" class="hidden">
+  <section id="dashboard" class="view hidden">
     <h2>Bem-vindo</h2>
     <p id="userName"></p>
 
-    <button onclick="showPet()">Cadastrar Pet</button>
-    <button onclick="logout()">Sair</button>
+    <button id="btnShowPet" type="button">Cadastrar Pet</button>
+    <button id="btnLogout" type="button">Sair</button>
   </section>
 
-  <!-- PET -->
-  <section id="pet" class="hidden">
+  <section id="pet" class="view hidden">
     <h2>Cadastrar Pet</h2>
 
     <input id="p_name" placeholder="Nome do pet"/>
@@ -65,16 +60,18 @@
     <input id="p_size" placeholder="Porte"/>
     <input id="p_age" placeholder="Idade"/>
 
-    <label>Foto do Pet:</label>
-    <input type="file" id="p_photo" accept="image/*" capture="environment" onchange="previewPet(event)">
-    <img id="previewPet" class="preview"/>
+    <label for="p_photo">Foto do Pet</label>
+    <input type="file" id="p_photo" accept="image/*" capture="environment"/>
+    <img id="previewPet" class="preview" alt="Prévia da foto do pet"/>
 
-    <button onclick="createPet()">Salvar Pet</button>
-    <button onclick="backDashboard()">Voltar</button>
+    <button id="btnCreatePet" type="button">Salvar Pet</button>
+    <button id="btnPetBack" type="button">Voltar</button>
   </section>
 
 </div>
 
-<script src="/static/app.js?v=v9-final"></script>
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/app.js?v=v9.2"></script>
 </body>
 </html>
