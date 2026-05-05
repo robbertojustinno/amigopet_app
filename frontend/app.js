@@ -279,6 +279,26 @@ async function apiGet(path) {
   return data;
 }
 
+function formatApiError(data) {
+  if (!data) return "Erro na requisição.";
+
+  if (Array.isArray(data.detail)) {
+    return data.detail.map((item) => {
+      const field = Array.isArray(item.loc) ? item.loc.join(".") : "campo";
+      return `${field}: ${item.msg || "inválido"}`;
+    }).join(" | ");
+  }
+
+  if (typeof data.detail === "string") return data.detail;
+  if (typeof data.message === "string") return data.message;
+
+  try {
+    return JSON.stringify(data);
+  } catch (error) {
+    return "Erro na requisição.";
+  }
+}
+
 async function apiPost(path, body) {
   const res = await fetch(API + path, {
     method: "POST",
@@ -289,7 +309,7 @@ async function apiPost(path, body) {
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.detail || "Erro na requisição.");
+    throw new Error(formatApiError(data));
   }
 
   return data;
@@ -366,14 +386,14 @@ async function createWalkRequest() {
 
   try {
     const walk = await apiPost("/api/walks", {
-      client_id: userId,
-      walker_id: walkerId,
-      pet_id: petId,
-      address,
-      pickup_lat: currentUser?.lat || -22.5884,
-      pickup_lng: currentUser?.lng || -43.1847,
-      duration_minutes: duration,
-      dogs_count: dogsCount,
+      client_id: Number(userId),
+      walker_id: Number(walkerId),
+      pet_id: Number(petId),
+      address: String(address),
+      pickup_lat: Number(currentUser?.lat || -22.5884),
+      pickup_lng: Number(currentUser?.lng || -43.1847),
+      duration_minutes: Number(duration),
+      dogs_count: Number(dogsCount || 1),
       notes: "Solicitação criada pelo app cliente."
     });
 
