@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AmigoPet</title>
-  <link rel="stylesheet" href="/static/styles.css?v=v9.3"/>
+  <link rel="stylesheet" href="/static/styles.css?v=v9.4"/>
 </head>
 <body>
 
@@ -85,6 +85,39 @@
     <button id="btnComingSoonBack" type="button">Voltar</button>
   </section>
 
+  <section id="walkRequest" class="view hidden">
+    <h2>🚶 Solicitar Passeio</h2>
+    <p>Escolha o pet, o passeador e a duração do passeio.</p>
+
+    <label for="walkPet">Pet</label>
+    <select id="walkPet"></select>
+
+    <label for="walkWalker">Passeador</label>
+    <select id="walkWalker"></select>
+
+    <label for="walkDuration">Duração</label>
+    <select id="walkDuration">
+      <option value="30">30 minutos</option>
+      <option value="45">45 minutos</option>
+      <option value="60">60 minutos</option>
+    </select>
+
+    <label for="walkDogsCount">Quantidade de cães</label>
+    <input id="walkDogsCount" type="number" min="1" value="1"/>
+
+    <label for="walkAddress">Endereço de retirada</label>
+    <input id="walkAddress" placeholder="Endereço completo"/>
+
+    <button id="btnCreateWalk" type="button">Enviar Convite</button>
+    <button id="btnWalkBack" type="button">Voltar</button>
+  </section>
+
+  <section id="orders" class="view hidden">
+    <h2>📦 Meus Pedidos</h2>
+    <div id="ordersList" class="list-box"></div>
+    <button id="btnOrdersBack" type="button">Voltar</button>
+  </section>
+
   <section id="pet" class="view hidden">
     <h2>Cadastrar Pet</h2>
 
@@ -105,6 +138,6 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/static/app.js?v=v9.3"></script>
+<script src="/static/app.js?v=v9.4"></script>
 </body>
 </html>

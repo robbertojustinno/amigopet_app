@@ -267,6 +267,162 @@ function handlePetPhoto(event) {
 }
 
 
+
+async function apiGet(path) {
+  const res = await fetch(API + path);
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.detail || "Erro na requisição.");
+  }
+
+  return data;
+}
+
+async function apiPost(path, body) {
+  const res = await fetch(API + path, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.detail || "Erro na requisição.");
+  }
+
+  return data;
+}
+
+function fillSelect(selectId, items, labelFn) {
+  const select = el(selectId);
+  if (!select) return;
+
+  if (!items.length) {
+    select.innerHTML = '<option value="">Nenhum item disponível</option>';
+    return;
+  }
+
+  select.innerHTML = '<option value="">Selecione</option>' + items.map((item) => {
+    return `<option value="${item.id}">${labelFn(item)}</option>`;
+  }).join("");
+}
+
+async function openWalkRequest() {
+  if (!userId) {
+    toast("Faça login para solicitar um passeio.");
+    showSection("login");
+    return;
+  }
+
+  try {
+    const [pets, walkers] = await Promise.all([
+      apiGet(`/api/pets?owner_id=${userId}`),
+      apiGet("/api/users?role=walker")
+    ]);
+
+    fillSelect("walkPet", pets, (p) => `${p.name} • ${p.size || "Porte não informado"}`);
+    fillSelect("walkWalker", walkers, (w) => `${w.full_name} • ⭐ ${w.rating || "5.0"} • ${w.neighborhood || "Região"}`);
+
+    const addressInput = el("walkAddress");
+    if (addressInput && currentUser) {
+      addressInput.value = currentUser.address || "";
+    }
+
+    showSection("walkRequest");
+  } catch (error) {
+    toast(error.message || "Não foi possível carregar a solicitação.");
+  }
+}
+
+async function createWalkRequest() {
+  if (!userId) {
+    toast("Faça login para solicitar um passeio.");
+    showSection("login");
+    return;
+  }
+
+  const petId = Number(el("walkPet")?.value || 0);
+  const walkerId = Number(el("walkWalker")?.value || 0);
+  const duration = Number(el("walkDuration")?.value || 30);
+  const dogsCount = Number(el("walkDogsCount")?.value || 1);
+  const address = el("walkAddress")?.value.trim() || "";
+
+  if (!petId) {
+    toast("Escolha um pet.");
+    return;
+  }
+
+  if (!walkerId) {
+    toast("Escolha um passeador.");
+    return;
+  }
+
+  if (!address) {
+    toast("Informe o endereço de retirada.");
+    return;
+  }
+
+  try {
+    const walk = await apiPost("/api/walks", {
+      client_id: userId,
+      walker_id: walkerId,
+      pet_id: petId,
+      address,
+      pickup_lat: currentUser?.lat || -22.5884,
+      pickup_lng: currentUser?.lng || -43.1847,
+      duration_minutes: duration,
+      dogs_count: dogsCount,
+      notes: "Solicitação criada pelo app cliente."
+    });
+
+    toast(`Convite enviado! Valor estimado: R$ ${Number(walk.estimated_price || 0).toFixed(2)}`);
+    await openOrders();
+  } catch (error) {
+    toast(error.message || "Não foi possível criar o passeio.");
+  }
+}
+
+function orderCard(order) {
+  const price = Number(order.estimated_price || 0).toFixed(2);
+  return `
+    <div class="order-card">
+      <strong>#${order.id} • ${order.pet || "Pet"}</strong>
+      <span>Status: ${order.status || "-"}</span>
+      <span>Pagamento: ${order.payment_status || "-"}</span>
+      <span>Passeador: ${order.walker || "Aguardando"}</span>
+      <span>${order.duration_minutes || 30} min • ${order.dogs_count || 1} cão(s) • R$ ${price}</span>
+    </div>
+  `;
+}
+
+async function openOrders() {
+  if (!userId) {
+    toast("Faça login para ver seus pedidos.");
+    showSection("login");
+    return;
+  }
+
+  const list = el("ordersList");
+  if (list) list.innerHTML = '<div class="notice">Carregando pedidos...</div>';
+
+  try {
+    const allOrders = await apiGet("/api/walks");
+    const myOrders = allOrders.filter((order) => Number(order.client_id) === Number(userId));
+
+    if (list) {
+      list.innerHTML = myOrders.length
+        ? myOrders.map(orderCard).join("")
+        : '<div class="notice">Você ainda não criou nenhum pedido.</div>';
+    }
+
+    showSection("orders");
+  } catch (error) {
+    toast(error.message || "Não foi possível carregar pedidos.");
+  }
+}
+
 function showComingSoon(title, text) {
   const titleEl = el("comingSoonTitle");
   const textEl = el("comingSoonText");
@@ -289,10 +445,13 @@ function bindEvents() {
     ["btnLogout", logoutUser],
     ["btnCreatePet", createPet],
     ["btnPetBack", () => showSection("dashboard")],
-    ["btnRequestWalk", () => showComingSoon("Solicitar Passeio", "Na próxima etapa vamos ligar este botão ao mapa, passeadores e convite estilo Uber.")],
-    ["btnMyOrders", () => showComingSoon("Meus Pedidos", "Aqui o cliente verá histórico, status do passeio e pagamento.")],
+    ["btnRequestWalk", openWalkRequest],
+    ["btnMyOrders", openOrders],
     ["btnProfile", () => showComingSoon("Perfil", "Aqui ficará a ficha profissional do cliente com foto, telefone e endereço.")],
-    ["btnComingSoonBack", () => showSection("dashboard")]
+    ["btnComingSoonBack", () => showSection("dashboard")],
+    ["btnCreateWalk", createWalkRequest],
+    ["btnWalkBack", () => showSection("dashboard")],
+    ["btnOrdersBack", () => showSection("dashboard")]
   ];
 
   bindings.forEach(([id, handler]) => {

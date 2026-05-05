@@ -218,3 +218,50 @@ input[type="file"] {
     min-height: 92px;
   }
 }
+
+
+/* Solicitação de passeio e pedidos */
+select {
+  display: block;
+  margin: 10px auto;
+  padding: 10px;
+  width: 80%;
+  border-radius: 8px;
+  border: none;
+  background: #fff;
+  color: #0f172a;
+}
+
+.list-box {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.order-card,
+.notice {
+  text-align: left;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.14);
+}
+
+.order-card strong,
+.order-card span {
+  display: block;
+}
+
+.order-card strong {
+  margin-bottom: 8px;
+}
+
+.order-card span {
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  select { width: 100%; }
+}
