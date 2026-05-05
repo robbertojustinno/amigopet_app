@@ -100,6 +100,16 @@ async function loginClient() {
       userName.textContent = data.full_name || data.name || "Cliente";
     }
 
+    const userPhoto = el("userPhoto");
+    if (userPhoto) {
+      userPhoto.src = data.photo || "https://api.dicebear.com/8.x/initials/svg?seed=Cliente";
+    }
+
+    const dashboardTitle = el("dashboardTitle");
+    if (dashboardTitle) {
+      dashboardTitle.textContent = "Olá, " + (data.full_name || "Cliente").split(" ")[0];
+    }
+
     showSection("dashboard");
   } catch (error) {
     toast("Erro de conexão ao fazer login.");
@@ -256,6 +266,17 @@ function handlePetPhoto(event) {
   });
 }
 
+
+function showComingSoon(title, text) {
+  const titleEl = el("comingSoonTitle");
+  const textEl = el("comingSoonText");
+
+  if (titleEl) titleEl.textContent = title;
+  if (textEl) textEl.textContent = text;
+
+  showSection("comingSoon");
+}
+
 function bindEvents() {
   const bindings = [
     ["btnShowLogin", showLoginScreen],
@@ -267,7 +288,11 @@ function bindEvents() {
     ["btnShowPet", showPetScreen],
     ["btnLogout", logoutUser],
     ["btnCreatePet", createPet],
-    ["btnPetBack", () => showSection("dashboard")]
+    ["btnPetBack", () => showSection("dashboard")],
+    ["btnRequestWalk", () => showComingSoon("Solicitar Passeio", "Na próxima etapa vamos ligar este botão ao mapa, passeadores e convite estilo Uber.")],
+    ["btnMyOrders", () => showComingSoon("Meus Pedidos", "Aqui o cliente verá histórico, status do passeio e pagamento.")],
+    ["btnProfile", () => showComingSoon("Perfil", "Aqui ficará a ficha profissional do cliente com foto, telefone e endereço.")],
+    ["btnComingSoonBack", () => showSection("dashboard")]
   ];
 
   bindings.forEach(([id, handler]) => {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AmigoPet</title>
-  <link rel="stylesheet" href="/static/styles.css?v=v9.2"/>
+  <link rel="stylesheet" href="/static/styles.css?v=v9.3"/>
 </head>
 <body>
 
@@ -45,11 +45,44 @@
   </section>
 
   <section id="dashboard" class="view hidden">
-    <h2>Bem-vindo</h2>
-    <p id="userName"></p>
+    <div class="client-header">
+      <img id="userPhoto" class="client-photo" alt="Foto do cliente"/>
+      <div>
+        <span class="eyebrow">Área do Cliente</span>
+        <h2 id="dashboardTitle">Bem-vindo</h2>
+        <p id="userName"></p>
+      </div>
+    </div>
 
-    <button id="btnShowPet" type="button">Cadastrar Pet</button>
-    <button id="btnLogout" type="button">Sair</button>
+    <div class="dashboard-grid">
+      <button id="btnShowPet" type="button" class="dash-card">
+        <strong>🐶 Cadastrar Pet</strong>
+        <span>Adicione foto e dados do seu animal</span>
+      </button>
+
+      <button id="btnRequestWalk" type="button" class="dash-card">
+        <strong>🚶 Solicitar Passeio</strong>
+        <span>Escolha passeador, pet e duração</span>
+      </button>
+
+      <button id="btnMyOrders" type="button" class="dash-card">
+        <strong>📦 Meus Pedidos</strong>
+        <span>Acompanhe solicitações e pagamentos</span>
+      </button>
+
+      <button id="btnProfile" type="button" class="dash-card">
+        <strong>⚙️ Perfil</strong>
+        <span>Veja seus dados cadastrados</span>
+      </button>
+    </div>
+
+    <button id="btnLogout" type="button" class="danger-btn">Sair</button>
+  </section>
+
+  <section id="comingSoon" class="view hidden">
+    <h2 id="comingSoonTitle">Em breve</h2>
+    <p id="comingSoonText">Este recurso será liberado na próxima etapa.</p>
+    <button id="btnComingSoonBack" type="button">Voltar</button>
   </section>
 
   <section id="pet" class="view hidden">
@@ -72,6 +105,6 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/static/app.js?v=v9.2"></script>
+<script src="/static/app.js?v=v9.3"></script>
 </body>
 </html>
