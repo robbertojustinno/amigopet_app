@@ -104,13 +104,31 @@ async function api(path, options={}){
     ...options
   });
 
+  let data = null;
+
+  try{
+    data = await res.json();
+  }catch(e){
+    data = {};
+  }
+
   if(!res.ok){
+    console.error('ERRO API:', path, data); // 👈 LOG REAL
+
     let detail = 'Erro na requisição';
-    try { detail = (await res.json()).detail || detail; } catch(e) {}
+
+    if(Array.isArray(data?.detail)){
+      detail = data.detail.map(e => e.msg).join(' | ');
+    }else if(typeof data?.detail === 'string'){
+      detail = data.detail;
+    }else{
+      detail = JSON.stringify(data);
+    }
+
     throw new Error(detail);
   }
 
-  return res.json();
+  return data;
 }
 
 function fileToDataUrl(file){
