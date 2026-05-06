@@ -426,6 +426,8 @@ async function createWalk(){
     if(!data.walker_id) return toast('Escolha um passeador.');
     if(!data.address) return toast('Informe o endereço.');
 
+    console.log('DADOS ENVIADOS /api/walks:', data);
+
     const walk = await api('/api/walks', {
       method:'POST',
       body: JSON.stringify(data)
