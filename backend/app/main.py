@@ -457,9 +457,14 @@ def get_walk(walk_id: int, db: Session = Depends(get_db)):
 async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
     price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
     distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
+    payload_data = data.model_dump() if hasattr(data, "model_dump") else data.dict()
+
     walk = WalkRequest(
-        **data.model_dump(), estimated_price=round(price, 2), distance_km=round(distance, 1),
-        expires_at=datetime.utcnow() + timedelta(minutes=5), status="convite_enviado"
+        **payload_data,
+        estimated_price=round(price, 2),
+        distance_km=round(distance, 1),
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
+        status="convite_enviado"
     )
     db.add(walk)
     db.commit()
