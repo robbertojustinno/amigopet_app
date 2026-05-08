@@ -87,8 +87,6 @@ class WalkRequest(Base):
     walker_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     pet_id = Column(Integer, ForeignKey("pets.id"), nullable=True)
     address = Column(Text, nullable=False)
-    # Compatibilidade com banco antigo do Render: coluna obrigatória legacy
-    pickup_address = Column(Text, default="")
     pickup_lat = Column(Float, default=-22.5884)
     pickup_lng = Column(Float, default=-43.1847)
     walker_lat = Column(Float, default=-22.5900)
@@ -196,6 +194,12 @@ def get_db():
     finally:
         db.close()
 
+def model_to_dict(model, **kwargs):
+    """Compatibilidade entre Pydantic v1 e v2."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump(**kwargs)
+    return model.dict(**kwargs)
+
 def hash_password(password: str) -> str:
     """Hash estável compatível com Python 3.14 no Render."""
     salt = secrets.token_hex(16)
@@ -246,7 +250,7 @@ def walk_to_dict(w: WalkRequest):
     return {
         "id": w.id, "client_id": w.client_id, "walker_id": w.walker_id, "pet_id": w.pet_id,
         "client": w.client.full_name if w.client else "", "walker": w.walker.full_name if w.walker else "Aguardando",
-        "pet": w.pet.name if w.pet else "", "address": w.address, "pickup_address": getattr(w, "pickup_address", "") or w.address,
+        "pet": w.pet.name if w.pet else "", "address": w.address,
         "pickup_lat": w.pickup_lat, "pickup_lng": w.pickup_lng, "walker_lat": w.walker_lat, "walker_lng": w.walker_lng,
         "duration_minutes": w.duration_minutes, "dogs_count": w.dogs_count,
         "estimated_price": w.estimated_price, "distance_km": w.distance_km,
@@ -380,19 +384,28 @@ def run_lightweight_migrations():
             except Exception as e:
                 print("[MIGRATION WARNING] normalize pets.dog_count:", e)
 
+            # Walk requests: compatibilidade entre banco antigo e backend atual.
             walk_columns_sql = [
-                ("pickup_address", "TEXT DEFAULT ''"),
+                ("client_id", "INTEGER"),
+                ("walker_id", "INTEGER NULL"),
+                ("pet_id", "INTEGER NULL"),
+                ("address", "TEXT DEFAULT ''"),
+                ("pickup_lat", "DOUBLE PRECISION DEFAULT -22.5884"),
+                ("pickup_lng", "DOUBLE PRECISION DEFAULT -43.1847"),
                 ("walker_lat", "DOUBLE PRECISION DEFAULT -22.5900"),
                 ("walker_lng", "DOUBLE PRECISION DEFAULT -43.1810"),
+                ("duration_minutes", "INTEGER DEFAULT 30"),
+                ("dogs_count", "INTEGER DEFAULT 1"),
                 ("estimated_price", "DOUBLE PRECISION DEFAULT 25"),
                 ("distance_km", "DOUBLE PRECISION DEFAULT 1.8"),
+                ("status", "VARCHAR(40) DEFAULT 'pendente'"),
                 ("payment_status", "VARCHAR(40) DEFAULT 'aguardando'"),
                 ("pix_code", "TEXT DEFAULT ''"),
                 ("notes", "TEXT DEFAULT ''"),
                 ("expires_at", "TIMESTAMP NULL"),
                 ("started_at", "TIMESTAMP NULL"),
                 ("finished_at", "TIMESTAMP NULL"),
-                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                ("created_at", "TIMESTAMP DEFAULT NOW()"),
             ]
 
             for col, ddl in walk_columns_sql:
@@ -401,14 +414,54 @@ def run_lightweight_migrations():
                 except Exception as e:
                     print(f"[MIGRATION WARNING] add walk_requests.{col}:", e)
 
-            try:
-                conn.execute(text("UPDATE walk_requests SET pickup_address=address WHERE (pickup_address IS NULL OR pickup_address='') AND address IS NOT NULL"))
-                conn.execute(text("UPDATE walk_requests SET pickup_address='' WHERE pickup_address IS NULL"))
-                conn.execute(text("ALTER TABLE walk_requests ALTER COLUMN pickup_address SET DEFAULT ''"))
-                conn.execute(text("ALTER TABLE walk_requests ALTER COLUMN pickup_address SET NOT NULL"))
-            except Exception as e:
-                print("[MIGRATION WARNING] normalize walk_requests.pickup_address:", e)
+            # Colunas legacy que podem existir como NOT NULL no PostgreSQL antigo.
+            legacy_defaults = {
+                "pickup_address": "''",
+                "pickup_time": "NOW()",
+                "client_name": "''",
+                "walker_name": "''",
+                "pet_name": "''",
+                "price": "0",
+                "total_price": "0",
+                "duration": "30",
+                "dog_count": "1",
+            }
 
+            for col, default in legacy_defaults.items():
+                try:
+                    conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}"))
+                    conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col} DROP NOT NULL"))
+                except Exception as e:
+                    print(f"[MIGRATION WARNING] normalize legacy walk_requests.{col}:", e)
+
+            # Rede de segurança: qualquer coluna antiga obrigatória sem default ganha default automático,
+            # para impedir INSERT quebrando com 'null value in column ...'.
+            try:
+                required_legacy_cols = conn.execute(text("""
+                    SELECT column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_name = 'walk_requests'
+                      AND is_nullable = 'NO'
+                      AND column_default IS NULL
+                      AND column_name <> 'id'
+                """)).fetchall()
+
+                for col_name, data_type in required_legacy_cols:
+                    if data_type in ("integer", "bigint", "smallint", "numeric", "double precision", "real"):
+                        default = "0"
+                    elif data_type == "boolean":
+                        default = "FALSE"
+                    elif "timestamp" in data_type or data_type == "date":
+                        default = "NOW()"
+                    else:
+                        default = "''"
+                    try:
+                        conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col_name} SET DEFAULT {default}"))
+                        conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col_name} DROP NOT NULL"))
+                    except Exception as e:
+                        print(f"[MIGRATION WARNING] relax required legacy walk_requests.{col_name}:", e)
+            except Exception as e:
+                print("[MIGRATION WARNING] inspect required legacy walk_requests columns:", e)
 
 run_lightweight_migrations()
 seed_data()
@@ -431,7 +484,7 @@ def health():
 def register(data: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
-    user = User(**data.model_dump(exclude={"password"}), password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
+    user = User(**model_to_dict(data, exclude={"password"}), password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -465,7 +518,7 @@ def create_pet(data: PetIn, db: Session = Depends(get_db)):
     owner = db.get(User, data.owner_id)
     if not owner or owner.role != "client":
         raise HTTPException(status_code=400, detail="Cliente inválido")
-    pet = Pet(**data.model_dump())
+    pet = Pet(**model_to_dict(data))
     db.add(pet)
     db.commit()
     db.refresh(pet)
@@ -487,27 +540,53 @@ def get_walk(walk_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/walks")
 async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
-    price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
-    distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
+    try:
+        payload_data = model_to_dict(data)
 
-    payload_data = data.model_dump() if hasattr(data, "model_dump") else data.dict()
-    payload_data["pickup_address"] = payload_data.get("address", "")
+        client = db.get(User, data.client_id)
+        if not client or client.role != "client":
+            raise HTTPException(status_code=400, detail="Cliente inválido")
 
-    walk = WalkRequest(
-        **payload_data,
-        estimated_price=round(price, 2),
-        distance_km=round(distance, 1),
-        expires_at=datetime.utcnow() + timedelta(minutes=5),
-        status="convite_enviado",
-    )
-    db.add(walk)
-    db.commit()
-    walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
-    db.commit()
-    db.refresh(walk)
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "walk_created", "walk": payload})
-    return payload
+        if data.walker_id:
+            walker = db.get(User, data.walker_id)
+            if not walker or walker.role != "walker":
+                raise HTTPException(status_code=400, detail="Passeador inválido")
+
+        if data.pet_id:
+            pet = db.get(Pet, data.pet_id)
+            if not pet or pet.owner_id != data.client_id:
+                raise HTTPException(status_code=400, detail="Pet inválido para este cliente")
+
+        price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
+        distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
+
+        walk = WalkRequest(
+            **payload_data,
+            estimated_price=round(price, 2),
+            distance_km=round(distance, 1),
+            expires_at=datetime.utcnow() + timedelta(minutes=5),
+            status="convite_enviado",
+            payment_status="aguardando",
+        )
+        db.add(walk)
+        db.commit()
+
+        walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
+        db.commit()
+        db.refresh(walk)
+
+        payload = walk_to_dict(walk)
+        await manager.broadcast({"type": "walk_created", "walk": payload})
+        return payload
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        print("[ERRO CREATE WALK]", error_msg)
+        raise HTTPException(status_code=500, detail=f"Erro ao criar convite: {error_msg}")
 
 @app.post("/api/walks/{walk_id}/accept")
 async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db)):
@@ -587,7 +666,7 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
 
 @app.post("/api/messages")
 async def create_message(data: MessageIn, db: Session = Depends(get_db)):
-    msg = Message(**data.model_dump())
+    msg = Message(**model_to_dict(data))
     db.add(msg)
     db.commit()
     db.refresh(msg)
