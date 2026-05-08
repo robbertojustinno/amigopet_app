@@ -705,6 +705,14 @@ def list_messages(request_id: int, db: Session = Depends(get_db)):
     msgs = db.query(Message).filter(Message.request_id == request_id).order_by(Message.id.asc()).all()
     return [{"id": m.id, "request_id": m.request_id, "sender_id": m.sender_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in msgs]
 
+
+@app.get("/passeador")
+def walker_page():
+    walker_file = FRONTEND_DIR / "passeador.html"
+    if walker_file.exists():
+        return FileResponse(walker_file)
+    return FileResponse(FRONTEND_DIR / "index.html")
+
 @app.get("/admin")
 def admin_page():
     admin_file = FRONTEND_DIR / "admin.html"
