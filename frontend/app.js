@@ -15,6 +15,20 @@ let petPhotoData = '';
 
 const $ = (id) => document.getElementById(id);
 
+function kmBetween(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const toRad = (v) => Number(v) * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function etaMinutesFromKm(km){
+  if(!Number.isFinite(km)) return 0;
+  return Math.max(1, Math.ceil((km / 4.5) * 60));
+}
+
 function toast(msg){
   const el = $('toast');
   if(!el) return alert(msg);
@@ -539,14 +553,25 @@ function renderMap(w){
 function renderCurrentWalk(w){
   if(!w) return;
 
+  const kmLive = kmBetween(
+    Number(w.walker_lat || -22.5900),
+    Number(w.walker_lng || -43.1810),
+    Number(w.pickup_lat || -22.5884),
+    Number(w.pickup_lng || -43.1847)
+  );
+  const eta = etaMinutesFromKm(kmLive);
+  const activeLabel = ['aceito','pagamento_confirmado','em_andamento'].includes(w.status) ? 'Corrida ativa' : 'Pedido criado';
+
   const box = $('currentWalkBox');
   if(box){
     box.innerHTML = `<strong>#${w.id} • ${w.pet || 'Pet'}</strong><br>
     Cliente: ${w.client}<br>
     Passeador: ${w.walker}<br>
-    Status: <span class="badge ${w.status}">${w.status}</span><br>
+    Status: <span class="badge ${w.status}">${w.status}</span> <span class="badge aceito">${activeLabel}</span><br>
     Pagamento: <span class="badge ${w.payment_status}">${w.payment_status}</span><br>
-    Distância: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price).toFixed(2)}<br>
+    Distância do pedido: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price).toFixed(2)}<br>
+    Distância ao cliente: <strong>${kmLive.toFixed(2)} km</strong><br>
+    Previsão de chegada: <strong>${eta} min</strong><br>
     Localização passeador: ${Number(w.walker_lat || -22.5900).toFixed(5)}, ${Number(w.walker_lng || -43.1810).toFixed(5)}`;
   }
 

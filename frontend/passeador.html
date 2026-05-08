@@ -94,8 +94,10 @@
         </div>
         <div class="card">
           <h3>Ações rápidas</h3>
-          <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio</button>
-          <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização</button>
+          <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio + GPS automático</button>
+          <button class="full secondary" type="button" onclick="startGpsTracking()">Ativar GPS em tempo real</button>
+          <button class="full ghost" type="button" onclick="stopGpsTracking()">Parar GPS automático</button>
+          <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização uma vez</button>
           <button class="full warn" type="button" onclick="simulateMove()">Simular movimento</button>
           <button class="full danger" type="button" onclick="finishCurrentWalk()">Finalizar passeio</button>
         </div>
@@ -123,6 +125,6 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-v1"></script>
+  <script src="/static/walker.js?v=walker-gps-v2"></script>
 </body>
 </html>

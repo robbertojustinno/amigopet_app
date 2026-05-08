@@ -10,8 +10,25 @@ let walkerMarker = null;
 let routeLine = null;
 let moveStep = 0;
 let online = true;
+let gpsWatchId = null;
+let gpsActive = false;
+let lastGpsSentAt = 0;
 
 const $ = (id) => document.getElementById(id);
+
+function kmBetween(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const toRad = (v) => Number(v) * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function etaMinutesFromKm(km){
+  if(!Number.isFinite(km)) return 0;
+  return Math.max(1, Math.ceil((km / 4.5) * 60));
+}
 
 function toast(msg){
   const el = $('toast');
@@ -102,6 +119,7 @@ async function login(){
 }
 
 function logout(){
+  stopGpsTracking(false);
   currentUser = null;
   currentWalk = null;
   availableWalks = [];
@@ -187,14 +205,27 @@ function renderCurrentWalk(){
   }
   const summary = $('mapSummary');
   if(summary){
-    summary.innerHTML = currentWalk ? `
-      <strong>#${currentWalk.id} • ${currentWalk.pet || 'Pet'}</strong><br>
-      Cliente: ${currentWalk.client || '-'}<br>
-      Status: <span class="badge ${currentWalk.status}">${currentWalk.status}</span><br>
-      Pagamento: <span class="badge ${currentWalk.payment_status}">${currentWalk.payment_status || 'aguardando'}</span><br>
-      Endereço: ${currentWalk.address || '-'}<br>
-      Passeador: ${Number(currentWalk.walker_lat || 0).toFixed(5)}, ${Number(currentWalk.walker_lng || 0).toFixed(5)}
-    ` : 'Nenhum passeio selecionado.';
+    if(currentWalk){
+      const km = kmBetween(
+        Number(currentWalk.walker_lat || -22.5900),
+        Number(currentWalk.walker_lng || -43.1810),
+        Number(currentWalk.pickup_lat || -22.5884),
+        Number(currentWalk.pickup_lng || -43.1847)
+      );
+      summary.innerHTML = `
+        <strong>#${currentWalk.id} • ${currentWalk.pet || 'Pet'}</strong><br>
+        Cliente: ${currentWalk.client || '-'}<br>
+        Status: <span class="badge ${currentWalk.status}">${currentWalk.status}</span><br>
+        Pagamento: <span class="badge ${currentWalk.payment_status}">${currentWalk.payment_status || 'aguardando'}</span><br>
+        Endereço: ${currentWalk.address || '-'}<br>
+        Passeador: ${Number(currentWalk.walker_lat || 0).toFixed(5)}, ${Number(currentWalk.walker_lng || 0).toFixed(5)}<br>
+        Distância até cliente: <strong>${km.toFixed(2)} km</strong><br>
+        Previsão: <strong>${etaMinutesFromKm(km)} min</strong><br>
+        GPS automático: <span class="badge ${gpsActive ? 'aceito' : 'recusado'}">${gpsActive ? 'ativo' : 'parado'}</span>
+      `;
+    }else{
+      summary.innerHTML = 'Nenhum passeio selecionado.';
+    }
   }
   renderMap();
 }
@@ -244,16 +275,19 @@ async function startCurrentWalk(){
     if(!currentWalk) return toast('Selecione ou aceite um passeio primeiro.');
     currentWalk = await api(`/api/walks/${currentWalk.id}/start`, {method:'POST'});
     renderCurrentWalk();
-    toast('Passeio iniciado.');
+    startGpsTracking();
+    showView('mapa');
+    toast('Passeio iniciado. GPS automático ativado.');
   }catch(err){ toast(err.message); }
 }
 
 async function finishCurrentWalk(){
   try{
     if(!currentWalk) return toast('Nenhum passeio atual.');
+    stopGpsTracking(false);
     currentWalk = await api(`/api/walks/${currentWalk.id}/finish`, {method:'POST'});
     renderCurrentWalk();
-    toast('Passeio finalizado.');
+    toast('Passeio finalizado. GPS automático desligado.');
   }catch(err){ toast(err.message); }
 }
 
@@ -264,6 +298,45 @@ async function sendLocation(lat, lng){
     body: JSON.stringify({lat, lng})
   });
   renderCurrentWalk();
+}
+
+function startGpsTracking(){
+  if(!currentWalk) return toast('Aceite ou selecione um passeio primeiro.');
+  if(!navigator.geolocation) return toast('GPS não disponível neste dispositivo. Use Enviar localização ou Simular movimento.');
+  if(gpsWatchId !== null) return toast('GPS automático já está ativo.');
+
+  gpsActive = true;
+  renderCurrentWalk();
+  toast('GPS automático ativado. Mantenha esta tela aberta.');
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      try{
+        const now = Date.now();
+        if(now - lastGpsSentAt < 4500) return;
+        lastGpsSentAt = now;
+        await sendLocation(pos.coords.latitude, pos.coords.longitude);
+      }catch(err){
+        toast(err.message || 'Falha ao enviar GPS.');
+      }
+    },
+    (err) => {
+      gpsActive = false;
+      renderCurrentWalk();
+      toast(err?.message || 'Permissão de localização negada.');
+    },
+    {enableHighAccuracy:true, timeout:12000, maximumAge:3000}
+  );
+}
+
+function stopGpsTracking(showToast=true){
+  if(gpsWatchId !== null && navigator.geolocation){
+    navigator.geolocation.clearWatch(gpsWatchId);
+  }
+  gpsWatchId = null;
+  gpsActive = false;
+  renderCurrentWalk();
+  if(showToast) toast('GPS automático desligado.');
 }
 
 function sendMyLocation(){
