@@ -706,6 +706,15 @@ def list_messages(request_id: int, db: Session = Depends(get_db)):
     return [{"id": m.id, "request_id": m.request_id, "sender_id": m.sender_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in msgs]
 
 
+
+@app.get("/manifest.webmanifest")
+def manifest_file():
+    return FileResponse(FRONTEND_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+@app.get("/sw.js")
+def service_worker_file():
+    return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript")
+
 @app.get("/passeador")
 def walker_page():
     walker_file = FRONTEND_DIR / "passeador.html"

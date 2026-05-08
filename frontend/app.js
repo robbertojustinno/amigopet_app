@@ -733,6 +733,10 @@ function connectWS(){
 
       if(data.type) toast(labels[data.type] || 'Atualização recebida');
 
+      if(data.type && data.walk && currentUser && data.walk.client_id === currentUser.id){
+        window.amigoPetPWA?.notify('AmigoPet Cliente', labels[data.type] || 'Atualização do passeio', '/');
+      }
+
       if(data.walk && currentUser && data.walk.client_id === currentUser.id){
         lastWalk = data.walk;
         currentRequestId = data.walk.id;

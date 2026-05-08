@@ -393,7 +393,10 @@ function connectWS(){
     ws.onopen = () => toast('Tempo real conectado.');
     ws.onmessage = async (ev) => {
       const data = JSON.parse(ev.data);
-      if(data.type === 'walk_created') toast('Novo convite recebido.');
+      if(data.type === 'walk_created'){
+        toast('Novo convite recebido.');
+        window.amigoPetPWA?.notify('AmigoPet Passeador', 'Novo convite de passeio recebido.', '/passeador');
+      }
       if(data.walk){
         const w = data.walk;
         const idx = availableWalks.findIndex(item => item.id === w.id);

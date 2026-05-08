@@ -1,0 +1,40 @@
+{
+  "name": "AmigoPet",
+  "short_name": "AmigoPet",
+  "description": "AmigoPet: cliente e passeador com pedidos, mapa e GPS em tempo real.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "categories": ["business", "lifestyle", "navigation"],
+  "icons": [
+    {
+      "src": "/static/assets/amigopet-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Cliente",
+      "short_name": "Cliente",
+      "url": "/",
+      "icons": [{ "src": "/static/assets/amigopet-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Passeador",
+      "short_name": "Passeador",
+      "url": "/passeador",
+      "icons": [{ "src": "/static/assets/amigopet-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
