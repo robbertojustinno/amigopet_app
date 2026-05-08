@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text, text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -194,7 +194,7 @@ def get_db():
     finally:
         db.close()
 
-def model_to_dict(model, **kwargs):
+def pydantic_dump(model: BaseModel, **kwargs) -> dict:
     """Compatibilidade entre Pydantic v1 e v2."""
     if hasattr(model, "model_dump"):
         return model.model_dump(**kwargs)
@@ -304,164 +304,186 @@ def seed_data():
 
 
 def run_lightweight_migrations():
-    """Corrige banco antigo sem precisar de Shell no Render Free."""
+    """Corrige banco antigo sem precisar de Shell no Render Free.
+
+    Importante:
+    - NÃO apaga usuários, pets ou pedidos.
+    - Mantém compatibilidade com banco antigo do Render.
+    - Remove NOT NULL legado em colunas que não são mais usadas pelo código atual,
+      evitando erro 500 / {} na criação do convite.
+    """
     Base.metadata.create_all(bind=engine)
 
     with engine.begin() as conn:
-        if engine.dialect.name == "postgresql":
-            for old_col in ["password", "online"]:
-                try:
-                    conn.execute(text(f"ALTER TABLE users DROP COLUMN IF EXISTS {old_col}"))
-                except Exception as e:
-                    print(f"[MIGRATION WARNING] drop old users.{old_col}:", e)
+        if engine.dialect.name != "postgresql":
+            return
 
-            user_columns_sql = [
-                ("password_hash", "VARCHAR(255)"),
-                ("phone", "VARCHAR(30) DEFAULT ''"),
-                ("photo", "TEXT DEFAULT ''"),
-                ("document", "VARCHAR(40) DEFAULT ''"),
-                ("address", "TEXT DEFAULT ''"),
-                ("neighborhood", "VARCHAR(120) DEFAULT ''"),
-                ("city", "VARCHAR(120) DEFAULT ''"),
-                ("zip_code", "VARCHAR(20) DEFAULT ''"),
-                ("street", "VARCHAR(160) DEFAULT ''"),
-                ("number", "VARCHAR(30) DEFAULT ''"),
-                ("complement", "VARCHAR(120) DEFAULT ''"),
-                ("state", "VARCHAR(60) DEFAULT 'RJ'"),
-                ("lat", "DOUBLE PRECISION DEFAULT -22.5884"),
-                ("lng", "DOUBLE PRECISION DEFAULT -43.1847"),
-                ("rating", "DOUBLE PRECISION DEFAULT 5"),
-                ("available", "BOOLEAN DEFAULT TRUE"),
-                ("bio", "TEXT DEFAULT ''"),
-                ("active", "BOOLEAN DEFAULT TRUE"),
-                ("email_verified", "BOOLEAN DEFAULT TRUE"),
-                ("phone_verified", "BOOLEAN DEFAULT TRUE"),
-                ("verification_code_hash", "VARCHAR(255) DEFAULT ''"),
-                ("verification_expires_at", "TIMESTAMP NULL"),
-                ("verified_at", "TIMESTAMP NULL"),
-            ]
-
-            for col, ddl in user_columns_sql:
-                try:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}"))
-                except Exception as e:
-                    print(f"[MIGRATION WARNING] add users.{col}:", e)
-
-            for col in ["available", "active", "email_verified", "phone_verified"]:
-                try:
-                    conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} SET DEFAULT TRUE"))
-                    conn.execute(text(f"UPDATE users SET {col}=TRUE WHERE {col} IS NULL"))
-                    conn.execute(text(f"ALTER TABLE users ALTER COLUMN {col} SET NOT NULL"))
-                except Exception as e:
-                    print(f"[MIGRATION WARNING] normalize users.{col}:", e)
-
+        def safe(sql: str, label: str = ""):
             try:
-                conn.execute(text("UPDATE users SET password_hash='sha256$legacy$invalid' WHERE password_hash IS NULL"))
-                conn.execute(text("ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL"))
+                conn.execute(text(sql))
             except Exception as e:
-                print("[MIGRATION WARNING] normalize users.password_hash:", e)
+                print(f"[MIGRATION WARNING] {label or sql}:", e)
 
-            pet_columns_sql = [
-                ("species", "VARCHAR(60) DEFAULT 'Cachorro'"),
-                ("breed", "VARCHAR(100) DEFAULT ''"),
-                ("size", "VARCHAR(50) DEFAULT 'Médio'"),
-                ("age", "VARCHAR(50) DEFAULT ''"),
-                ("photo", "TEXT DEFAULT ''"),
-                ("notes", "TEXT DEFAULT ''"),
-                ("dog_count", "INTEGER DEFAULT 1"),
-            ]
+        for old_col in ["password", "online"]:
+            safe(f"ALTER TABLE users DROP COLUMN IF EXISTS {old_col}", f"drop old users.{old_col}")
 
-            for col, ddl in pet_columns_sql:
-                try:
-                    conn.execute(text(f"ALTER TABLE pets ADD COLUMN IF NOT EXISTS {col} {ddl}"))
-                except Exception as e:
-                    print(f"[MIGRATION WARNING] add pets.{col}:", e)
+        user_columns_sql = [
+            ("password_hash", "VARCHAR(255)"),
+            ("phone", "VARCHAR(30) DEFAULT ''"),
+            ("photo", "TEXT DEFAULT ''"),
+            ("document", "VARCHAR(40) DEFAULT ''"),
+            ("address", "TEXT DEFAULT ''"),
+            ("neighborhood", "VARCHAR(120) DEFAULT ''"),
+            ("city", "VARCHAR(120) DEFAULT ''"),
+            ("zip_code", "VARCHAR(20) DEFAULT ''"),
+            ("street", "VARCHAR(160) DEFAULT ''"),
+            ("number", "VARCHAR(30) DEFAULT ''"),
+            ("complement", "VARCHAR(120) DEFAULT ''"),
+            ("state", "VARCHAR(60) DEFAULT 'RJ'"),
+            ("lat", "DOUBLE PRECISION DEFAULT -22.5884"),
+            ("lng", "DOUBLE PRECISION DEFAULT -43.1847"),
+            ("rating", "DOUBLE PRECISION DEFAULT 5"),
+            ("available", "BOOLEAN DEFAULT TRUE"),
+            ("bio", "TEXT DEFAULT ''"),
+            ("active", "BOOLEAN DEFAULT TRUE"),
+            ("email_verified", "BOOLEAN DEFAULT TRUE"),
+            ("phone_verified", "BOOLEAN DEFAULT TRUE"),
+            ("verification_code_hash", "VARCHAR(255) DEFAULT ''"),
+            ("verification_expires_at", "TIMESTAMP NULL"),
+            ("verified_at", "TIMESTAMP NULL"),
+            ("created_at", "TIMESTAMP DEFAULT NOW()"),
+        ]
 
-            try:
-                conn.execute(text("ALTER TABLE pets ALTER COLUMN dog_count SET DEFAULT 1"))
-                conn.execute(text("UPDATE pets SET dog_count=1 WHERE dog_count IS NULL"))
-                conn.execute(text("ALTER TABLE pets ALTER COLUMN dog_count SET NOT NULL"))
-            except Exception as e:
-                print("[MIGRATION WARNING] normalize pets.dog_count:", e)
+        for col, ddl in user_columns_sql:
+            safe(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}", f"add users.{col}")
 
-            # Walk requests: compatibilidade entre banco antigo e backend atual.
-            walk_columns_sql = [
-                ("client_id", "INTEGER"),
-                ("walker_id", "INTEGER NULL"),
-                ("pet_id", "INTEGER NULL"),
-                ("address", "TEXT DEFAULT ''"),
-                ("pickup_lat", "DOUBLE PRECISION DEFAULT -22.5884"),
-                ("pickup_lng", "DOUBLE PRECISION DEFAULT -43.1847"),
-                ("walker_lat", "DOUBLE PRECISION DEFAULT -22.5900"),
-                ("walker_lng", "DOUBLE PRECISION DEFAULT -43.1810"),
-                ("duration_minutes", "INTEGER DEFAULT 30"),
-                ("dogs_count", "INTEGER DEFAULT 1"),
-                ("estimated_price", "DOUBLE PRECISION DEFAULT 25"),
-                ("distance_km", "DOUBLE PRECISION DEFAULT 1.8"),
-                ("status", "VARCHAR(40) DEFAULT 'pendente'"),
-                ("payment_status", "VARCHAR(40) DEFAULT 'aguardando'"),
-                ("pix_code", "TEXT DEFAULT ''"),
-                ("notes", "TEXT DEFAULT ''"),
-                ("expires_at", "TIMESTAMP NULL"),
-                ("started_at", "TIMESTAMP NULL"),
-                ("finished_at", "TIMESTAMP NULL"),
-                ("created_at", "TIMESTAMP DEFAULT NOW()"),
-            ]
+        for col in ["available", "active", "email_verified", "phone_verified"]:
+            safe(f"ALTER TABLE users ALTER COLUMN {col} SET DEFAULT TRUE", f"default users.{col}")
+            safe(f"UPDATE users SET {col}=TRUE WHERE {col} IS NULL", f"normalize users.{col}")
+            safe(f"ALTER TABLE users ALTER COLUMN {col} SET NOT NULL", f"not null users.{col}")
 
-            for col, ddl in walk_columns_sql:
-                try:
-                    conn.execute(text(f"ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS {col} {ddl}"))
-                except Exception as e:
-                    print(f"[MIGRATION WARNING] add walk_requests.{col}:", e)
+        safe("UPDATE users SET password_hash='sha256$legacy$invalid' WHERE password_hash IS NULL", "normalize users.password_hash")
+        safe("ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL", "not null users.password_hash")
 
-            # Colunas legacy que podem existir como NOT NULL no PostgreSQL antigo.
-            legacy_defaults = {
-                "pickup_address": "''",
-                "pickup_time": "NOW()",
-                "client_name": "''",
-                "walker_name": "''",
-                "pet_name": "''",
-                "price": "0",
-                "total_price": "0",
-                "duration": "30",
-                "dog_count": "1",
-            }
+        pet_columns_sql = [
+            ("species", "VARCHAR(60) DEFAULT 'Cachorro'"),
+            ("breed", "VARCHAR(100) DEFAULT ''"),
+            ("size", "VARCHAR(50) DEFAULT 'Médio'"),
+            ("age", "VARCHAR(50) DEFAULT ''"),
+            ("photo", "TEXT DEFAULT ''"),
+            ("notes", "TEXT DEFAULT ''"),
+            ("dog_count", "INTEGER DEFAULT 1"),
+        ]
 
-            for col, default in legacy_defaults.items():
-                try:
-                    conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}"))
-                    conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col} DROP NOT NULL"))
-                except Exception as e:
-                    print(f"[MIGRATION WARNING] normalize legacy walk_requests.{col}:", e)
+        for col, ddl in pet_columns_sql:
+            safe(f"ALTER TABLE pets ADD COLUMN IF NOT EXISTS {col} {ddl}", f"add pets.{col}")
 
-            # Rede de segurança: qualquer coluna antiga obrigatória sem default ganha default automático,
-            # para impedir INSERT quebrando com 'null value in column ...'.
-            try:
-                required_legacy_cols = conn.execute(text("""
-                    SELECT column_name, data_type
-                    FROM information_schema.columns
-                    WHERE table_name = 'walk_requests'
-                      AND is_nullable = 'NO'
-                      AND column_default IS NULL
-                      AND column_name <> 'id'
-                """)).fetchall()
+        safe("ALTER TABLE pets ALTER COLUMN dog_count SET DEFAULT 1", "default pets.dog_count")
+        safe("UPDATE pets SET dog_count=1 WHERE dog_count IS NULL", "normalize pets.dog_count")
+        safe("ALTER TABLE pets ALTER COLUMN dog_count SET NOT NULL", "not null pets.dog_count")
 
-                for col_name, data_type in required_legacy_cols:
-                    if data_type in ("integer", "bigint", "smallint", "numeric", "double precision", "real"):
-                        default = "0"
-                    elif data_type == "boolean":
-                        default = "FALSE"
-                    elif "timestamp" in data_type or data_type == "date":
-                        default = "NOW()"
-                    else:
-                        default = "''"
-                    try:
-                        conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col_name} SET DEFAULT {default}"))
-                        conn.execute(text(f"ALTER TABLE walk_requests ALTER COLUMN {col_name} DROP NOT NULL"))
-                    except Exception as e:
-                        print(f"[MIGRATION WARNING] relax required legacy walk_requests.{col_name}:", e)
-            except Exception as e:
-                print("[MIGRATION WARNING] inspect required legacy walk_requests columns:", e)
+        walk_columns_sql = [
+            ("client_id", "INTEGER"),
+            ("walker_id", "INTEGER"),
+            ("pet_id", "INTEGER"),
+            ("address", "TEXT DEFAULT ''"),
+            ("pickup_lat", "DOUBLE PRECISION DEFAULT -22.5884"),
+            ("pickup_lng", "DOUBLE PRECISION DEFAULT -43.1847"),
+            ("walker_lat", "DOUBLE PRECISION DEFAULT -22.5900"),
+            ("walker_lng", "DOUBLE PRECISION DEFAULT -43.1810"),
+            ("duration_minutes", "INTEGER DEFAULT 30"),
+            ("dogs_count", "INTEGER DEFAULT 1"),
+            ("estimated_price", "DOUBLE PRECISION DEFAULT 25"),
+            ("distance_km", "DOUBLE PRECISION DEFAULT 1.8"),
+            ("status", "VARCHAR(40) DEFAULT 'pendente'"),
+            ("payment_status", "VARCHAR(40) DEFAULT 'aguardando'"),
+            ("pix_code", "TEXT DEFAULT ''"),
+            ("notes", "TEXT DEFAULT ''"),
+            ("expires_at", "TIMESTAMP NULL"),
+            ("started_at", "TIMESTAMP NULL"),
+            ("finished_at", "TIMESTAMP NULL"),
+            ("created_at", "TIMESTAMP DEFAULT NOW()"),
+        ]
+
+        for col, ddl in walk_columns_sql:
+            safe(f"ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS {col} {ddl}", f"add walk_requests.{col}")
+
+        # Normaliza defaults das colunas atuais.
+        walk_defaults_sql = [
+            ("address", "''"),
+            ("pickup_lat", "-22.5884"),
+            ("pickup_lng", "-43.1847"),
+            ("walker_lat", "-22.5900"),
+            ("walker_lng", "-43.1810"),
+            ("duration_minutes", "30"),
+            ("dogs_count", "1"),
+            ("estimated_price", "25"),
+            ("distance_km", "1.8"),
+            ("status", "'pendente'"),
+            ("payment_status", "'aguardando'"),
+            ("pix_code", "''"),
+            ("notes", "''"),
+            ("created_at", "NOW()"),
+        ]
+
+        for col, default in walk_defaults_sql:
+            safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}", f"default walk_requests.{col}")
+
+        # Backfill de dados atuais e antigos.
+        safe("UPDATE walk_requests SET address='' WHERE address IS NULL", "normalize walk_requests.address")
+        safe("UPDATE walk_requests SET pickup_lat=-22.5884 WHERE pickup_lat IS NULL", "normalize walk_requests.pickup_lat")
+        safe("UPDATE walk_requests SET pickup_lng=-43.1847 WHERE pickup_lng IS NULL", "normalize walk_requests.pickup_lng")
+        safe("UPDATE walk_requests SET walker_lat=-22.5900 WHERE walker_lat IS NULL", "normalize walk_requests.walker_lat")
+        safe("UPDATE walk_requests SET walker_lng=-43.1810 WHERE walker_lng IS NULL", "normalize walk_requests.walker_lng")
+        safe("UPDATE walk_requests SET duration_minutes=30 WHERE duration_minutes IS NULL", "normalize walk_requests.duration_minutes")
+        safe("UPDATE walk_requests SET dogs_count=1 WHERE dogs_count IS NULL", "normalize walk_requests.dogs_count")
+        safe("UPDATE walk_requests SET estimated_price=25 WHERE estimated_price IS NULL", "normalize walk_requests.estimated_price")
+        safe("UPDATE walk_requests SET distance_km=1.8 WHERE distance_km IS NULL", "normalize walk_requests.distance_km")
+        safe("UPDATE walk_requests SET status='pendente' WHERE status IS NULL", "normalize walk_requests.status")
+        safe("UPDATE walk_requests SET payment_status='aguardando' WHERE payment_status IS NULL", "normalize walk_requests.payment_status")
+        safe("UPDATE walk_requests SET pix_code='' WHERE pix_code IS NULL", "normalize walk_requests.pix_code")
+        safe("UPDATE walk_requests SET notes='' WHERE notes IS NULL", "normalize walk_requests.notes")
+        safe("UPDATE walk_requests SET created_at=NOW() WHERE created_at IS NULL", "normalize walk_requests.created_at")
+
+        # Compatibilidade com banco legacy: se existirem colunas antigas que o SQLAlchemy não usa mais,
+        # elas não podem continuar NOT NULL sem default, senão todo INSERT novo quebra.
+        rows = conn.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'walk_requests'
+              AND is_nullable = 'NO'
+              AND column_name <> 'id'
+        """)).fetchall()
+
+        for row in rows:
+            col = row[0]
+            if not col.replace('_', '').isalnum():
+                continue
+            safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} DROP NOT NULL", f"drop not null walk_requests.{col}")
+
+        # Se algumas colunas legacy específicas existirem, deixamos defaults úteis.
+        legacy_defaults = {
+            "pickup_address": "''",
+            "pickup_time": "NOW()",
+            "price": "0",
+            "total_price": "0",
+            "client_name": "''",
+            "walker_name": "''",
+            "dog_name": "''",
+            "dog_size": "''",
+            "request_status": "'convite_enviado'",
+        }
+        existing_cols = [r[0] for r in conn.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'walk_requests'
+        """)).fetchall()]
+        for col, default in legacy_defaults.items():
+            if col in existing_cols:
+                safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}", f"default legacy walk_requests.{col}")
+
 
 run_lightweight_migrations()
 seed_data()
@@ -484,7 +506,7 @@ def health():
 def register(data: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
-    user = User(**model_to_dict(data, exclude={"password"}), password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
+    user = User(**pydantic_dump(data, exclude={"password"}), password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -518,7 +540,7 @@ def create_pet(data: PetIn, db: Session = Depends(get_db)):
     owner = db.get(User, data.owner_id)
     if not owner or owner.role != "client":
         raise HTTPException(status_code=400, detail="Cliente inválido")
-    pet = Pet(**model_to_dict(data))
+    pet = Pet(**pydantic_dump(data))
     db.add(pet)
     db.commit()
     db.refresh(pet)
@@ -540,26 +562,30 @@ def get_walk(walk_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/walks")
 async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
+    if not data.client_id:
+        raise HTTPException(status_code=400, detail="Cliente inválido")
+    if not data.address or not data.address.strip():
+        raise HTTPException(status_code=400, detail="Informe o endereço")
+
+    client = db.get(User, data.client_id)
+    if not client or client.role != "client":
+        raise HTTPException(status_code=400, detail="Cliente inválido")
+
+    if data.walker_id:
+        walker = db.get(User, data.walker_id)
+        if not walker or walker.role != "walker":
+            raise HTTPException(status_code=400, detail="Passeador inválido")
+
+    if data.pet_id:
+        pet = db.get(Pet, data.pet_id)
+        if not pet or pet.owner_id != data.client_id:
+            raise HTTPException(status_code=400, detail="Pet inválido para este cliente")
+
+    price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
+    distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
+    payload_data = pydantic_dump(data)
+
     try:
-        payload_data = model_to_dict(data)
-
-        client = db.get(User, data.client_id)
-        if not client or client.role != "client":
-            raise HTTPException(status_code=400, detail="Cliente inválido")
-
-        if data.walker_id:
-            walker = db.get(User, data.walker_id)
-            if not walker or walker.role != "walker":
-                raise HTTPException(status_code=400, detail="Passeador inválido")
-
-        if data.pet_id:
-            pet = db.get(Pet, data.pet_id)
-            if not pet or pet.owner_id != data.client_id:
-                raise HTTPException(status_code=400, detail="Pet inválido para este cliente")
-
-        price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
-        distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
-
         walk = WalkRequest(
             **payload_data,
             estimated_price=round(price, 2),
@@ -570,23 +596,23 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
         )
         db.add(walk)
         db.commit()
-
         walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
         db.commit()
         db.refresh(walk)
-
-        payload = walk_to_dict(walk)
-        await manager.broadcast({"type": "walk_created", "walk": payload})
-        return payload
-
-    except HTTPException:
-        db.rollback()
-        raise
     except Exception as e:
         db.rollback()
-        error_msg = str(e)
-        print("[ERRO CREATE WALK]", error_msg)
-        raise HTTPException(status_code=500, detail=f"Erro ao criar convite: {error_msg}")
+        msg = str(e)
+        print("[CREATE WALK ERROR]", msg)
+        if "NotNullViolation" in msg or "violates not-null constraint" in msg:
+            raise HTTPException(
+                status_code=500,
+                detail="Banco antigo com coluna obrigatória incompatível em walk_requests. O deploy precisa reiniciar para aplicar a migration automática. Erro técnico: " + msg[:700],
+            )
+        raise HTTPException(status_code=500, detail="Erro ao criar convite: " + msg[:700])
+
+    payload = walk_to_dict(walk)
+    await manager.broadcast({"type": "walk_created", "walk": payload})
+    return payload
 
 @app.post("/api/walks/{walk_id}/accept")
 async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db)):
@@ -666,7 +692,7 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
 
 @app.post("/api/messages")
 async def create_message(data: MessageIn, db: Session = Depends(get_db)):
-    msg = Message(**model_to_dict(data))
+    msg = Message(**pydantic_dump(data))
     db.add(msg)
     db.commit()
     db.refresh(msg)
