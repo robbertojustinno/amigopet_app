@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amigopet-pwa-v5-edit-cliente';
+const CACHE_NAME = 'amigopet-pwa-v6-finalizado-limpo';
 const APP_SHELL = [
   '/',
   '/passeador',
