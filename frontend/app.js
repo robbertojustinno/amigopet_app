@@ -13,6 +13,7 @@ let pickupMarker = null;
 let clientPhotoData = '';
 let petPhotoData = '';
 let editClientPhotoData = '';
+let pricingConfig = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -93,12 +94,18 @@ function setLoggedUI(){
 
   if(profileChip) profileChip.classList.toggle('hidden', !loggedIn);
 
+  const authCard = $('authCard');
+  const loggedHomeCard = $('loggedHomeCard');
+  if(authCard) authCard.classList.toggle('hidden', loggedIn);
+  if(loggedHomeCard) loggedHomeCard.classList.toggle('hidden', !loggedIn);
+
   if(loggedIn){
     if(logged) logged.innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>Cliente</strong>`;
     if(profileName) profileName.textContent = currentUser.full_name;
     if(profilePhoto) profilePhoto.src = clientPhotoSrc(currentUser);
     if(profilePhotoLarge) profilePhotoLarge.src = clientPhotoSrc(currentUser);
     renderClientDetails();
+    loadPricing().catch(()=>{});
   }else{
     if(logged) logged.textContent = 'Nenhum cliente conectado.';
   }
@@ -884,5 +891,6 @@ function connectWS(){
 
 clearSessions();
 setLoggedUI();
+loadPricing().catch(()=>{});
 showView('home', true);
 connectWS();

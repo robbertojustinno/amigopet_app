@@ -127,6 +127,12 @@ class Message(Base):
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key = Column(String(80), primary_key=True, index=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class RegisterIn(BaseModel):
     full_name: str
     email: EmailStr
@@ -180,6 +186,12 @@ class WalkIn(BaseModel):
     duration_minutes: int = 30
     dogs_count: int = 1
     notes: str = ""
+
+class PricingIn(BaseModel):
+    price_30: float = 30.0
+    price_45: float = 38.0
+    price_60: float = 46.0
+    extra_dog: float = 9.0
 
 class MessageIn(BaseModel):
     request_id: int
@@ -272,6 +284,56 @@ def pet_to_dict(p: Pet):
 def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
     return f"000201-AMIGOPET-PIX-SIMULADO-ID{walk_id}-VALOR{amount:.2f}-TOKEN{token}"
+
+DEFAULT_PRICING = {
+    "price_30": 30.0,
+    "price_45": 38.0,
+    "price_60": 46.0,
+    "extra_dog": 9.0,
+}
+
+def get_setting(db: Session, key: str, default: str = "") -> str:
+    item = db.get(AppSetting, key)
+    return item.value if item else default
+
+def set_setting(db: Session, key: str, value: str):
+    item = db.get(AppSetting, key)
+    if item:
+        item.value = value
+        item.updated_at = datetime.utcnow()
+    else:
+        db.add(AppSetting(key=key, value=value))
+
+def get_pricing_config(db: Session) -> dict:
+    config = {}
+    for key, default in DEFAULT_PRICING.items():
+        try:
+            config[key] = float(get_setting(db, key, str(default)))
+        except Exception:
+            config[key] = default
+    return config
+
+def calculate_walk_price(db: Session, duration_minutes: int, dogs_count: int) -> float:
+    pricing = get_pricing_config(db)
+    duration = int(duration_minutes or 30)
+    base_by_duration = {
+        30: pricing["price_30"],
+        45: pricing["price_45"],
+        60: pricing["price_60"],
+    }
+    base_price = base_by_duration.get(duration, pricing["price_30"])
+    extra_dogs = max(int(dogs_count or 1) - 1, 0) * pricing["extra_dog"]
+    return round(base_price + extra_dogs, 2)
+
+def seed_pricing_settings():
+    db = SessionLocal()
+    try:
+        for key, value in DEFAULT_PRICING.items():
+            if not db.get(AppSetting, key):
+                db.add(AppSetting(key=key, value=str(value)))
+        db.commit()
+    finally:
+        db.close()
 
 def mp_headers(idempotency_key: Optional[str] = None) -> dict:
     headers = {"Authorization": f"Bearer {MERCADOPAGO_ACCESS_TOKEN}", "Content-Type": "application/json"}
@@ -653,6 +715,7 @@ def run_lightweight_migrations():
 
 run_lightweight_migrations()
 seed_data()
+seed_pricing_settings()
 
 
 @app.websocket("/ws")
@@ -747,6 +810,29 @@ def create_pet(data: PetIn, db: Session = Depends(get_db)):
     db.refresh(pet)
     return pet_to_dict(pet)
 
+@app.get("/api/pricing")
+def get_pricing(db: Session = Depends(get_db)):
+    pricing = get_pricing_config(db)
+    return {
+        **pricing,
+        "durations": [
+            {"minutes": 30, "price": pricing["price_30"]},
+            {"minutes": 45, "price": pricing["price_45"]},
+            {"minutes": 60, "price": pricing["price_60"]},
+        ],
+    }
+
+@app.post("/api/admin/pricing")
+def update_pricing(data: PricingIn, db: Session = Depends(get_db)):
+    values = pydantic_dump(data)
+    for key in DEFAULT_PRICING.keys():
+        value = float(values.get(key, DEFAULT_PRICING[key]))
+        if value < 0:
+            raise HTTPException(status_code=400, detail="Preço não pode ser negativo")
+        set_setting(db, key, str(round(value, 2)))
+    db.commit()
+    return get_pricing_config(db)
+
 @app.get("/api/walks")
 def walks(status: Optional[str] = None, db: Session = Depends(get_db)):
     q = db.query(WalkRequest)
@@ -784,12 +870,7 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
 
     payload_data = pydantic_dump(data)
 
-    # PREÇO DE TESTE PIX: 5 minutos = R$ 1,00.
-    # Mantém a fórmula normal para os demais tempos.
-    if int(data.duration_minutes or 30) <= 5:
-        price = 1.0
-    else:
-        price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
+    price = calculate_walk_price(db, data.duration_minutes, data.dogs_count)
 
     distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Admin • AmigoPet ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
-  <link rel="stylesheet" href="/static/styles.css?v=v8-rovix-secure2" />
+  <link rel="stylesheet" href="/static/styles.css?v=precos-editaveis-v1" />
 </head>
 <body class="admin-page">
   <div id="toast"></div>
@@ -55,6 +55,19 @@
         <div class="metric"><strong id="sWalks">0</strong><span>Pedidos</span></div>
       </div>
 
+      <div class="card">
+        <h2>Valores dos passeios</h2>
+        <p class="muted">Edite aqui quando precisar mudar os preços. O cliente verá os novos valores automaticamente.</p>
+        <div class="form-grid">
+          <input id="price30" type="number" min="0" step="0.01" placeholder="30 min" />
+          <input id="price45" type="number" min="0" step="0.01" placeholder="45 min" />
+          <input id="price60" type="number" min="0" step="0.01" placeholder="60 min" />
+          <input id="extraDog" type="number" min="0" step="0.01" placeholder="Cão adicional" />
+        </div>
+        <button type="button" onclick="savePricing()">Salvar valores</button>
+        <div id="pricingAdminStatus" class="notice">Carregando valores...</div>
+      </div>
+
       <div class="grid two">
         <div class="card">
           <h2>Pedidos</h2>
@@ -69,6 +82,6 @@
   </main>
 
   <footer>Powered by ROVIX • Admin AmigoPet</footer>
-  <script src="/static/app.js?v=v8-rovix-secure2"></script>
+  <script src="/static/app.js?v=precos-editaveis-v1"></script>
 </body>
 </html>

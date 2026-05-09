@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=meus-pedidos-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=precos-editaveis-v1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -114,6 +114,22 @@
 
           <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
         </div>
+
+        <div class="auth-card hidden" id="loggedHomeCard">
+          <h3>Funcionalidades do app</h3>
+          <p>Você já está conectado. Use o menu para solicitar passeio, acompanhar pedidos e ver o mapa em tempo real.</p>
+          <div class="feature-row" style="grid-template-columns:1fr;">
+            <div><b>🐶</b><strong>Solicitar passeio</strong><small>Escolha pet, endereço, duração e passeador.</small></div>
+            <div><b>💳</b><strong>PIX Mercado Pago</strong><small>Pagamento confirmado automaticamente por webhook.</small></div>
+            <div><b>📍</b><strong>Tracking em tempo real</strong><small>Acompanhe o passeador no mapa.</small></div>
+          </div>
+          <h3 style="margin-top:18px;">Valores dos passeios</h3>
+          <div id="homePricing" class="notice">Carregando valores...</div>
+          <div class="actions">
+            <button type="button" onclick="showView('walk')">Solicitar passeio</button>
+            <button class="secondary" type="button" onclick="showView('orders')">Meus pedidos</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -205,7 +221,6 @@
 
           <label>Duração</label>
           <select id="duration">
-            <option value="5">5 min - R$ 1 teste PIX</option>
             <option value="30">30 min</option>
             <option value="45">45 min</option>
             <option value="60">60 min</option>
@@ -273,7 +288,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=meus-pedidos-v1"></script>
-  <script src="/static/pwa.js?v=meus-pedidos-v1"></script>
+  <script src="/static/app.js?v=precos-editaveis-v1"></script>
+  <script src="/static/pwa.js?v=precos-editaveis-v1"></script>
 </body>
 </html>
