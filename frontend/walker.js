@@ -157,8 +157,12 @@ function isAvailable(w){
   return ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && (!w.walker_id || w.walker_id === currentUser?.id);
 }
 
+function canAcceptPaid(w){
+  return isAvailable(w) && w.payment_status === 'pago';
+}
+
 function walkCard(w, mode='available'){
-  const canAccept = mode === 'available' && isAvailable(w);
+  const canAccept = mode === 'available' && canAcceptPaid(w);
   const canReject = mode === 'available' && ['convite_enviado','pendente'].includes(w.status);
   return `
     <div class="item">
@@ -176,7 +180,7 @@ function walkCard(w, mode='available'){
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
       <div class="actions">
-        ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
+        ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : `<button class="ghost" type="button" disabled title="Aguardando pagamento confirmado">Aguardando PIX</button>`}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
         <button class="secondary" type="button" onclick="selectWalk(${w.id})">Ver detalhes</button>
       </div>
@@ -254,6 +258,8 @@ function selectWalk(id){
 async function acceptWalk(id){
   try{
     if(!requireWalker()) return;
+    const selected = availableWalks.find(w => w.id === id) || currentWalk;
+    if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Mercado Pago.');
     const walk = await api(`/api/walks/${id}/accept?walker_id=${currentUser.id}`, {method:'POST'});
     currentWalk = walk;
     await refreshAll();
@@ -273,6 +279,7 @@ async function rejectWalk(id){
 async function startCurrentWalk(){
   try{
     if(!currentWalk) return toast('Selecione ou aceite um passeio primeiro.');
+    if(currentWalk.payment_status !== 'pago') return toast('Pagamento PIX ainda não confirmado pelo Mercado Pago.');
     currentWalk = await api(`/api/walks/${currentWalk.id}/start`, {method:'POST'});
     renderCurrentWalk();
     startGpsTracking();

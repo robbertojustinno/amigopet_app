@@ -20,7 +20,7 @@ import requests
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
-MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "").strip()
+MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or os.getenv("MERCADO_PAGO_ACCESS_TOKEN") or "").strip()
 MERCADOPAGO_WEBHOOK_SECRET = os.getenv("MERCADOPAGO_WEBHOOK_SECRET", "").strip()
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
@@ -794,6 +794,8 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     if walk.status in ["finalizado", "cancelado"]:
         raise HTTPException(status_code=400, detail="Pedido já encerrado")
+    if walk.payment_status != "pago":
+        raise HTTPException(status_code=402, detail="Aguardando pagamento PIX confirmado pelo Mercado Pago antes do aceite")
     walk.walker_id = walker_id
     walk.status = "aceito"
     walk.expires_at = None
@@ -822,18 +824,18 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
 
     changed = False
-    if walk.mp_payment_id and MERCADOPAGO_ACCESS_TOKEN:
-        try:
-            mp_payment = get_mercadopago_payment(walk.mp_payment_id)
-            changed = apply_mp_payment_to_walk(walk, mp_payment)
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Não foi possível consultar o Mercado Pago: " + str(e)[:700])
-    else:
-        walk.payment_status = "pago"
-        if walk.status in ["pendente", "convite_enviado"]:
-            walk.status = "pagamento_confirmado"
-        changed = True
+    if not walk.mp_payment_id:
+        raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Mercado Pago vinculado. Crie um novo pedido para gerar o PIX real.")
+
+    if not MERCADOPAGO_ACCESS_TOKEN:
+        raise HTTPException(status_code=500, detail="Token do Mercado Pago não configurado no Render.")
+
+    try:
+        mp_payment = get_mercadopago_payment(walk.mp_payment_id)
+        changed = apply_mp_payment_to_walk(walk, mp_payment)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Não foi possível consultar o Mercado Pago: " + str(e)[:700])
 
     db.commit()
     db.refresh(walk)
@@ -914,6 +916,8 @@ async def start_walk(walk_id: int, db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walk.payment_status != "pago":
+        raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Mercado Pago")
     walk.status = "em_andamento"
     walk.started_at = datetime.utcnow()
     db.commit()

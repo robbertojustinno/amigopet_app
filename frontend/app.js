@@ -29,6 +29,19 @@ function etaMinutesFromKm(km){
   return Math.max(1, Math.ceil((km / 4.5) * 60));
 }
 
+
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function photoOrAvatar(user, emoji='🚶'){
+  const photo = String(user?.photo || '').trim();
+  if(photo.length > 8){
+    return `<img src="${escapeHtml(photo)}" alt="${escapeHtml(user?.full_name || 'foto')}" style="width:44px;height:44px;border-radius:14px;object-fit:cover;border:2px solid white;box-shadow:0 8px 18px rgba(15,23,42,.14);" onerror="this.outerHTML='<div class=&quot;avatar&quot; style=&quot;width:44px;height:44px;font-size:22px;border-radius:14px;&quot;>${emoji}</div>'">`;
+  }
+  return `<div class="avatar" style="width:44px;height:44px;font-size:22px;border-radius:14px;">${emoji}</div>`;
+}
+
 function toast(msg){
   const el = $('toast');
   if(!el) return alert(msg);
@@ -467,7 +480,7 @@ async function payWalk(id){
     currentRequestId = id;
     renderCurrentWalk(walk);
     renderMap(walk);
-    toast('Pagamento confirmado.');
+    toast(walk.payment_status === 'pago' ? 'Pagamento confirmado automaticamente.' : 'Pagamento ainda aguardando confirmação do Mercado Pago.');
     await refreshAll();
   }catch(err){
     toast(err.message);
@@ -576,7 +589,19 @@ function renderCurrentWalk(w){
   }
 
   const pixBox = $('pixBox');
-  if(pixBox) pixBox.textContent = w.pix_code || 'PIX será gerado ao criar o pedido.';
+  if(pixBox){
+    const copy = w.mp_qr_code || w.pix_code || '';
+    let qrImg = '';
+    if(w.mp_qr_code_base64){
+      qrImg = `<img alt="QR Code PIX Mercado Pago" src="data:image/png;base64,${w.mp_qr_code_base64}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
+    }else if(copy && !copy.includes('PIX-SIMULADO')){
+      qrImg = `<img alt="QR Code PIX" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(copy)}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
+    }
+    const ticket = w.mp_ticket_url ? `<br><a href="${escapeHtml(w.mp_ticket_url)}" target="_blank" rel="noopener">Abrir pagamento Mercado Pago</a>` : '';
+    const copyText = copy || 'Aguardando geração do PIX Mercado Pago.';
+    const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${copy.replace(/`/g, '')}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
+    pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${ticket}`;
+  }
   renderMap(w);
 }
 
@@ -598,7 +623,7 @@ function walkItem(w){
     </div>
     <div class="muted">${w.duration_minutes} min • ${w.dogs_count} cão(s) • ${w.distance_km} km • R$ ${Number(w.estimated_price).toFixed(2)}</div>
     <div class="actions">
-      <button class="warn" type="button" onclick="payWalk(${w.id})">Confirmar PIX</button>
+      <button class="warn" type="button" onclick="payWalk(${w.id})">Verificar PIX</button>
       <button type="button" onclick="openChat(${w.id})">Chat</button>
       <button type="button" onclick="currentRequestId=${w.id}; loadWalk(${w.id}); showView('tracking', true)">Mapa</button>
     </div>
@@ -640,13 +665,21 @@ async function refreshAll(){
   }
 
   if($('walkerCards')){
-    $('walkerCards').innerHTML = walkers.map(w => `<div class="walker-card" data-walker-card="${w.id}">
-      <div class="avatar">🚶</div>
-      <strong>${w.full_name}</strong>
-      <span>⭐ ${w.rating} • ${w.neighborhood || '-'}</span>
-      <p class="muted">${w.bio || 'Passeador disponível.'}</p>
-      <button type="button" onclick="selectWalker(${w.id})">Escolher</button>
-    </div>`).join('');
+    const visibleWalkers = walkers.slice(0, 6);
+    $('walkerCards').innerHTML = `
+      <div class="notice" style="padding:12px;margin:6px 0 10px;border-radius:16px;">
+        <strong>${walkers.length}</strong> passeador(es) disponíveis. Use o campo acima para escolher.
+      </div>
+      <div style="display:grid;gap:8px;">
+        ${visibleWalkers.map(w => `<div class="walker-card" data-walker-card="${w.id}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:16px;">
+          ${photoOrAvatar(w, '🚶')}
+          <div style="flex:1;min-width:0;">
+            <strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(w.full_name)}</strong>
+            <small class="muted">⭐ ${Number(w.rating || 5).toFixed(1)} • ${escapeHtml(w.neighborhood || '-')}</small>
+          </div>
+          <button type="button" style="padding:9px 12px;border-radius:12px;" onclick="selectWalker(${w.id})">Escolher</button>
+        </div>`).join('')}
+      </div>`;
   }
 
   if($('petSelect')){
