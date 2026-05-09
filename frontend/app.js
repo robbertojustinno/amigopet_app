@@ -671,7 +671,6 @@ function renderMap(w){
 function renderCurrentWalk(w){
   if(!w) return;
 
-  const isFinished = ['finalizado', 'cancelado', 'recusado'].includes(w.status);
   const kmLive = kmBetween(
     Number(w.walker_lat || -22.5900),
     Number(w.walker_lng || -43.1810),
@@ -683,47 +682,32 @@ function renderCurrentWalk(w){
 
   const box = $('currentWalkBox');
   if(box){
-    if(isFinished){
-      const finishLabel = w.status === 'finalizado' ? 'Passeio finalizado' : 'Pedido encerrado';
-      box.innerHTML = `<strong>#${w.id} • ${w.pet || 'Pet'}</strong><br>
-      Cliente: ${escapeHtml(w.client || '')}<br>
-      Passeador: ${escapeHtml(w.walker || '')}<br>
-      Status: <span class="badge ${w.status}">${w.status}</span> <span class="badge pago">${finishLabel}</span><br>
-      Pagamento: <span class="badge ${w.payment_status}">${w.payment_status}</span><br>
-      Duração: ${w.duration_minutes} min • Valor: R$ ${Number(w.estimated_price || 0).toFixed(2)}<br>
-      ${w.finished_at ? `Finalizado em: ${new Date(w.finished_at).toLocaleString('pt-BR')}` : ''}`;
-    }else{
-      box.innerHTML = `<strong>#${w.id} • ${w.pet || 'Pet'}</strong><br>
-      Cliente: ${escapeHtml(w.client || '')}<br>
-      Passeador: ${escapeHtml(w.walker || '')}<br>
-      Status: <span class="badge ${w.status}">${w.status}</span> <span class="badge aceito">${activeLabel}</span><br>
-      Pagamento: <span class="badge ${w.payment_status}">${w.payment_status}</span><br>
-      Distância do pedido: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}<br>
-      Distância ao cliente: <strong>${kmLive.toFixed(2)} km</strong><br>
-      Previsão de chegada: <strong>${eta} min</strong><br>
-      Localização passeador: ${Number(w.walker_lat || -22.5900).toFixed(5)}, ${Number(w.walker_lng || -43.1810).toFixed(5)}`;
-    }
+    box.innerHTML = `<strong>#${w.id} • ${w.pet || 'Pet'}</strong><br>
+    Cliente: ${w.client}<br>
+    Passeador: ${w.walker}<br>
+    Status: <span class="badge ${w.status}">${w.status}</span> <span class="badge aceito">${activeLabel}</span><br>
+    Pagamento: <span class="badge ${w.payment_status}">${w.payment_status}</span><br>
+    Distância do pedido: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price).toFixed(2)}<br>
+    Distância ao cliente: <strong>${kmLive.toFixed(2)} km</strong><br>
+    Previsão de chegada: <strong>${eta} min</strong><br>
+    Localização passeador: ${Number(w.walker_lat || -22.5900).toFixed(5)}, ${Number(w.walker_lng || -43.1810).toFixed(5)}`;
   }
 
   const pixBox = $('pixBox');
   if(pixBox){
-    if(isFinished){
-      pixBox.innerHTML = `<div class="notice">✅ Pagamento encerrado. O QR Code do PIX foi ocultado porque este pedido já foi ${escapeHtml(w.status)}.</div>`;
-    }else{
-      const copy = w.mp_qr_code || w.pix_code || '';
-      let qrImg = '';
-      if(w.mp_qr_code_base64){
-        qrImg = `<img alt="QR Code PIX Mercado Pago" src="data:image/png;base64,${w.mp_qr_code_base64}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
-      }else if(copy && !copy.includes('PIX-SIMULADO')){
-        qrImg = `<img alt="QR Code PIX" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(copy)}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
-      }
-      const ticket = w.mp_ticket_url ? `<br><a href="${escapeHtml(w.mp_ticket_url)}" target="_blank" rel="noopener">Abrir pagamento Mercado Pago</a>` : '';
-      const copyText = copy || 'Aguardando geração do PIX Mercado Pago.';
-      const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${copy.replace(/`/g, '')}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
-      pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${ticket}`;
+    const copy = w.mp_qr_code || w.pix_code || '';
+    let qrImg = '';
+    if(w.mp_qr_code_base64){
+      qrImg = `<img alt="QR Code PIX Mercado Pago" src="data:image/png;base64,${w.mp_qr_code_base64}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
+    }else if(copy && !copy.includes('PIX-SIMULADO')){
+      qrImg = `<img alt="QR Code PIX" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(copy)}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
     }
+    const ticket = w.mp_ticket_url ? `<br><a href="${escapeHtml(w.mp_ticket_url)}" target="_blank" rel="noopener">Abrir pagamento Mercado Pago</a>` : '';
+    const copyText = copy || 'Aguardando geração do PIX Mercado Pago.';
+    const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${copy.replace(/`/g, '')}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
+    pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${ticket}`;
   }
-  if(!isFinished) renderMap(w);
+  renderMap(w);
 }
 
 function walkItem(w){
@@ -910,3 +894,55 @@ setLoggedUI();
 loadPricing().catch(()=>{});
 showView('home', true);
 connectWS();
+
+
+async function loadPricing(){
+  try{
+    const prices = await api('/api/settings/prices');
+    pricingConfig = prices;
+
+    const box = $('homePricing');
+    if(!box) return;
+
+    box.innerHTML = `
+      <div style="display:grid;gap:10px;">
+        <div class="item">
+          <strong>30 minutos</strong><br>
+          <span>R$ ${Number(prices.walk_30 || 25).toFixed(2)}</span>
+        </div>
+
+        <div class="item">
+          <strong>45 minutos</strong><br>
+          <span>R$ ${Number(prices.walk_45 || 35).toFixed(2)}</span>
+        </div>
+
+        <div class="item">
+          <strong>60 minutos</strong><br>
+          <span>R$ ${Number(prices.walk_60 || 45).toFixed(2)}</span>
+        </div>
+
+        <div class="item">
+          <strong>Cão adicional</strong><br>
+          <span>+ R$ ${Number(prices.extra_dog || 10).toFixed(2)}</span>
+        </div>
+      </div>
+    `;
+  }catch(e){
+    console.error(e);
+
+    const box = $('homePricing');
+
+    if(box){
+      box.innerHTML = `
+        <div class="notice">
+          Valores disponíveis no momento:
+          <br><br>
+          30 min — R$ 25<br>
+          45 min — R$ 35<br>
+          60 min — R$ 45<br>
+          Cão adicional — R$ 10
+        </div>
+      `;
+    }
+  }
+}
