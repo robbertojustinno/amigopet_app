@@ -5,7 +5,25 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Admin • AmigoPet ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
-  <link rel="stylesheet" href="/static/styles.css?v=precos-editaveis-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=admin-web-v2" />
+  <style>
+    .admin-shell{max-width:1180px;margin:0 auto;padding:22px}
+    .admin-tabs{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+    .admin-tab{border:0;border-radius:14px;padding:12px 18px;font-weight:800;background:#e8eef7;color:#0f172a;cursor:pointer}
+    .admin-tab.active{background:#0f8276;color:white}
+    .admin-section{display:none}.admin-section.active{display:block}
+    .admin-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+    .admin-card{background:#fff;border:1px solid #d9e4f0;border-radius:22px;padding:20px;box-shadow:0 14px 40px rgba(15,23,42,.06)}
+    .admin-card h2,.admin-card h3{margin-top:0}.admin-card small,.muted{color:#52637a}
+    .admin-metric strong{display:block;font-size:30px;color:#071733}.admin-metric span{color:#52637a;font-weight:700}
+    .admin-table{width:100%;border-collapse:collapse;font-size:14px}.admin-table th,.admin-table td{padding:10px;border-bottom:1px solid #e5edf6;text-align:left;vertical-align:top}.admin-table th{font-size:12px;text-transform:uppercase;color:#52637a}
+    .status-badge{display:inline-block;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;background:#eef4ff;color:#23324a}.status-ok{background:#dcfce7;color:#166534}.status-warn{background:#fef3c7;color:#92400e}.status-bad{background:#fee2e2;color:#991b1b}
+    .form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.form-grid input{width:100%}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.toolbar input,.toolbar select{max-width:260px}
+    #toast{position:fixed;z-index:9999;left:50%;top:18px;transform:translateX(-50%);background:#0f172a;color:white;border-radius:16px;padding:12px 18px;font-weight:800;display:none;max-width:90%;text-align:center}
+    .admin-login-card{max-width:900px;margin:22px auto}.admin-hide{display:none!important}
+    @media(max-width:850px){.admin-row,.form-grid{grid-template-columns:1fr}.admin-shell{padding:14px}.admin-table{font-size:12px}.admin-table th:nth-child(4),.admin-table td:nth-child(4){display:none}}
+  </style>
 </head>
 <body class="admin-page">
   <div id="toast"></div>
@@ -22,18 +40,22 @@
   </header>
 
   <nav class="nav" id="mainNav">
-    <button class="nav-btn active" data-view="adminLogin" data-roles="guest">Login Admin</button>
-    <button class="nav-btn" data-view="admin" data-roles="admin">Dashboard</button>
-    <button class="nav-btn logout-btn" id="logoutBtn" type="button" onclick="logout()">Sair</button>
+    <button class="nav-btn active" id="loginNavBtn" onclick="showView('login')">Login Admin</button>
+    <button class="nav-btn admin-only admin-hide" onclick="showView('dashboard')">Dashboard</button>
+    <button class="nav-btn admin-only admin-hide" onclick="showView('clients')">Clientes</button>
+    <button class="nav-btn admin-only admin-hide" onclick="showView('walkers')">Passeadores</button>
+    <button class="nav-btn admin-only admin-hide" onclick="showView('orders')">Pedidos</button>
+    <button class="nav-btn admin-only admin-hide" onclick="showView('payments')">Pagamentos</button>
+    <button class="nav-btn admin-only admin-hide" onclick="showView('pricing')">Preços</button>
+    <button class="nav-btn logout-btn admin-only admin-hide" type="button" onclick="logout()">Sair</button>
   </nav>
 
-  <main>
-    <section id="adminLogin" class="view active">
-      <div class="card admin-login-card">
+  <main class="admin-shell">
+    <section id="login" class="admin-section active">
+      <div class="admin-card admin-login-card">
         <span class="landing-badge">Acesso restrito</span>
         <h2>Entrar no painel Admin</h2>
         <p class="muted">Esta área não aparece na interface de cliente ou passeador.</p>
-
         <div class="login-box admin-login-box">
           <select id="quickLogin" onchange="fillLogin()">
             <option value="admin@amigopet.com" data-role="admin">Administrador</option>
@@ -42,20 +64,59 @@
           <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
           <button onclick="login()">Entrar como Admin</button>
         </div>
-
         <div id="loggedUser" class="notice">Nenhum administrador conectado.</div>
       </div>
     </section>
 
-    <section id="admin" class="view protected-view" data-roles="admin">
-      <div class="grid metrics admin-metrics">
-        <div class="metric"><strong id="sUsers">0</strong><span>Usuários</span></div>
-        <div class="metric"><strong id="sClients">0</strong><span>Clientes</span></div>
-        <div class="metric"><strong id="sWalkers">0</strong><span>Passeadores</span></div>
-        <div class="metric"><strong id="sWalks">0</strong><span>Pedidos</span></div>
+    <section id="dashboard" class="admin-section">
+      <div class="admin-row">
+        <div class="admin-card admin-metric"><strong id="sUsers">0</strong><span>Usuários</span></div>
+        <div class="admin-card admin-metric"><strong id="sClients">0</strong><span>Clientes</span></div>
+        <div class="admin-card admin-metric"><strong id="sWalkers">0</strong><span>Passeadores</span></div>
+        <div class="admin-card admin-metric"><strong id="sWalks">0</strong><span>Pedidos</span></div>
       </div>
+      <div class="admin-row">
+        <div class="admin-card admin-metric"><strong id="sPaid">R$ 0,00</strong><span>Pagos</span></div>
+        <div class="admin-card admin-metric"><strong id="sPending">0</strong><span>Pagamentos pendentes</span></div>
+        <div class="admin-card admin-metric"><strong id="sActive">0</strong><span>Passeios ativos</span></div>
+        <div class="admin-card admin-metric"><strong id="sFinished">0</strong><span>Finalizados</span></div>
+      </div>
+      <div class="admin-card"><h2>Últimos pedidos</h2><div id="latestOrders"></div></div>
+    </section>
 
-      <div class="card">
+    <section id="clients" class="admin-section">
+      <div class="admin-card"><h2>Clientes</h2><div id="clientsList"></div></div>
+    </section>
+
+    <section id="walkers" class="admin-section">
+      <div class="admin-card"><h2>Passeadores</h2><div id="walkersList"></div></div>
+    </section>
+
+    <section id="orders" class="admin-section">
+      <div class="admin-card">
+        <h2>Pedidos</h2>
+        <div class="toolbar">
+          <select id="orderFilter" onchange="renderOrders()">
+            <option value="">Todos</option>
+            <option value="convite_enviado">Convite enviado</option>
+            <option value="pagamento_confirmado">Pagamento confirmado</option>
+            <option value="aceito">Aceito</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="finalizado">Finalizado</option>
+            <option value="recusado">Recusado</option>
+          </select>
+          <button type="button" onclick="refreshAdmin()">Atualizar</button>
+        </div>
+        <div id="ordersList"></div>
+      </div>
+    </section>
+
+    <section id="payments" class="admin-section">
+      <div class="admin-card"><h2>Pagamentos</h2><div id="paymentsList"></div></div>
+    </section>
+
+    <section id="pricing" class="admin-section">
+      <div class="admin-card">
         <h2>Valores dos passeios</h2>
         <p class="muted">Edite aqui quando precisar mudar os preços. O cliente verá os novos valores automaticamente.</p>
         <div class="form-grid">
@@ -67,21 +128,143 @@
         <button type="button" onclick="savePricing()">Salvar valores</button>
         <div id="pricingAdminStatus" class="notice">Carregando valores...</div>
       </div>
-
-      <div class="grid two">
-        <div class="card">
-          <h2>Pedidos</h2>
-          <div id="adminWalks"></div>
-        </div>
-        <div class="card">
-          <h2>Usuários</h2>
-          <div id="adminUsers"></div>
-        </div>
-      </div>
     </section>
   </main>
 
   <footer>Powered by ROVIX • Admin AmigoPet</footer>
-  <script src="/static/app.js?v=precos-editaveis-v1"></script>
+
+  <script>
+    const API = location.origin;
+    let adminUser = null;
+    let users = [];
+    let walks = [];
+    let pricing = null;
+
+    function $(id){ return document.getElementById(id); }
+    function money(v){ return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+    function toast(msg){ const el=$('toast'); el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',3600); }
+    function badge(text){
+      const t = String(text || '');
+      let cls = 'status-badge';
+      if(['pago','finalizado','aceito','pagamento_confirmado'].includes(t)) cls += ' status-ok';
+      else if(['aguardando','convite_enviado','em_andamento'].includes(t)) cls += ' status-warn';
+      else if(['recusado','cancelado','rejected'].includes(t)) cls += ' status-bad';
+      return `<span class="${cls}">${t || '-'}</span>`;
+    }
+    async function api(path, options={}){
+      const res = await fetch(API + path, {headers:{'Content-Type':'application/json', ...(options.headers||{})}, ...options});
+      let data = null;
+      try{ data = await res.json(); }catch(e){ data = {}; }
+      if(!res.ok){
+        let detail = 'Erro na requisição';
+        if(Array.isArray(data?.detail)) detail = data.detail.map(e=>e.msg).join(' | ');
+        else if(typeof data?.detail === 'string') detail = data.detail;
+        else detail = JSON.stringify(data);
+        throw new Error(detail);
+      }
+      return data;
+    }
+    function fillLogin(){ $('loginEmail').value = $('quickLogin').value; $('loginPassword').value = '123456'; }
+    function setNav(){
+      const logged = adminUser && adminUser.role === 'admin';
+      document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('admin-hide', !logged));
+      $('loginNavBtn').classList.toggle('admin-hide', logged);
+      $('loggedUser').textContent = logged ? `${adminUser.full_name} conectado como Admin` : 'Nenhum administrador conectado.';
+    }
+    function showView(id){
+      if(id !== 'login' && (!adminUser || adminUser.role !== 'admin')) id = 'login';
+      document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('active'));
+      $(id).classList.add('active');
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      const btn = Array.from(document.querySelectorAll('.nav-btn')).find(b => (b.textContent || '').toLowerCase().includes(id === 'dashboard' ? 'dashboard' : id === 'login' ? 'login' : id === 'clients' ? 'clientes' : id === 'walkers' ? 'passeadores' : id === 'orders' ? 'pedidos' : id === 'payments' ? 'pagamentos' : id === 'pricing' ? 'preços' : ''));
+      if(btn) btn.classList.add('active');
+      if(id !== 'login') refreshAdmin();
+    }
+    async function login(){
+      try{
+        const user = await api('/api/auth/login', {method:'POST', body:JSON.stringify({email:$('loginEmail').value.trim(), password:$('loginPassword').value})});
+        if(user.role !== 'admin') throw new Error('Este usuário não é administrador');
+        adminUser = user;
+        localStorage.setItem('amigopet_admin_user', JSON.stringify(user));
+        setNav();
+        toast('Admin conectado');
+        showView('dashboard');
+      }catch(e){ toast(e.message); }
+    }
+    function logout(){ localStorage.removeItem('amigopet_admin_user'); adminUser=null; setNav(); showView('login'); }
+
+    async function refreshAdmin(){
+      if(!adminUser) return;
+      try{
+        const [allUsers, allWalks, priceData] = await Promise.all([api('/api/users'), api('/api/walks'), api('/api/pricing')]);
+        users = allUsers || [];
+        walks = allWalks || [];
+        pricing = priceData || {};
+        renderAll();
+      }catch(e){ toast(e.message); }
+    }
+    function renderAll(){ renderMetrics(); renderUsers(); renderOrders(); renderPayments(); renderPricing(); }
+    function renderMetrics(){
+      const clients = users.filter(u=>u.role==='client');
+      const walkers = users.filter(u=>u.role==='walker');
+      const paidWalks = walks.filter(w=>w.payment_status==='pago');
+      const active = walks.filter(w=>['aceito','em_andamento','pagamento_confirmado'].includes(w.status));
+      const finished = walks.filter(w=>w.status==='finalizado');
+      $('sUsers').textContent = users.length;
+      $('sClients').textContent = clients.length;
+      $('sWalkers').textContent = walkers.length;
+      $('sWalks').textContent = walks.length;
+      $('sPaid').textContent = money(paidWalks.reduce((s,w)=>s+Number(w.estimated_price||0),0));
+      $('sPending').textContent = walks.filter(w=>w.payment_status==='aguardando').length;
+      $('sActive').textContent = active.length;
+      $('sFinished').textContent = finished.length;
+      $('latestOrders').innerHTML = ordersTable(walks.slice(0,6));
+    }
+    function usersTable(list){
+      if(!list.length) return '<p class="muted">Nenhum registro encontrado.</p>';
+      return `<table class="admin-table"><thead><tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Cidade</th><th>Status</th></tr></thead><tbody>${list.map(u=>`<tr><td>#${u.id}</td><td><strong>${u.full_name||''}</strong><br><small>${u.phone||''}</small></td><td>${u.email||''}</td><td>${u.role||''}</td><td>${u.city||''}</td><td>${badge(u.available ? 'disponível' : 'indisponível')}</td></tr>`).join('')}</tbody></table>`;
+    }
+    function renderUsers(){ $('clientsList').innerHTML = usersTable(users.filter(u=>u.role==='client')); $('walkersList').innerHTML = usersTable(users.filter(u=>u.role==='walker')); }
+    function ordersTable(list){
+      if(!list.length) return '<p class="muted">Nenhum pedido encontrado.</p>';
+      return `<table class="admin-table"><thead><tr><th>Pedido</th><th>Cliente / Pet</th><th>Passeador</th><th>Status</th><th>Pagamento</th><th>Valor</th><th>Data</th></tr></thead><tbody>${list.map(w=>`<tr><td>#${w.id}</td><td><strong>${w.client||''}</strong><br><small>${w.pet||''}</small></td><td>${w.walker||'Aguardando'}</td><td>${badge(w.status)}</td><td>${badge(w.payment_status)}<br><small>${w.mp_status||''}</small></td><td>${money(w.estimated_price)}</td><td><small>${w.created_at ? new Date(w.created_at).toLocaleString('pt-BR') : ''}</small></td></tr>`).join('')}</tbody></table>`;
+    }
+    function renderOrders(){ const f = $('orderFilter')?.value || ''; const list = f ? walks.filter(w=>w.status===f) : walks; $('ordersList').innerHTML = ordersTable(list); }
+    function renderPayments(){
+      const list = walks.filter(w => w.payment_status || w.mp_payment_id);
+      $('paymentsList').innerHTML = ordersTable(list);
+    }
+    function renderPricing(){
+      if(!pricing) return;
+      $('price30').value = pricing.price_30 ?? '';
+      $('price45').value = pricing.price_45 ?? '';
+      $('price60').value = pricing.price_60 ?? '';
+      $('extraDog').value = pricing.extra_dog ?? '';
+      $('pricingAdminStatus').textContent = `Valores atuais: 30 min ${money(pricing.price_30)} • 45 min ${money(pricing.price_45)} • 60 min ${money(pricing.price_60)} • cão adicional ${money(pricing.extra_dog)}`;
+    }
+    async function savePricing(){
+      try{
+        const body = {price_30:Number($('price30').value||0), price_45:Number($('price45').value||0), price_60:Number($('price60').value||0), extra_dog:Number($('extraDog').value||0)};
+        pricing = await api('/api/admin/pricing', {method:'POST', body:JSON.stringify(body)});
+        toast('Valores salvos');
+        renderPricing();
+      }catch(e){ toast(e.message); }
+    }
+    function connectWS(){
+      try{
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${location.host}/ws`);
+        ws.onopen = () => $('liveStatus').textContent = 'Tempo real conectado';
+        ws.onclose = () => { $('liveStatus').textContent = 'Tempo real desconectado'; setTimeout(connectWS, 3000); };
+        ws.onmessage = () => refreshAdmin();
+      }catch(e){ $('liveStatus').textContent = 'Tempo real indisponível'; }
+    }
+    (function init(){
+      try{ adminUser = JSON.parse(localStorage.getItem('amigopet_admin_user') || 'null'); }catch(e){ adminUser = null; }
+      setNav();
+      if(adminUser && adminUser.role === 'admin') showView('dashboard');
+      connectWS();
+    })();
+  </script>
 </body>
 </html>
