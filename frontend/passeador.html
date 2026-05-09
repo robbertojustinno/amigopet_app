@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>AmigoPet Passeador • ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/static/assets/logo.png" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/styles.css?v=walker-v1" />
 </head>
@@ -98,10 +94,8 @@
         </div>
         <div class="card">
           <h3>Ações rápidas</h3>
-          <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio + GPS automático</button>
-          <button class="full secondary" type="button" onclick="startGpsTracking()">Ativar GPS em tempo real</button>
-          <button class="full ghost" type="button" onclick="stopGpsTracking()">Parar GPS automático</button>
-          <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização uma vez</button>
+          <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio</button>
+          <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização</button>
           <button class="full warn" type="button" onclick="simulateMove()">Simular movimento</button>
           <button class="full danger" type="button" onclick="finishCurrentWalk()">Finalizar passeio</button>
         </div>
@@ -129,7 +123,6 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=final-pagamento-fotos"></script>
-  <script src="/static/pwa.js?v=final-pagamento-fotos"></script>
+  <script src="/static/walker.js?v=walker-v1"></script>
 </body>
 </html>
