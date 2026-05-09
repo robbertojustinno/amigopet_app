@@ -1,12 +1,12 @@
-const CACHE_NAME = 'amigopet-pwa-v1';
+const CACHE_NAME = 'amigopet-pwa-v4-final';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
   '/static/styles.css',
-  '/static/app.js',
-  '/static/walker.js',
-  '/static/pwa.js',
+  '/static/app.js?v=final-pagamento-fotos',
+  '/static/walker.js?v=final-pagamento-fotos',
+  '/static/pwa.js?v=final-pagamento-fotos',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];
@@ -34,6 +34,10 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) return;
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match(request)));
+    return;
+  }
 
   event.respondWith(
     fetch(request)

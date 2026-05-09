@@ -35,11 +35,11 @@ function escapeHtml(value){
 }
 
 function photoOrAvatar(user, emoji='🚶'){
-  const photo = String(user?.photo || '').trim();
-  if(photo.length > 8){
-    return `<img src="${escapeHtml(photo)}" alt="${escapeHtml(user?.full_name || 'foto')}" style="width:44px;height:44px;border-radius:14px;object-fit:cover;border:2px solid white;box-shadow:0 8px 18px rgba(15,23,42,.14);" onerror="this.outerHTML='<div class=&quot;avatar&quot; style=&quot;width:44px;height:44px;font-size:22px;border-radius:14px;&quot;>${emoji}</div>'">`;
-  }
-  return `<div class="avatar" style="width:44px;height:44px;font-size:22px;border-radius:14px;">${emoji}</div>`;
+  const name = String(user?.full_name || user?.name || 'Passeador').trim();
+  const rawPhoto = String(user?.photo || user?.profile_photo || user?.avatar || user?.image || '').trim();
+  const fallback = `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=ccfbf1,dbeafe,fef3c7`;
+  const photo = rawPhoto.length > 8 ? rawPhoto : fallback;
+  return `<img src="${escapeHtml(photo)}" alt="${escapeHtml(name)}" style="width:44px;height:44px;border-radius:14px;object-fit:cover;border:2px solid white;box-shadow:0 8px 18px rgba(15,23,42,.14);background:#ccfbf1;" onerror="this.onerror=null;this.src='${escapeHtml(fallback)}';">`;
 }
 
 function toast(msg){

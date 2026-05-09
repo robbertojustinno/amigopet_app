@@ -158,12 +158,13 @@ function isAvailable(w){
 }
 
 function canAcceptPaid(w){
-  return isAvailable(w) && w.payment_status === 'pago';
+  return isAvailable(w) && String(w.payment_status || '').toLowerCase() === 'pago';
 }
 
 function walkCard(w, mode='available'){
   const canAccept = mode === 'available' && canAcceptPaid(w);
-  const canReject = mode === 'available' && ['convite_enviado','pendente'].includes(w.status);
+  const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && String(w.payment_status || '').toLowerCase() !== 'pago';
+  const waitingPayment = mode === 'available' && !canAccept;
   return `
     <div class="item">
       <div class="item-head">
@@ -179,8 +180,9 @@ function walkCard(w, mode='available'){
       </div>
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
+      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar só aparece depois do Mercado Pago confirmar.</div>` : ''}
       <div class="actions">
-        ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : `<button class="ghost" type="button" disabled title="Aguardando pagamento confirmado">Aguardando PIX</button>`}
+        ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
         <button class="secondary" type="button" onclick="selectWalk(${w.id})">Ver detalhes</button>
       </div>

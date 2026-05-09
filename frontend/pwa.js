@@ -4,7 +4,8 @@
   async function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return null;
     try{
-      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      const registration = await navigator.serviceWorker.register('/sw.js?v=final-pagamento-fotos', { scope: '/' });
+      try { await registration.update(); } catch(e) {}
       return registration;
     }catch(err){
       console.warn('PWA: falha ao registrar service worker', err);
