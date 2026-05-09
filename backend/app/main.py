@@ -581,6 +581,9 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
         if not pet or pet.owner_id != data.client_id:
             raise HTTPException(status_code=400, detail="Pet inválido para este cliente")
 
+    if data.duration_minutes <= 5:
+    price = 1.0
+    else:
     price = 14 + (data.duration_minutes / 30) * 16 + max(data.dogs_count - 1, 0) * 9
     distance = 1.2 + max(data.dogs_count - 1, 0) * 0.3
     payload_data = pydantic_dump(data)
