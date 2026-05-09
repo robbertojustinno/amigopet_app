@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>AmigoPet Passeador • ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/static/assets/logo.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/styles.css?v=walker-v1" />
 </head>
@@ -27,10 +31,11 @@
   </header>
 
   <nav class="nav">
-    <button class="nav-btn active" type="button" data-view="login">Login</button>
+    <button class="nav-btn active" id="btnLogin" type="button" data-view="login">Login</button>
     <button class="nav-btn locked hidden" id="btnPedidos" type="button" data-view="pedidos">Pedidos</button>
     <button class="nav-btn locked hidden" id="btnAtual" type="button" data-view="atual">Passeio atual</button>
     <button class="nav-btn locked hidden" id="btnMapa" type="button" data-view="mapa">Mapa</button>
+    <button class="nav-btn locked hidden" id="btnPerfil" type="button" data-view="perfil">Perfil</button>
     <button class="nav-btn logout-btn hidden" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
@@ -94,10 +99,43 @@
         </div>
         <div class="card">
           <h3>Ações rápidas</h3>
-          <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio</button>
-          <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização</button>
+          <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio + GPS automático</button>
+          <button class="full secondary" type="button" onclick="startGpsTracking()">Ativar GPS em tempo real</button>
+          <button class="full ghost" type="button" onclick="stopGpsTracking()">Parar GPS automático</button>
+          <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização uma vez</button>
           <button class="full warn" type="button" onclick="simulateMove()">Simular movimento</button>
           <button class="full danger" type="button" onclick="finishCurrentWalk()">Finalizar passeio</button>
+        </div>
+      </div>
+    </section>
+
+
+
+    <section id="perfil" class="view">
+      <div class="page-title">
+        <h2>Meu perfil de passeador</h2>
+        <p>Atualize seus dados, foto e informações que aparecem para o cliente.</p>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <h3>Alterar dados</h3>
+          <label>Foto do passeador</label>
+          <input id="profilePhotoFile" type="file" accept="image/*" />
+          <div id="profilePhotoPreview" class="notice">Nenhuma foto selecionada.</div>
+          <input id="profileFullName" placeholder="Nome completo" />
+          <input id="profilePhone" placeholder="Telefone" />
+          <input id="profileDocument" placeholder="Documento / CPF" />
+          <input id="profileNeighborhood" placeholder="Bairro" />
+          <input id="profileCity" placeholder="Cidade" />
+          <textarea id="profileBio" placeholder="Resumo profissional, experiência, cuidados especiais"></textarea>
+          <button class="full" type="button" onclick="saveWalkerProfile()">Salvar alterações</button>
+        </div>
+        <div class="card">
+          <h3>Prévia para o cliente</h3>
+          <div id="profilePreview" class="details-box">Faça login para editar seu perfil.</div>
+          <div class="actions">
+            <button class="secondary" type="button" onclick="fillProfileForm()">Recarregar meus dados</button>
+          </div>
         </div>
       </div>
     </section>
@@ -123,6 +161,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-v1"></script>
+  <script src="/static/walker.js?v=walker-perfil-v1"></script>
+  <script src="/static/pwa.js?v=walker-perfil-v1"></script>
 </body>
 </html>

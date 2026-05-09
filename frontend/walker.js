@@ -10,8 +10,26 @@ let walkerMarker = null;
 let routeLine = null;
 let moveStep = 0;
 let online = true;
+let gpsWatchId = null;
+let gpsActive = false;
+let lastGpsSentAt = 0;
+let walkerPhotoData = "";
 
 const $ = (id) => document.getElementById(id);
+
+function kmBetween(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const toRad = (v) => Number(v) * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function etaMinutesFromKm(km){
+  if(!Number.isFinite(km)) return 0;
+  return Math.max(1, Math.ceil((km / 4.5) * 60));
+}
 
 function toast(msg){
   const el = $('toast');
@@ -70,10 +88,12 @@ function requireWalker(){
 
 function setLoggedUI(){
   const loggedIn = currentUser && currentUser.role === 'walker';
-  ['btnPedidos','btnAtual','btnMapa','logoutBtn'].forEach(id => {
+  ['btnPedidos','btnAtual','btnMapa','btnPerfil','logoutBtn'].forEach(id => {
     const el = $(id);
     if(el) el.classList.toggle('hidden', !loggedIn);
   });
+  const loginBtn = $('btnLogin');
+  if(loginBtn) loginBtn.classList.toggle('hidden', loggedIn);
   const chip = $('profileChip');
   if(chip) chip.classList.toggle('hidden', !loggedIn);
   if(loggedIn){
@@ -81,9 +101,94 @@ function setLoggedUI(){
     $('profileName').textContent = currentUser.full_name;
     $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
     renderWalkerDetails();
+    fillProfileForm();
   }else{
     $('loggedUser').textContent = 'Nenhum passeador conectado.';
   }
+}
+
+
+function fillProfileForm(){
+  if(!currentUser) return;
+  const fields = {
+    profileFullName: currentUser.full_name || '',
+    profilePhone: currentUser.phone || '',
+    profileDocument: currentUser.document || '',
+    profileNeighborhood: currentUser.neighborhood || '',
+    profileCity: currentUser.city || '',
+    profileBio: currentUser.bio || ''
+  };
+  Object.entries(fields).forEach(([id, value]) => { if($(id)) $(id).value = value; });
+  walkerPhotoData = currentUser.photo || '';
+  renderProfilePreview();
+}
+
+function renderProfilePreview(){
+  const box = $('profilePreview');
+  if(!box) return;
+  if(!currentUser){ box.textContent = 'Faça login para editar seu perfil.'; return; }
+  const name = $('profileFullName')?.value || currentUser.full_name || 'Passeador';
+  const phone = $('profilePhone')?.value || currentUser.phone || '-';
+  const city = $('profileCity')?.value || currentUser.city || '-';
+  const neighborhood = $('profileNeighborhood')?.value || currentUser.neighborhood || '-';
+  const bio = $('profileBio')?.value || currentUser.bio || 'Passeador disponível.';
+  const photo = walkerPhotoData || currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`;
+  box.innerHTML = `
+    <div class="item-head">
+      <img src="${photo}" alt="Foto do passeador" style="width:64px;height:64px;border-radius:20px;object-fit:cover;border:1px solid #d8e2ee;" />
+      <div>
+        <strong>${name}</strong><br>
+        <span class="muted">${neighborhood} • ${city}</span><br>
+        <span class="badge aceito">online</span>
+      </div>
+    </div>
+    <p>Telefone: ${phone}</p>
+    <p class="muted">${bio}</p>
+  `;
+  const preview = $('profilePhotoPreview');
+  if(preview){
+    preview.innerHTML = walkerPhotoData ? `<img src="${walkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />` : 'Nenhuma foto selecionada.';
+  }
+}
+
+function bindProfileForm(){
+  ['profileFullName','profilePhone','profileDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
+    const el = $(id);
+    if(el) el.addEventListener('input', renderProfilePreview);
+  });
+  const file = $('profilePhotoFile');
+  if(file){
+    file.addEventListener('change', () => {
+      const selected = file.files && file.files[0];
+      if(!selected) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        walkerPhotoData = reader.result;
+        renderProfilePreview();
+      };
+      reader.readAsDataURL(selected);
+    });
+  }
+}
+
+async function saveWalkerProfile(){
+  try{
+    if(!requireWalker()) return;
+    const payload = {
+      full_name: $('profileFullName').value.trim(),
+      phone: $('profilePhone').value.trim(),
+      document: $('profileDocument').value.trim(),
+      neighborhood: $('profileNeighborhood').value.trim(),
+      city: $('profileCity').value.trim(),
+      bio: $('profileBio').value.trim(),
+      photo: walkerPhotoData || currentUser.photo || ''
+    };
+    if(!payload.full_name) throw new Error('Informe o nome do passeador.');
+    currentUser = await api(`/api/walkers/${currentUser.id}/profile`, {method:'PUT', body: JSON.stringify(payload)});
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(currentUser));
+    setLoggedUI();
+    toast('Perfil do passeador atualizado.');
+  }catch(err){ toast(err.message); }
 }
 
 async function login(){
@@ -102,6 +207,7 @@ async function login(){
 }
 
 function logout(){
+  stopGpsTracking(false);
   currentUser = null;
   currentWalk = null;
   availableWalks = [];
@@ -139,9 +245,14 @@ function isAvailable(w){
   return ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && (!w.walker_id || w.walker_id === currentUser?.id);
 }
 
+function canAcceptPaid(w){
+  return isAvailable(w) && String(w.payment_status || '').toLowerCase() === 'pago';
+}
+
 function walkCard(w, mode='available'){
-  const canAccept = mode === 'available' && isAvailable(w);
-  const canReject = mode === 'available' && ['convite_enviado','pendente'].includes(w.status);
+  const canAccept = mode === 'available' && canAcceptPaid(w);
+  const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && String(w.payment_status || '').toLowerCase() !== 'pago';
+  const waitingPayment = mode === 'available' && !canAccept;
   return `
     <div class="item">
       <div class="item-head">
@@ -157,6 +268,7 @@ function walkCard(w, mode='available'){
       </div>
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
+      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar só aparece depois do Mercado Pago confirmar.</div>` : ''}
       <div class="actions">
         ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
@@ -187,14 +299,27 @@ function renderCurrentWalk(){
   }
   const summary = $('mapSummary');
   if(summary){
-    summary.innerHTML = currentWalk ? `
-      <strong>#${currentWalk.id} • ${currentWalk.pet || 'Pet'}</strong><br>
-      Cliente: ${currentWalk.client || '-'}<br>
-      Status: <span class="badge ${currentWalk.status}">${currentWalk.status}</span><br>
-      Pagamento: <span class="badge ${currentWalk.payment_status}">${currentWalk.payment_status || 'aguardando'}</span><br>
-      Endereço: ${currentWalk.address || '-'}<br>
-      Passeador: ${Number(currentWalk.walker_lat || 0).toFixed(5)}, ${Number(currentWalk.walker_lng || 0).toFixed(5)}
-    ` : 'Nenhum passeio selecionado.';
+    if(currentWalk){
+      const km = kmBetween(
+        Number(currentWalk.walker_lat || -22.5900),
+        Number(currentWalk.walker_lng || -43.1810),
+        Number(currentWalk.pickup_lat || -22.5884),
+        Number(currentWalk.pickup_lng || -43.1847)
+      );
+      summary.innerHTML = `
+        <strong>#${currentWalk.id} • ${currentWalk.pet || 'Pet'}</strong><br>
+        Cliente: ${currentWalk.client || '-'}<br>
+        Status: <span class="badge ${currentWalk.status}">${currentWalk.status}</span><br>
+        Pagamento: <span class="badge ${currentWalk.payment_status}">${currentWalk.payment_status || 'aguardando'}</span><br>
+        Endereço: ${currentWalk.address || '-'}<br>
+        Passeador: ${Number(currentWalk.walker_lat || 0).toFixed(5)}, ${Number(currentWalk.walker_lng || 0).toFixed(5)}<br>
+        Distância até cliente: <strong>${km.toFixed(2)} km</strong><br>
+        Previsão: <strong>${etaMinutesFromKm(km)} min</strong><br>
+        GPS automático: <span class="badge ${gpsActive ? 'aceito' : 'recusado'}">${gpsActive ? 'ativo' : 'parado'}</span>
+      `;
+    }else{
+      summary.innerHTML = 'Nenhum passeio selecionado.';
+    }
   }
   renderMap();
 }
@@ -223,6 +348,8 @@ function selectWalk(id){
 async function acceptWalk(id){
   try{
     if(!requireWalker()) return;
+    const selected = availableWalks.find(w => w.id === id) || currentWalk;
+    if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Mercado Pago.');
     const walk = await api(`/api/walks/${id}/accept?walker_id=${currentUser.id}`, {method:'POST'});
     currentWalk = walk;
     await refreshAll();
@@ -242,18 +369,22 @@ async function rejectWalk(id){
 async function startCurrentWalk(){
   try{
     if(!currentWalk) return toast('Selecione ou aceite um passeio primeiro.');
+    if(currentWalk.payment_status !== 'pago') return toast('Pagamento PIX ainda não confirmado pelo Mercado Pago.');
     currentWalk = await api(`/api/walks/${currentWalk.id}/start`, {method:'POST'});
     renderCurrentWalk();
-    toast('Passeio iniciado.');
+    startGpsTracking();
+    showView('mapa');
+    toast('Passeio iniciado. GPS automático ativado.');
   }catch(err){ toast(err.message); }
 }
 
 async function finishCurrentWalk(){
   try{
     if(!currentWalk) return toast('Nenhum passeio atual.');
+    stopGpsTracking(false);
     currentWalk = await api(`/api/walks/${currentWalk.id}/finish`, {method:'POST'});
     renderCurrentWalk();
-    toast('Passeio finalizado.');
+    toast('Passeio finalizado. GPS automático desligado.');
   }catch(err){ toast(err.message); }
 }
 
@@ -264,6 +395,45 @@ async function sendLocation(lat, lng){
     body: JSON.stringify({lat, lng})
   });
   renderCurrentWalk();
+}
+
+function startGpsTracking(){
+  if(!currentWalk) return toast('Aceite ou selecione um passeio primeiro.');
+  if(!navigator.geolocation) return toast('GPS não disponível neste dispositivo. Use Enviar localização ou Simular movimento.');
+  if(gpsWatchId !== null) return toast('GPS automático já está ativo.');
+
+  gpsActive = true;
+  renderCurrentWalk();
+  toast('GPS automático ativado. Mantenha esta tela aberta.');
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      try{
+        const now = Date.now();
+        if(now - lastGpsSentAt < 4500) return;
+        lastGpsSentAt = now;
+        await sendLocation(pos.coords.latitude, pos.coords.longitude);
+      }catch(err){
+        toast(err.message || 'Falha ao enviar GPS.');
+      }
+    },
+    (err) => {
+      gpsActive = false;
+      renderCurrentWalk();
+      toast(err?.message || 'Permissão de localização negada.');
+    },
+    {enableHighAccuracy:true, timeout:12000, maximumAge:3000}
+  );
+}
+
+function stopGpsTracking(showToast=true){
+  if(gpsWatchId !== null && navigator.geolocation){
+    navigator.geolocation.clearWatch(gpsWatchId);
+  }
+  gpsWatchId = null;
+  gpsActive = false;
+  renderCurrentWalk();
+  if(showToast) toast('GPS automático desligado.');
 }
 
 function sendMyLocation(){
@@ -320,7 +490,10 @@ function connectWS(){
     ws.onopen = () => toast('Tempo real conectado.');
     ws.onmessage = async (ev) => {
       const data = JSON.parse(ev.data);
-      if(data.type === 'walk_created') toast('Novo convite recebido.');
+      if(data.type === 'walk_created'){
+        toast('Novo convite recebido.');
+        window.amigoPetPWA?.notify('AmigoPet Passeador', 'Novo convite de passeio recebido.', '/passeador');
+      }
       if(data.walk){
         const w = data.walk;
         const idx = availableWalks.findIndex(item => item.id === w.id);
@@ -354,5 +527,6 @@ function restoreSession(){
   }
 }
 
+bindProfileForm();
 restoreSession();
 connectWS();
