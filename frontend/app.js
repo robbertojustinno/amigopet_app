@@ -894,3 +894,52 @@ setLoggedUI();
 loadPricing().catch(()=>{});
 showView('home', true);
 connectWS();
+
+async function loadPricing(){
+  const box = $('homePricing');
+  if(!box) return;
+
+  try{
+    const prices = await api('/api/pricing');
+    pricingConfig = prices;
+
+    const price30 = Number(prices.price_30 ?? 30);
+    const price45 = Number(prices.price_45 ?? 38);
+    const price60 = Number(prices.price_60 ?? 46);
+    const extraDog = Number(prices.extra_dog ?? 9);
+
+    box.innerHTML = `
+      <div style="display:grid;gap:10px;">
+        <div class="item">
+          <strong>30 minutos</strong><br>
+          <span>R$ ${price30.toFixed(2)}</span>
+        </div>
+
+        <div class="item">
+          <strong>45 minutos</strong><br>
+          <span>R$ ${price45.toFixed(2)}</span>
+        </div>
+
+        <div class="item">
+          <strong>60 minutos</strong><br>
+          <span>R$ ${price60.toFixed(2)}</span>
+        </div>
+
+        <div class="item">
+          <strong>Cão adicional</strong><br>
+          <span>+ R$ ${extraDog.toFixed(2)}</span>
+        </div>
+      </div>
+    `;
+  }catch(e){
+    console.error('Erro ao carregar preços:', e);
+
+    box.innerHTML = `
+      <div class="notice">
+        Não foi possível carregar os valores agora.
+        <br><br>
+        Tente atualizar a página em alguns segundos.
+      </div>
+    `;
+  }
+}
