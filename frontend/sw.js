@@ -1,12 +1,12 @@
-const CACHE_NAME = 'amigopet-pwa-v4-final';
+const CACHE_NAME = 'amigopet-pwa-v5-edit-cliente';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
   '/static/styles.css',
-  '/static/app.js?v=final-pagamento-fotos',
+  '/static/app.js?v=edit-cliente-v1',
   '/static/walker.js?v=final-pagamento-fotos',
-  '/static/pwa.js?v=final-pagamento-fotos',
+  '/static/pwa.js?v=edit-cliente-v1',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];

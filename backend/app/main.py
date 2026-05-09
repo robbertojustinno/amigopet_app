@@ -144,6 +144,21 @@ class LoginIn(BaseModel):
     email: EmailStr
     password: str
 
+class ClientUpdateIn(BaseModel):
+    full_name: str
+    phone: str = ""
+    photo: str = ""
+    document: str = ""
+    address: str = ""
+    zip_code: str = ""
+    street: str = ""
+    number: str = ""
+    complement: str = ""
+    neighborhood: str = ""
+    city: str = ""
+    state: str = "RJ"
+    bio: str = ""
+
 class PetIn(BaseModel):
     owner_id: int
     name: str
@@ -236,6 +251,8 @@ def user_to_dict(u: User):
         "phone": u.phone, "photo": u.photo, "document": u.document, "address": u.address,
         "neighborhood": u.neighborhood, "city": u.city, "lat": u.lat, "lng": u.lng,
         "rating": u.rating, "available": u.available, "bio": u.bio,
+        "zip_code": u.zip_code, "street": u.street, "number": u.number,
+        "complement": u.complement, "state": u.state,
     }
 
 def pet_to_dict(p: Pet):
@@ -674,6 +691,41 @@ def users(role: Optional[str] = None, db: Session = Depends(get_db)):
     if role:
         q = q.filter(User.role == role)
     return [user_to_dict(u) for u in q.order_by(User.rating.desc(), User.id.asc()).all()]
+
+@app.put("/api/users/{user_id}")
+def update_user(user_id: int, data: ClientUpdateIn, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    if user.role != "client":
+        raise HTTPException(status_code=400, detail="Esta edição é exclusiva para clientes")
+
+    payload = pydantic_dump(data)
+    required = ["full_name", "phone", "street", "number", "neighborhood", "city"]
+    for field in required:
+        if not str(payload.get(field, "")).strip():
+            raise HTTPException(status_code=400, detail="Preencha todos os dados obrigatórios do cliente")
+
+    if not str(payload.get("address", "")).strip():
+        parts = [payload.get("street", ""), payload.get("number", ""), payload.get("neighborhood", ""), payload.get("city", ""), payload.get("state", "RJ")]
+        payload["address"] = ", ".join([str(x).strip() for x in parts if str(x).strip()])
+
+    allowed = [
+        "full_name", "phone", "photo", "document", "address", "zip_code", "street",
+        "number", "complement", "neighborhood", "city", "state", "bio"
+    ]
+    for key in allowed:
+        if hasattr(user, key):
+            value = payload.get(key, "")
+            if key == "state" and not value:
+                value = "RJ"
+            if key == "photo" and not str(value).strip():
+                continue
+            setattr(user, key, value)
+
+    db.commit()
+    db.refresh(user)
+    return user_to_dict(user)
 
 @app.get("/api/pets")
 def pets(owner_id: Optional[int] = None, db: Session = Depends(get_db)):

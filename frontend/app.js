@@ -12,6 +12,7 @@ let walkerMarker = null;
 let pickupMarker = null;
 let clientPhotoData = '';
 let petPhotoData = '';
+let editClientPhotoData = '';
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +41,13 @@ function photoOrAvatar(user, emoji='🚶'){
   const fallback = `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=ccfbf1,dbeafe,fef3c7`;
   const photo = rawPhoto.length > 8 ? rawPhoto : fallback;
   return `<img src="${escapeHtml(photo)}" alt="${escapeHtml(name)}" style="width:44px;height:44px;border-radius:14px;object-fit:cover;border:2px solid white;box-shadow:0 8px 18px rgba(15,23,42,.14);background:#ccfbf1;" onerror="this.onerror=null;this.src='${escapeHtml(fallback)}';">`;
+}
+
+function clientPhotoSrc(user){
+  const name = String(user?.full_name || 'Cliente').trim();
+  const rawPhoto = String(user?.photo || user?.profile_photo || user?.avatar || user?.image || '').trim();
+  const fallback = `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=ccfbf1,dbeafe,fef3c7`;
+  return rawPhoto.length > 8 ? rawPhoto : fallback;
 }
 
 function toast(msg){
@@ -88,8 +96,8 @@ function setLoggedUI(){
   if(loggedIn){
     if(logged) logged.innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>Cliente</strong>`;
     if(profileName) profileName.textContent = currentUser.full_name;
-    if(profilePhoto) profilePhoto.src = currentUser.photo || currentUser.profile_photo || '';
-    if(profilePhotoLarge) profilePhotoLarge.src = currentUser.photo || currentUser.profile_photo || '';
+    if(profilePhoto) profilePhoto.src = clientPhotoSrc(currentUser);
+    if(profilePhotoLarge) profilePhotoLarge.src = clientPhotoSrc(currentUser);
     renderClientDetails();
   }else{
     if(logged) logged.textContent = 'Nenhum cliente conectado.';
@@ -181,6 +189,22 @@ async function handleClientPhoto(event){
     img.classList.remove('hidden');
   }
   safeText('clientPhotoStatus', 'Foto selecionada.');
+}
+
+async function handleEditClientPhoto(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+  if(file.size > 1_500_000){
+    event.target.value = '';
+    return toast('Use uma imagem do cliente menor que 1,5 MB.');
+  }
+  editClientPhotoData = await fileToDataUrl(file);
+  const img = $('editClientPhotoPreview');
+  if(img){
+    img.src = editClientPhotoData;
+    img.classList.remove('hidden');
+  }
+  safeText('editClientPhotoStatus', 'Nova foto selecionada.');
 }
 
 async function handlePetPhoto(event){
@@ -360,14 +384,88 @@ function renderClientDetails(){
   const box = $('clientDetails');
   if(!box || !currentUser) return;
   box.innerHTML = `
-    <strong>${currentUser.full_name}</strong><br>
-    ${currentUser.email}<br>
-    Telefone: ${currentUser.phone || '-'}<br>
-    Endereço: ${currentUser.address || '-'}<br>
-    Cidade: ${currentUser.city || '-'} / ${currentUser.state || '-'}<br>
+    <strong>${escapeHtml(currentUser.full_name)}</strong><br>
+    ${escapeHtml(currentUser.email)}<br>
+    Telefone: ${escapeHtml(currentUser.phone || '-')}<br>
+    Endereço: ${escapeHtml(currentUser.address || '-')}<br>
+    Cidade: ${escapeHtml(currentUser.city || '-')} / ${escapeHtml(currentUser.state || '-')}<br>
     Status: <span class="badge pago">verificado</span>
   `;
   if($('address') && currentUser.address) $('address').value = currentUser.address;
+  fillClientEditForm();
+}
+
+function fillClientEditForm(){
+  if(!currentUser || !$('editClientName')) return;
+  $('editClientName').value = currentUser.full_name || '';
+  $('editClientPhone').value = currentUser.phone || '';
+  $('editClientDocument').value = currentUser.document || '';
+  $('editClientZip').value = currentUser.zip_code || '';
+  $('editClientStreet').value = currentUser.street || '';
+  $('editClientNumber').value = currentUser.number || '';
+  $('editClientComplement').value = currentUser.complement || '';
+  $('editClientNeighborhood').value = currentUser.neighborhood || '';
+  $('editClientCity').value = currentUser.city || '';
+  $('editClientState').value = currentUser.state || 'RJ';
+  $('editClientBio').value = currentUser.bio || '';
+}
+
+function toggleClientEdit(){
+  if(!requireClient()) return;
+  const box = $('clientEditBox');
+  if(!box) return;
+  fillClientEditForm();
+  box.classList.toggle('hidden');
+}
+
+async function updateClientProfile(){
+  try{
+    if(!requireClient()) return;
+
+    const street = $('editClientStreet').value.trim();
+    const number = $('editClientNumber').value.trim();
+    const neighborhood = $('editClientNeighborhood').value.trim();
+    const city = $('editClientCity').value.trim();
+    const state = $('editClientState').value.trim() || 'RJ';
+    const address = [street, number, neighborhood, city, state].filter(Boolean).join(', ');
+
+    const data = {
+      full_name: $('editClientName').value.trim(),
+      phone: $('editClientPhone').value.trim(),
+      photo: editClientPhotoData || currentUser.photo || '',
+      document: $('editClientDocument').value.trim(),
+      address,
+      zip_code: $('editClientZip').value.trim(),
+      street,
+      number,
+      complement: $('editClientComplement').value.trim(),
+      neighborhood,
+      city,
+      state,
+      bio: $('editClientBio').value.trim()
+    };
+
+    if(!data.full_name) return toast('Informe o nome completo.');
+    if(!data.phone) return toast('Informe o telefone.');
+    if(!data.street || !data.number || !data.neighborhood || !data.city) return toast('Preencha rua, número, bairro e cidade.');
+
+    const user = await api(`/api/users/${currentUser.id}`, {
+      method:'PUT',
+      body: JSON.stringify(data)
+    });
+
+    currentUser = user;
+    editClientPhotoData = '';
+    const preview = $('editClientPhotoPreview');
+    if(preview) preview.classList.add('hidden');
+    safeText('editClientPhotoStatus', 'Manter foto atual');
+    setLoggedUI();
+    renderClientDetails();
+    if($('clientEditBox')) $('clientEditBox').classList.add('hidden');
+    toast('Dados do cliente atualizados.');
+  }catch(err){
+    toast(err.message || 'Não foi possível atualizar os dados.');
+  }
 }
 
 async function createPet(){

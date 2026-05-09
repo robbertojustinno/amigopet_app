@@ -128,6 +128,33 @@
           <h3>Cliente conectado</h3>
           <img id="profilePhotoLarge" class="profile-large" alt="Foto do cliente" />
           <div id="clientDetails" class="details-box">Faça login para ver seus dados.</div>
+          <div class="actions">
+            <button class="secondary" type="button" onclick="toggleClientEdit()">Alterar meus dados</button>
+          </div>
+
+          <div id="clientEditBox" class="details-box hidden" style="margin-top:14px;">
+            <h3>Alterar dados do cliente</h3>
+            <label>Nova foto do cliente (opcional)</label>
+            <input id="editClientPhotoFile" type="file" accept="image/*" onchange="handleEditClientPhoto(event)" />
+            <div class="photo-preview-wrap">
+              <img id="editClientPhotoPreview" class="photo-preview hidden" alt="Prévia da nova foto do cliente" />
+              <span id="editClientPhotoStatus">Manter foto atual</span>
+            </div>
+            <input id="editClientName" placeholder="Nome completo" />
+            <input id="editClientPhone" placeholder="Telefone / WhatsApp" />
+            <input id="editClientDocument" placeholder="CPF ou documento (opcional)" />
+            <div class="form-grid">
+              <input id="editClientZip" placeholder="CEP" />
+              <input id="editClientStreet" placeholder="Rua" />
+              <input id="editClientNumber" placeholder="Número" />
+              <input id="editClientComplement" placeholder="Complemento" />
+              <input id="editClientNeighborhood" placeholder="Bairro" />
+              <input id="editClientCity" placeholder="Cidade" />
+              <input id="editClientState" placeholder="Estado" value="RJ" />
+            </div>
+            <textarea id="editClientBio" placeholder="Observações de contato, preferência de horário, portaria, etc."></textarea>
+            <button class="full" type="button" onclick="updateClientProfile()">Salvar alterações</button>
+          </div>
         </div>
 
         <div class="card">
@@ -238,7 +265,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=final-pagamento-fotos"></script>
-  <script src="/static/pwa.js?v=final-pagamento-fotos"></script>
+  <script src="/static/app.js?v=edit-cliente-v1"></script>
+  <script src="/static/pwa.js?v=edit-cliente-v1"></script>
 </body>
 </html>
