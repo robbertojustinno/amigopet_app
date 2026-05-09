@@ -86,7 +86,7 @@ function setLoggedUI(){
 
   const loggedIn = currentUser && currentUser.role === 'client';
 
-  ['btnPet','btnWalk','btnMap','logoutBtn'].forEach(id => {
+  ['btnPet','btnWalk','btnOrders','btnMap','logoutBtn'].forEach(id => {
     const el = $(id);
     if(el) el.classList.toggle('hidden', !loggedIn);
   });
@@ -112,7 +112,7 @@ function requireClient(){
 }
 
 function showView(id, force=false){
-  if(['pet','walk','tracking'].includes(id) && !requireClient()){
+  if(['pet','walk','orders','tracking'].includes(id) && !requireClient()){
     id = 'home';
   }
 
