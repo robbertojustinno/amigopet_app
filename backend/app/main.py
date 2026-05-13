@@ -17,12 +17,21 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 import requests
+import smtplib
+from email.message import EmailMessage
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
 MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or os.getenv("MERCADO_PAGO_ACCESS_TOKEN") or "").strip()
 MERCADOPAGO_WEBHOOK_SECRET = os.getenv("MERCADOPAGO_WEBHOOK_SECRET", "").strip()
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER).strip()
+SMTP_USE_TLS = str(os.getenv("SMTP_USE_TLS", "true")).lower() in ["1", "true", "yes", "sim"]
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -298,6 +307,34 @@ def pet_to_dict(p: Pet):
         "notes": p.notes,
         "dog_count": p.dog_count,
     }
+
+
+def send_email_message(to_email: str, subject: str, body: str) -> bool:
+    """Envia e-mail usando SMTP configurado no Render.
+    Variáveis esperadas:
+    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
+    """
+    if not SMTP_HOST or not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM:
+        print("[SMTP WARNING] SMTP não configurado. E-mail não enviado.")
+        return False
+
+    msg = EmailMessage()
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            if SMTP_USE_TLS:
+                server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print("[SMTP ERROR]", str(e))
+        return False
+
 
 def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
@@ -772,21 +809,46 @@ def request_password_reset(data: PasswordResetRequestIn, db: Session = Depends(g
     user = db.query(User).filter(User.email == data.email).first()
 
     # Por segurança, não revelamos se o e-mail existe ou não.
+    generic_response = {
+        "ok": True,
+        "message": "Se o e-mail estiver cadastrado, enviaremos um código de recuperação."
+    }
+
     if not user:
-        return {"ok": True, "message": "Se o e-mail estiver cadastrado, enviaremos instruções para recuperar a senha."}
+        return generic_response
 
     code = f"{secrets.randbelow(1000000):06d}"
     user.verification_code_hash = hash_password(code)
     user.verification_expires_at = datetime.utcnow() + timedelta(minutes=15)
     db.commit()
 
-    # Em produção, este código deve ser enviado por e-mail/SMS.
-    # Enquanto SMTP não estiver configurado, o dev_code aparece para teste.
-    return {
-        "ok": True,
-        "message": "Código de recuperação gerado. Use o código recebido para criar nova senha.",
-        "dev_code": code
-    }
+    body = f"""Olá, {user.full_name}.
+
+Recebemos uma solicitação para recuperar sua senha no AmigoPet.
+
+Seu código de recuperação é: {code}
+
+Este código expira em 15 minutos.
+
+Se você não solicitou essa recuperação, ignore este e-mail.
+
+AmigoPet
+Powered by ROVIX
+"""
+
+    sent = send_email_message(
+        user.email,
+        "Código de recuperação de senha - AmigoPet",
+        body
+    )
+
+    if not sent:
+        raise HTTPException(
+            status_code=500,
+            detail="Não foi possível enviar o código por e-mail. Verifique as configurações SMTP no Render."
+        )
+
+    return generic_response
 
 @app.post("/api/auth/reset-password")
 def reset_password(data: PasswordResetConfirmIn, db: Session = Depends(get_db)):

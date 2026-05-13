@@ -363,14 +363,7 @@ async function requestPasswordReset(){
       method:'POST',
       body: JSON.stringify({email})
     });
-
-    const box = $('resetDevCodeBox');
-    if(result.dev_code && box){
-      box.classList.remove('hidden');
-      box.textContent = `Código de recuperação: ${result.dev_code}`;
-    }
-
-    toast(result.message || 'Código de recuperação enviado.');
+    toast(result.message || 'Código de recuperação enviado por e-mail.');
   }catch(err){
     toast(err.message || 'Não foi possível gerar o código.');
   }
