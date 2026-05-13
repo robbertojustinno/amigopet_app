@@ -69,14 +69,28 @@
             <input id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
             <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
             <button class="full" type="button" onclick="login()">Entrar na minha conta</button>
+            <button class="ghost full" type="button" onclick="toggleForgotPassword()">Esqueci minha senha</button>
+          </div>
+
+
+          <div id="forgotClientPasswordPanel" class="auth-panel">
+            <h3>Recuperar senha</h3>
+            <p>Informe seu e-mail para receber um código de recuperação. Depois crie uma nova senha.</p>
+            <input id="forgotEmail" placeholder="E-mail cadastrado" autocomplete="username" />
+            <button class="full" type="button" onclick="requestPasswordReset()">Gerar código de recuperação</button>
+            <input id="resetCode" placeholder="Código recebido" maxlength="6" />
+            <input id="resetNewPassword" placeholder="Nova senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
+            <button class="full" type="button" onclick="confirmPasswordReset()">Alterar senha</button>
+            <button class="ghost full" type="button" onclick="setAuthMode('login')">Voltar para login</button>
+            <div id="resetDevCodeBox" class="dev-code hidden"></div>
           </div>
 
           <div id="registerPanel" class="auth-panel">
             <h3>Cadastro profissional</h3>
             <p>Todos os campos principais são obrigatórios. A confirmação chega por e-mail.</p>
 
-            <label>Foto obrigatória do cliente</label>
-            <input id="clientPhotoFile" type="file" accept="image/*" onchange="handleClientPhoto(event)" />
+            <label>Foto obrigatória do cliente — selecione ou tire uma foto</label>
+            <input id="clientPhotoFile" type="file" accept="image/*" capture="user" onchange="handleClientPhoto(event)" />
             <div class="photo-preview-wrap">
               <img id="clientPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do cliente" />
               <span id="clientPhotoStatus">Nenhuma foto selecionada</span>
@@ -150,8 +164,8 @@
 
           <div id="clientEditBox" class="details-box hidden" style="margin-top:14px;">
             <h3>Alterar dados do cliente</h3>
-            <label>Nova foto do cliente (opcional)</label>
-            <input id="editClientPhotoFile" type="file" accept="image/*" onchange="handleEditClientPhoto(event)" />
+            <label>Nova foto do cliente — selecione ou tire uma foto</label>
+            <input id="editClientPhotoFile" type="file" accept="image/*" capture="user" onchange="handleEditClientPhoto(event)" />
             <div class="photo-preview-wrap">
               <img id="editClientPhotoPreview" class="photo-preview hidden" alt="Prévia da nova foto do cliente" />
               <span id="editClientPhotoStatus">Manter foto atual</span>
@@ -175,8 +189,8 @@
 
         <div class="card">
           <h3>Cadastrar pet</h3>
-          <label>Foto obrigatória do pet</label>
-          <input id="petPhotoFile" type="file" accept="image/*" onchange="handlePetPhoto(event)" />
+          <label>Foto obrigatória do pet — selecione ou tire uma foto</label>
+          <input id="petPhotoFile" type="file" accept="image/*" capture="environment" onchange="handlePetPhoto(event)" />
           <div class="photo-preview-wrap">
             <img id="petPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do pet" />
             <span id="petPhotoStatus">Nenhuma foto selecionada</span>

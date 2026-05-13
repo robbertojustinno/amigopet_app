@@ -268,6 +268,66 @@ async function registerWalker(){
 }
 
 
+
+function toggleWalkerForgotPassword(){
+  const box = $('forgotWalkerPasswordBox');
+  if(!box) return;
+  const email = $('loginEmail')?.value?.trim() || '';
+  if($('forgotWalkerEmail')) $('forgotWalkerEmail').value = email;
+  box.classList.toggle('hidden');
+}
+
+async function requestWalkerPasswordReset(){
+  try{
+    const email = $('forgotWalkerEmail').value.trim();
+    if(!email) return toast('Informe o e-mail cadastrado.');
+
+    const result = await api('/api/auth/request-password-reset', {
+      method:'POST',
+      body: JSON.stringify({email})
+    });
+
+    const box = $('resetWalkerDevCodeBox');
+    if(result.dev_code && box){
+      box.classList.remove('hidden');
+      box.textContent = `Código de recuperação: ${result.dev_code}`;
+    }
+
+    toast(result.message || 'Código de recuperação enviado.');
+  }catch(err){
+    toast(err.message || 'Não foi possível gerar o código.');
+  }
+}
+
+async function confirmWalkerPasswordReset(){
+  try{
+    const email = $('forgotWalkerEmail').value.trim();
+    const code = $('resetWalkerCode').value.trim();
+    const new_password = $('resetWalkerNewPassword').value.trim();
+
+    if(!email || !code || !new_password) return toast('Preencha e-mail, código e nova senha.');
+    if(new_password.length < 6) return toast('A nova senha deve ter no mínimo 6 caracteres.');
+
+    const result = await api('/api/auth/reset-password', {
+      method:'POST',
+      body: JSON.stringify({email, code, new_password})
+    });
+
+    $('loginEmail').value = email;
+    $('loginPassword').value = '';
+    $('resetWalkerCode').value = '';
+    $('resetWalkerNewPassword').value = '';
+
+    const box = $('forgotWalkerPasswordBox');
+    if(box) box.classList.add('hidden');
+
+    toast(result.message || 'Senha alterada com sucesso.');
+  }catch(err){
+    toast(err.message || 'Não foi possível alterar a senha.');
+  }
+}
+
+
 async function login(){
   try{
     const email = $('loginEmail').value.trim();

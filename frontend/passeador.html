@@ -61,14 +61,27 @@
           <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
           <button class="full" type="button" onclick="login()">Entrar como passeador</button>
 
+          <button class="ghost full" type="button" onclick="toggleWalkerForgotPassword()">Esqueci minha senha</button>
+
+          <div id="forgotWalkerPasswordBox" class="auth-panel hidden" style="margin-top:16px;">
+            <h3>Recuperar senha</h3>
+            <p>Informe seu e-mail para gerar um código de recuperação e criar uma nova senha.</p>
+            <input id="forgotWalkerEmail" placeholder="E-mail cadastrado" autocomplete="username" />
+            <button class="full" type="button" onclick="requestWalkerPasswordReset()">Gerar código de recuperação</button>
+            <input id="resetWalkerCode" placeholder="Código recebido" maxlength="6" />
+            <input id="resetWalkerNewPassword" placeholder="Nova senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
+            <button class="full" type="button" onclick="confirmWalkerPasswordReset()">Alterar senha</button>
+            <div id="resetWalkerDevCodeBox" class="dev-code hidden"></div>
+          </div>
+
           <button class="ghost full" type="button" onclick="toggleWalkerRegister()">Criar conta de passeador</button>
 
           <div id="registerWalkerBox" class="auth-panel hidden" style="margin-top:16px;">
             <h3>Criar conta de passeador</h3>
             <p>Preencha seus dados para entrar na plataforma como passeador.</p>
 
-            <label>Foto do passeador</label>
-            <input id="registerWalkerPhotoFile" type="file" accept="image/*" onchange="handleRegisterWalkerPhoto(event)" />
+            <label>Foto do passeador — selecione ou tire uma foto</label>
+            <input id="registerWalkerPhotoFile" type="file" accept="image/*" capture="user" onchange="handleRegisterWalkerPhoto(event)" />
             <div id="registerWalkerPhotoPreview" class="notice">Nenhuma foto selecionada.</div>
 
             <input id="registerWalkerName" placeholder="Nome completo" />
@@ -141,8 +154,8 @@
       <div class="grid two">
         <div class="card">
           <h3>Alterar dados</h3>
-          <label>Foto do passeador</label>
-          <input id="profilePhotoFile" type="file" accept="image/*" />
+          <label>Foto do passeador — selecione ou tire uma foto</label>
+          <input id="profilePhotoFile" type="file" accept="image/*" capture="user" />
           <div id="profilePhotoPreview" class="notice">Nenhuma foto selecionada.</div>
           <input id="profileFullName" placeholder="Nome completo" />
           <input id="profilePhone" placeholder="Telefone" />

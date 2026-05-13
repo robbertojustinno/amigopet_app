@@ -150,6 +150,15 @@ class LoginIn(BaseModel):
     email: EmailStr
     password: str
 
+
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirmIn(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
 class ClientUpdateIn(BaseModel):
     full_name: str
     phone: str = ""
@@ -756,6 +765,53 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
     return user_to_dict(user)
+
+
+@app.post("/api/auth/request-password-reset")
+def request_password_reset(data: PasswordResetRequestIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+
+    # Por segurança, não revelamos se o e-mail existe ou não.
+    if not user:
+        return {"ok": True, "message": "Se o e-mail estiver cadastrado, enviaremos instruções para recuperar a senha."}
+
+    code = f"{secrets.randbelow(1000000):06d}"
+    user.verification_code_hash = hash_password(code)
+    user.verification_expires_at = datetime.utcnow() + timedelta(minutes=15)
+    db.commit()
+
+    # Em produção, este código deve ser enviado por e-mail/SMS.
+    # Enquanto SMTP não estiver configurado, o dev_code aparece para teste.
+    return {
+        "ok": True,
+        "message": "Código de recuperação gerado. Use o código recebido para criar nova senha.",
+        "dev_code": code
+    }
+
+@app.post("/api/auth/reset-password")
+def reset_password(data: PasswordResetConfirmIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="E-mail não encontrado")
+
+    if not data.new_password or len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="A nova senha deve ter no mínimo 6 caracteres")
+
+    if not user.verification_code_hash or not user.verification_expires_at:
+        raise HTTPException(status_code=400, detail="Solicite um novo código de recuperação")
+
+    if datetime.utcnow() > user.verification_expires_at:
+        raise HTTPException(status_code=400, detail="Código expirado. Solicite um novo código")
+
+    if not verify_password(data.code.strip(), user.verification_code_hash):
+        raise HTTPException(status_code=400, detail="Código inválido")
+
+    user.password_hash = hash_password(data.new_password)
+    user.verification_code_hash = ""
+    user.verification_expires_at = None
+    db.commit()
+
+    return {"ok": True, "message": "Senha alterada com sucesso. Faça login com a nova senha."}
 
 @app.get("/api/users")
 def users(role: Optional[str] = None, db: Session = Depends(get_db)):
