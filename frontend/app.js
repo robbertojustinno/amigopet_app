@@ -239,20 +239,24 @@ function fillClientDemo(){
 
 async function registerClient(){
   try{
+    const street = $('registerStreet').value.trim();
+    const number = $('registerNumber').value.trim();
+    const neighborhood = $('registerNeighborhood').value.trim();
+    const city = $('registerCity').value.trim();
+    const state = $('registerState').value.trim() || 'RJ';
+    const address = [street, number, neighborhood, city, state].filter(Boolean).join(', ');
+
     const data = {
       full_name: $('registerName').value.trim(),
       email: $('registerEmail').value.trim(),
       password: $('registerPassword').value.trim(),
+      role: 'client',
       phone: $('registerPhone').value.trim(),
       photo: clientPhotoData,
       document: $('registerDocument').value.trim(),
-      zip_code: $('registerZip').value.trim(),
-      street: $('registerStreet').value.trim(),
-      number: $('registerNumber').value.trim(),
-      complement: $('registerComplement').value.trim(),
-      neighborhood: $('registerNeighborhood').value.trim(),
-      city: $('registerCity').value.trim(),
-      state: $('registerState').value.trim() || 'RJ',
+      address,
+      neighborhood,
+      city,
       bio: $('registerBio').value.trim()
     };
 
@@ -268,30 +272,29 @@ async function registerClient(){
       ['city','cidade']
     ];
 
+    const checkValues = {...data, street, number, neighborhood, city};
+
     for(const [key,label] of required){
-      if(!data[key]) return toast(`Preencha: ${label}.`);
+      if(!checkValues[key]) return toast(`Preencha: ${label}.`);
     }
 
     if(data.password.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.');
 
-    const result = await api('/api/auth/register-client', {
+    const user = await api('/api/auth/register', {
       method:'POST',
       body: JSON.stringify(data)
     });
 
-    $('verifyEmail').value = data.email;
-    $('loginEmail').value = data.email;
-    setAuthMode('verify');
+    currentUser = user;
+    clearSessions();
+    setLoggedUI();
+    await refreshAll();
 
-    if(result.dev_code){
-      const box = $('devCodeBox');
-      if(box){
-        box.classList.remove('hidden');
-        box.textContent = `SMTP não configurado. Código de teste: ${result.dev_code}`;
-      }
-    }
+    if($('loginEmail')) $('loginEmail').value = '';
+    if($('loginPassword')) $('loginPassword').value = '';
 
-    toast(result.message || 'Cadastro criado. Confirme o código enviado por e-mail.');
+    toast('Conta criada com sucesso. Você já está conectado.');
+    showView('pet', true);
   }catch(err){
     toast(err.message || 'Não foi possível criar a conta.');
   }

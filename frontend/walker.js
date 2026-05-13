@@ -14,6 +14,7 @@ let gpsWatchId = null;
 let gpsActive = false;
 let lastGpsSentAt = 0;
 let walkerPhotoData = "";
+let registerWalkerPhotoData = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -191,19 +192,102 @@ async function saveWalkerProfile(){
   }catch(err){ toast(err.message); }
 }
 
+
+function toggleWalkerRegister(){
+  const box = $('registerWalkerBox');
+  if(!box) return;
+  box.classList.toggle('hidden');
+}
+
+async function handleRegisterWalkerPhoto(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+
+  if(file.size > 1_500_000){
+    event.target.value = '';
+    return toast('Use uma imagem menor que 1,5 MB.');
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    registerWalkerPhotoData = reader.result;
+    const preview = $('registerWalkerPhotoPreview');
+    if(preview){
+      preview.innerHTML = `<img src="${registerWalkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function registerWalker(){
+  try{
+    const data = {
+      full_name: $('registerWalkerName').value.trim(),
+      email: $('registerWalkerEmail').value.trim(),
+      password: $('registerWalkerPassword').value.trim(),
+      role: 'walker',
+      phone: $('registerWalkerPhone').value.trim(),
+      photo: registerWalkerPhotoData,
+      document: $('registerWalkerDocument').value.trim(),
+      neighborhood: $('registerWalkerNeighborhood').value.trim(),
+      city: $('registerWalkerCity').value.trim(),
+      bio: $('registerWalkerBio').value.trim()
+    };
+
+    const required = [
+      ['full_name','nome completo'],
+      ['email','e-mail'],
+      ['password','senha'],
+      ['phone','telefone'],
+      ['photo','foto do passeador'],
+      ['document','documento'],
+      ['neighborhood','bairro'],
+      ['city','cidade']
+    ];
+
+    for(const [key,label] of required){
+      if(!data[key]) return toast(`Preencha: ${label}.`);
+    }
+
+    if(data.password.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.');
+
+    const user = await api('/api/auth/register', {
+      method:'POST',
+      body: JSON.stringify(data)
+    });
+
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    setLoggedUI();
+    await refreshAll();
+    showView('perfil', true);
+    toast('Conta de passeador criada com sucesso.');
+  }catch(err){
+    toast(err.message || 'Não foi possível criar a conta de passeador.');
+  }
+}
+
+
 async function login(){
   try{
     const email = $('loginEmail').value.trim();
-    const password = $('loginPassword').value;
+    const password = $('loginPassword').value.trim();
+
+    if(!email || !password) return toast('Preencha e-mail e senha.');
+
     const user = await api('/api/auth/login', {method:'POST', body: JSON.stringify({email, password})});
+
     if(user.role !== 'walker') throw new Error('Esta área é exclusiva para passeadores.');
+
     currentUser = user;
     localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
     showView('pedidos', true);
     toast('Passeador conectado.');
-  }catch(err){ toast(err.message); }
+  }catch(err){
+    toast(err.message || 'Não foi possível entrar.');
+  }
 }
 
 function logout(){
