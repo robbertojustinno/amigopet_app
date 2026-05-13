@@ -230,6 +230,107 @@ async function handlePetPhoto(event){
   safeText('petPhotoStatus', 'Foto do pet selecionada.');
 }
 
+
+let cameraStream = null;
+let cameraTarget = "";
+
+async function openCameraCapture(target){
+  try{
+    cameraTarget = target;
+    const modal = $('cameraModal');
+    const video = $('cameraVideo');
+    const title = $('cameraTitle');
+
+    if(!modal || !video) return toast('Câmera não disponível nesta tela.');
+
+    if(title){
+      const labels = {
+        client: 'Tirar foto do cliente',
+        editClient: 'Tirar nova foto do cliente',
+        pet: 'Tirar foto do pet'
+      };
+      title.textContent = labels[target] || 'Tirar foto';
+    }
+
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: target === 'pet' ? 'environment' : 'user' },
+      audio: false
+    });
+
+    video.srcObject = cameraStream;
+    modal.classList.add('open');
+  }catch(err){
+    toast('Não foi possível abrir a câmera. Verifique a permissão do navegador.');
+  }
+}
+
+function closeCameraCapture(){
+  const modal = $('cameraModal');
+  const video = $('cameraVideo');
+
+  if(cameraStream){
+    cameraStream.getTracks().forEach(track => track.stop());
+  }
+
+  cameraStream = null;
+  cameraTarget = "";
+
+  if(video) video.srcObject = null;
+  if(modal) modal.classList.remove('open');
+}
+
+function takeCameraPhoto(){
+  const video = $('cameraVideo');
+  const canvas = $('cameraCanvas');
+
+  if(!video || !canvas || !cameraTarget) return toast('Câmera não iniciada.');
+
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 480;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, width, height);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+  if(cameraTarget === 'client'){
+    clientPhotoData = dataUrl;
+    const img = $('clientPhotoPreview');
+    if(img){
+      img.src = dataUrl;
+      img.classList.remove('hidden');
+    }
+    safeText('clientPhotoStatus', 'Foto tirada pela câmera.');
+  }
+
+  if(cameraTarget === 'editClient'){
+    editClientPhotoData = dataUrl;
+    const img = $('editClientPhotoPreview');
+    if(img){
+      img.src = dataUrl;
+      img.classList.remove('hidden');
+    }
+    safeText('editClientPhotoStatus', 'Nova foto tirada pela câmera.');
+  }
+
+  if(cameraTarget === 'pet'){
+    petPhotoData = dataUrl;
+    const img = $('petPhotoPreview');
+    if(img){
+      img.src = dataUrl;
+      img.classList.remove('hidden');
+    }
+    safeText('petPhotoStatus', 'Foto do pet tirada pela câmera.');
+  }
+
+  closeCameraCapture();
+  toast('Foto capturada com sucesso.');
+}
+
+
 function fillClientDemo(){
   $('loginEmail').value = 'cliente@amigopet.com';
   $('loginPassword').value = '123456';

@@ -15,6 +15,8 @@ let gpsActive = false;
 let lastGpsSentAt = 0;
 let walkerPhotoData = "";
 let registerWalkerPhotoData = "";
+let walkerCameraStream = null;
+let walkerCameraTarget = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -195,8 +197,11 @@ async function saveWalkerProfile(){
 
 function toggleWalkerRegister(){
   const box = $('registerWalkerBox');
-  if(!box) return;
+  if(!box) return toast('Formulário de cadastro não encontrado.');
   box.classList.toggle('hidden');
+  if(!box.classList.contains('hidden')){
+    box.scrollIntoView({behavior:'smooth', block:'start'});
+  }
 }
 
 async function handleRegisterWalkerPhoto(event){
@@ -318,6 +323,159 @@ async function confirmWalkerPasswordReset(){
   }catch(err){
     toast(err.message || 'Não foi possível alterar a senha.');
   }
+}
+
+
+
+function toggleWalkerRegister(){
+  const box = $('registerWalkerBox');
+  if(!box) return toast('Formulário de cadastro não encontrado.');
+  box.classList.toggle('hidden');
+  if(!box.classList.contains('hidden')){
+    box.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+}
+
+async function handleRegisterWalkerPhoto(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+
+  if(file.size > 1_500_000){
+    event.target.value = '';
+    return toast('Use uma imagem menor que 1,5 MB.');
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    registerWalkerPhotoData = reader.result;
+    const preview = $('registerWalkerPhotoPreview');
+    if(preview){
+      preview.innerHTML = `<img src="${registerWalkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function registerWalker(){
+  try{
+    const data = {
+      full_name: $('registerWalkerName').value.trim(),
+      email: $('registerWalkerEmail').value.trim(),
+      password: $('registerWalkerPassword').value.trim(),
+      role: 'walker',
+      phone: $('registerWalkerPhone').value.trim(),
+      photo: registerWalkerPhotoData,
+      document: $('registerWalkerDocument').value.trim(),
+      neighborhood: $('registerWalkerNeighborhood').value.trim(),
+      city: $('registerWalkerCity').value.trim(),
+      bio: $('registerWalkerBio').value.trim()
+    };
+
+    const required = [
+      ['full_name','nome completo'],
+      ['email','e-mail'],
+      ['password','senha'],
+      ['phone','telefone'],
+      ['photo','foto do passeador'],
+      ['document','documento'],
+      ['neighborhood','bairro'],
+      ['city','cidade']
+    ];
+
+    for(const [key,label] of required){
+      if(!data[key]) return toast(`Preencha: ${label}.`);
+    }
+
+    if(data.password.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.');
+
+    const user = await api('/api/auth/register', {
+      method:'POST',
+      body: JSON.stringify(data)
+    });
+
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    setLoggedUI();
+    await refreshAll();
+    showView('perfil', true);
+    toast('Conta de passeador criada com sucesso.');
+  }catch(err){
+    toast(err.message || 'Não foi possível criar a conta de passeador.');
+  }
+}
+
+async function openWalkerCameraCapture(target){
+  try{
+    walkerCameraTarget = target;
+    const modal = $('walkerCameraModal');
+    const video = $('walkerCameraVideo');
+    const title = $('walkerCameraTitle');
+
+    if(!modal || !video) return toast('Câmera não disponível nesta tela.');
+
+    if(title){
+      title.textContent = target === 'profile' ? 'Tirar nova foto do perfil' : 'Tirar foto do cadastro';
+    }
+
+    walkerCameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' },
+      audio: false
+    });
+
+    video.srcObject = walkerCameraStream;
+    modal.classList.add('open');
+  }catch(err){
+    toast('Não foi possível abrir a câmera. Verifique a permissão do navegador.');
+  }
+}
+
+function closeWalkerCameraCapture(){
+  const modal = $('walkerCameraModal');
+  const video = $('walkerCameraVideo');
+
+  if(walkerCameraStream){
+    walkerCameraStream.getTracks().forEach(track => track.stop());
+  }
+
+  walkerCameraStream = null;
+  walkerCameraTarget = "";
+
+  if(video) video.srcObject = null;
+  if(modal) modal.classList.remove('open');
+}
+
+function takeWalkerCameraPhoto(){
+  const video = $('walkerCameraVideo');
+  const canvas = $('walkerCameraCanvas');
+
+  if(!video || !canvas || !walkerCameraTarget) return toast('Câmera não iniciada.');
+
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 480;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, width, height);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+  if(walkerCameraTarget === 'register'){
+    registerWalkerPhotoData = dataUrl;
+    const preview = $('registerWalkerPhotoPreview');
+    if(preview){
+      preview.innerHTML = `<img src="${dataUrl}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`;
+    }
+  }
+
+  if(walkerCameraTarget === 'profile'){
+    walkerPhotoData = dataUrl;
+    renderProfilePreview();
+  }
+
+  closeWalkerCameraCapture();
+  toast('Foto capturada com sucesso.');
 }
 
 

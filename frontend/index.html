@@ -94,6 +94,7 @@
               <img id="clientPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do cliente" />
               <span id="clientPhotoStatus">Nenhuma foto selecionada</span>
             </div>
+            <button class="ghost full" type="button" onclick="openCameraCapture('client')">📷 Tirar foto agora</button>
 
             <input id="registerName" placeholder="Nome completo" />
             <input id="registerEmail" placeholder="E-mail" />
@@ -169,6 +170,7 @@
               <img id="editClientPhotoPreview" class="photo-preview hidden" alt="Prévia da nova foto do cliente" />
               <span id="editClientPhotoStatus">Manter foto atual</span>
             </div>
+            <button class="ghost full" type="button" onclick="openCameraCapture('editClient')">📷 Tirar nova foto agora</button>
             <input id="editClientName" placeholder="Nome completo" />
             <input id="editClientPhone" placeholder="Telefone / WhatsApp" />
             <input id="editClientDocument" placeholder="CPF ou documento (opcional)" />
@@ -194,6 +196,7 @@
             <img id="petPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do pet" />
             <span id="petPhotoStatus">Nenhuma foto selecionada</span>
           </div>
+          <button class="ghost full" type="button" onclick="openCameraCapture('pet')">📷 Tirar foto do pet agora</button>
 
           <input id="petName" placeholder="Nome do pet" />
           <input id="petBreed" placeholder="Raça" />
@@ -297,6 +300,20 @@
       <button type="button" onclick="sendMessage()">Enviar</button>
     </div>
   </aside>
+
+
+  <div id="cameraModal" class="chat-box" style="max-width:420px;">
+    <div class="chat-head">
+      <strong id="cameraTitle">Tirar foto</strong>
+      <button type="button" onclick="closeCameraCapture()">×</button>
+    </div>
+    <div style="padding:14px;display:grid;gap:12px;">
+      <video id="cameraVideo" autoplay playsinline style="width:100%;border-radius:18px;background:#0f172a;"></video>
+      <canvas id="cameraCanvas" class="hidden"></canvas>
+      <button class="full" type="button" onclick="takeCameraPhoto()">Usar esta foto</button>
+      <button class="ghost full" type="button" onclick="closeCameraCapture()">Cancelar</button>
+    </div>
+  </div>
 
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 

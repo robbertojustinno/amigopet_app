@@ -82,6 +82,7 @@
             <label>Foto do passeador — selecione ou tire uma foto</label>
             <input id="registerWalkerPhotoFile" type="file" accept="image/*" capture="user" onchange="handleRegisterWalkerPhoto(event)" />
             <div id="registerWalkerPhotoPreview" class="notice">Nenhuma foto selecionada.</div>
+            <button class="ghost full" type="button" onclick="openWalkerCameraCapture('register')">📷 Tirar foto agora</button>
 
             <input id="registerWalkerName" placeholder="Nome completo" />
             <input id="registerWalkerEmail" placeholder="E-mail" autocomplete="username" />
@@ -156,6 +157,7 @@
           <label>Foto do passeador — selecione ou tire uma foto</label>
           <input id="profilePhotoFile" type="file" accept="image/*" capture="user" />
           <div id="profilePhotoPreview" class="notice">Nenhuma foto selecionada.</div>
+          <button class="ghost full" type="button" onclick="openWalkerCameraCapture('profile')">📷 Tirar nova foto agora</button>
           <input id="profileFullName" placeholder="Nome completo" />
           <input id="profilePhone" placeholder="Telefone" />
           <input id="profileDocument" placeholder="Documento / CPF" />
@@ -191,6 +193,20 @@
       </div>
     </section>
   </main>
+
+
+  <div id="walkerCameraModal" class="chat-box" style="max-width:420px;">
+    <div class="chat-head">
+      <strong id="walkerCameraTitle">Tirar foto</strong>
+      <button type="button" onclick="closeWalkerCameraCapture()">×</button>
+    </div>
+    <div style="padding:14px;display:grid;gap:12px;">
+      <video id="walkerCameraVideo" autoplay playsinline style="width:100%;border-radius:18px;background:#0f172a;"></video>
+      <canvas id="walkerCameraCanvas" class="hidden"></canvas>
+      <button class="full" type="button" onclick="takeWalkerCameraPhoto()">Usar esta foto</button>
+      <button class="ghost full" type="button" onclick="closeWalkerCameraCapture()">Cancelar</button>
+    </div>
+  </div>
 
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
