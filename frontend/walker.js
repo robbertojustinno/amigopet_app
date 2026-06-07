@@ -644,7 +644,7 @@ async function acceptWalk(id){
   try{
     if(!requireWalker()) return;
     const selected = availableWalks.find(w => w.id === id) || currentWalk;
-    if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Mercado Pago.');
+    if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Asaas.');
     const walk = await api(`/api/walks/${id}/accept?walker_id=${currentUser.id}`, {method:'POST'});
     currentWalk = walk;
     await refreshAll();
@@ -664,7 +664,7 @@ async function rejectWalk(id){
 async function startCurrentWalk(){
   try{
     if(!currentWalk) return toast('Selecione ou aceite um passeio primeiro.');
-    if(currentWalk.payment_status !== 'pago') return toast('Pagamento PIX ainda não confirmado pelo Mercado Pago.');
+    if(currentWalk.payment_status !== 'pago') return toast('Pagamento PIX ainda não confirmado pelo Asaas.');
     currentWalk = await api(`/api/walks/${currentWalk.id}/start`, {method:'POST'});
     renderCurrentWalk();
     startGpsTracking();

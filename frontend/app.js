@@ -738,7 +738,7 @@ async function payWalk(id){
     currentRequestId = id;
     renderCurrentWalk(walk);
     renderMap(walk);
-    toast(walk.payment_status === 'pago' ? 'Pagamento confirmado automaticamente.' : 'Pagamento ainda aguardando confirmação do Mercado Pago.');
+    toast(walk.payment_status === 'pago' ? 'Pagamento confirmado automaticamente.' : 'Pagamento ainda aguardando confirmação do Asaas.');
     await refreshAll();
   }catch(err){
     toast(err.message);
@@ -848,17 +848,24 @@ function renderCurrentWalk(w){
 
   const pixBox = $('pixBox');
   if(pixBox){
-    const copy = w.mp_qr_code || w.pix_code || '';
+    const pixData = w.pixQrCode || w.pix_qr_code || w.asaas_pix || {};
+    const copy = w.pix_code || w.mp_qr_code || w.qr_code || w.qrCode || pixData.payload || pixData.copyPaste || pixData.encodedPayload || '';
+    const base64 = w.mp_qr_code_base64 || w.qr_code_base64 || w.qrCodeBase64 || pixData.encodedImage || '';
+    const ticketUrl = w.mp_ticket_url || w.invoiceUrl || w.invoice_url || w.payment_url || w.bankSlipUrl || '';
+    const errorText = w.mp_status_detail && String(w.mp_status_detail).toLowerCase() !== 'pix' ? `<div class="notice" style="margin-top:10px;color:#92400e;">Retorno do pagamento: ${escapeHtml(w.mp_status_detail)}</div>` : '';
     let qrImg = '';
-    if(w.mp_qr_code_base64){
-      qrImg = `<img alt="QR Code PIX Mercado Pago" src="data:image/png;base64,${w.mp_qr_code_base64}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
-    }else if(copy && !copy.includes('PIX-SIMULADO')){
+    if(base64){
+      const src = String(base64).startsWith('data:image') ? base64 : `data:image/png;base64,${base64}`;
+      qrImg = `<img alt="QR Code PIX Asaas" src="${src}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
+    }else if(copy && !String(copy).includes('PIX-SIMULADO')){
       qrImg = `<img alt="QR Code PIX" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(copy)}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
     }
-    const ticket = w.mp_ticket_url ? `<br><a href="${escapeHtml(w.mp_ticket_url)}" target="_blank" rel="noopener">Abrir pagamento Mercado Pago</a>` : '';
-    const copyText = copy || 'Aguardando geração do PIX Mercado Pago.';
-    const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${copy.replace(/`/g, '')}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
-    pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${ticket}`;
+    const ticket = ticketUrl ? `<br><a href="${escapeHtml(ticketUrl)}" target="_blank" rel="noopener">Abrir pagamento Asaas</a>` : '';
+    const copyText = copy || 'Aguardando geração do PIX Asaas. Clique em Verificar/Gerar PIX.';
+    const safeCopy = String(copy).replace(/`/g, '').replace(/\/g, '\\');
+    const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${safeCopy}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
+    const payButton = w.id && w.payment_status !== 'pago' ? `<button type="button" class="warn" style="margin-top:10px;margin-left:8px" onclick="payWalk(${w.id})">Verificar/Gerar PIX</button>` : '';
+    pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${payButton}${ticket}${errorText}`;
   }
   renderMap(w);
 }
