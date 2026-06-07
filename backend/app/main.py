@@ -394,6 +394,16 @@ def seed_pricing_settings():
     finally:
         db.close()
 
+def _asaas_idempotency_key(prefix: str, unique_value: str) -> str:
+    """
+    O Asaas aceita Idempotency-Key com no máximo 48 caracteres.
+    Mantemos uma chave curta e estável o suficiente para evitar erro 400.
+    """
+    prefix = "".join(ch for ch in str(prefix or "asaas") if ch.isalnum() or ch in "-_")[:16] or "asaas"
+    digest = hashlib.sha256(str(unique_value or uuid.uuid4().hex).encode("utf-8")).hexdigest()[:24]
+    return f"{prefix}-{digest}"[:48]
+
+
 def asaas_headers(idempotency_key: Optional[str] = None) -> dict:
     if not ASAAS_API_KEY:
         raise RuntimeError("ASAAS_API_KEY não configurada no Render")
@@ -403,7 +413,7 @@ def asaas_headers(idempotency_key: Optional[str] = None) -> dict:
         "Accept": "application/json",
     }
     if idempotency_key:
-        headers["Idempotency-Key"] = idempotency_key
+        headers["Idempotency-Key"] = str(idempotency_key)[:48]
     return headers
 
 
@@ -432,7 +442,7 @@ def create_asaas_customer(walk: WalkRequest) -> str:
     res = requests.post(
         f"{ASAAS_BASE_URL}/customers",
         json=customer_payload,
-        headers=asaas_headers(f"amigopet-customer-{walk.client_id}-{uuid.uuid4().hex}"),
+        headers=asaas_headers(_asaas_idempotency_key("customer", f"{walk.client_id}-{walk.client.email}")),
         timeout=30,
     )
     try:
@@ -470,7 +480,7 @@ def create_asaas_pix_payment(walk: WalkRequest) -> dict:
     res = requests.post(
         f"{ASAAS_BASE_URL}/payments",
         json=payment_payload,
-        headers=asaas_headers(f"amigopet-walk-{walk.id}-{uuid.uuid4().hex}"),
+        headers=asaas_headers(_asaas_idempotency_key("walk", f"{walk.id}-{walk.estimated_price}-{walk.client_id}")),
         timeout=30,
     )
     try:
