@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     MERCADO_PAGO_ACCESS_TOKEN: str = ""
     MERCADO_PAGO_PUBLIC_KEY: str = ""
+    ASAAS_ENV: str = "production"
+    ASAAS_API_KEY: str = ""
+    ASAAS_WEBHOOK_TOKEN: str = ""
+    ASAAS_BASE_URL: str = "https://api.asaas.com/v3"
     WEBHOOK_BASE_URL: str = ""
 
     @property

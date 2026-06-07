@@ -22,8 +22,12 @@ from email.message import EmailMessage
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
-MERCADOPAGO_ACCESS_TOKEN = (os.getenv("MERCADOPAGO_ACCESS_TOKEN") or os.getenv("MERCADO_PAGO_ACCESS_TOKEN") or "").strip()
-MERCADOPAGO_WEBHOOK_SECRET = os.getenv("MERCADOPAGO_WEBHOOK_SECRET", "").strip()
+ASAAS_ENV = os.getenv("ASAAS_ENV", "production").strip().lower()
+ASAAS_API_KEY = os.getenv("ASAAS_API_KEY", "").strip()
+ASAAS_WEBHOOK_TOKEN = os.getenv("ASAAS_WEBHOOK_TOKEN", "").strip()
+ASAAS_BASE_URL = os.getenv("ASAAS_BASE_URL", "https://api.asaas.com/v3").strip().rstrip("/")
+if ASAAS_ENV in {"sandbox", "test", "testing"} and "asaas.com" in ASAAS_BASE_URL and "sandbox" not in ASAAS_BASE_URL:
+    ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
@@ -390,122 +394,176 @@ def seed_pricing_settings():
     finally:
         db.close()
 
-def mp_headers(idempotency_key: Optional[str] = None) -> dict:
-    headers = {"Authorization": f"Bearer {MERCADOPAGO_ACCESS_TOKEN}", "Content-Type": "application/json"}
+def asaas_headers(idempotency_key: Optional[str] = None) -> dict:
+    if not ASAAS_API_KEY:
+        raise RuntimeError("ASAAS_API_KEY não configurada no Render")
+    headers = {
+        "access_token": ASAAS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
     if idempotency_key:
-        headers["X-Idempotency-Key"] = idempotency_key
+        headers["Idempotency-Key"] = idempotency_key
     return headers
 
-def mp_webhook_url() -> Optional[str]:
+
+def asaas_webhook_url() -> Optional[str]:
     if not PUBLIC_BASE_URL:
         return None
-    return f"{PUBLIC_BASE_URL}/api/payments/mercadopago/webhook"
+    return f"{PUBLIC_BASE_URL}/api/asaas/webhook"
 
-def create_mercadopago_pix_payment(walk: WalkRequest) -> dict:
-    if not MERCADOPAGO_ACCESS_TOKEN:
-        raise RuntimeError("MERCADOPAGO_ACCESS_TOKEN não configurado no Render")
 
-    payer_email = walk.client.email if walk.client and walk.client.email else f"cliente{walk.client_id}@amigopet.local"
-    body = {
-        "transaction_amount": float(round(walk.estimated_price or 0, 2)),
-        "description": f"AmigoPet - Passeio #{walk.id}",
-        "payment_method_id": "pix",
-        "payer": {"email": payer_email},
-        "external_reference": f"walk_{walk.id}",
-        "metadata": {"walk_id": walk.id, "client_id": walk.client_id, "walker_id": walk.walker_id},
+def _only_digits(value: str) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def create_asaas_customer(walk: WalkRequest) -> str:
+    if not walk.client:
+        raise RuntimeError("Cliente do pedido não encontrado para criar cobrança no Asaas")
+
+    customer_payload = {
+        "name": walk.client.full_name or f"Cliente AmigoPet {walk.client_id}",
+        "email": walk.client.email or f"cliente{walk.client_id}@amigopet.local",
     }
-    notification_url = mp_webhook_url()
-    if notification_url:
-        body["notification_url"] = notification_url
+    phone = _only_digits(getattr(walk.client, "phone", ""))
+    if phone:
+        customer_payload["mobilePhone"] = phone
 
     res = requests.post(
-        "https://api.mercadopago.com/v1/payments",
-        json=body,
-        headers=mp_headers(f"amigopet-walk-{walk.id}-{uuid.uuid4().hex}"),
-        timeout=20,
+        f"{ASAAS_BASE_URL}/customers",
+        json=customer_payload,
+        headers=asaas_headers(f"amigopet-customer-{walk.client_id}-{uuid.uuid4().hex}"),
+        timeout=30,
     )
     try:
         data = res.json()
     except Exception:
         data = {"raw": res.text}
-    if res.status_code >= 400:
-        raise RuntimeError(f"Mercado Pago recusou criação do PIX: {data}")
-    return data
 
-def get_mercadopago_payment(payment_id: str) -> dict:
-    if not MERCADOPAGO_ACCESS_TOKEN:
-        raise RuntimeError("MERCADOPAGO_ACCESS_TOKEN não configurado no Render")
+    if res.status_code >= 400:
+        raise RuntimeError(f"Asaas recusou criação do cliente: {data}")
+
+    customer_id = data.get("id")
+    if not customer_id:
+        raise RuntimeError(f"Asaas não retornou ID do cliente: {data}")
+    return str(customer_id)
+
+
+def create_asaas_pix_payment(walk: WalkRequest) -> dict:
+    if not ASAAS_API_KEY:
+        raise RuntimeError("ASAAS_API_KEY não configurada no Render")
+
+    customer_id = create_asaas_customer(walk)
+    value = float(round(walk.estimated_price or 0, 2))
+    if value <= 0:
+        value = 1.0
+
+    payment_payload = {
+        "customer": customer_id,
+        "billingType": "PIX",
+        "value": value,
+        "dueDate": datetime.utcnow().date().isoformat(),
+        "description": f"AmigoPet - Passeio #{walk.id}",
+        "externalReference": f"walk_{walk.id}",
+    }
+
+    res = requests.post(
+        f"{ASAAS_BASE_URL}/payments",
+        json=payment_payload,
+        headers=asaas_headers(f"amigopet-walk-{walk.id}-{uuid.uuid4().hex}"),
+        timeout=30,
+    )
+    try:
+        payment = res.json()
+    except Exception:
+        payment = {"raw": res.text}
+
+    if res.status_code >= 400:
+        raise RuntimeError(f"Asaas recusou criação do PIX: {payment}")
+
+    payment_id = payment.get("id")
+    if not payment_id:
+        raise RuntimeError(f"Asaas não retornou ID do pagamento: {payment}")
+
+    qr_res = requests.get(
+        f"{ASAAS_BASE_URL}/payments/{payment_id}/pixQrCode",
+        headers=asaas_headers(),
+        timeout=30,
+    )
+    try:
+        pix = qr_res.json()
+    except Exception:
+        pix = {"raw": qr_res.text}
+
+    if qr_res.status_code >= 400:
+        raise RuntimeError(f"Asaas criou a cobrança, mas não retornou QR Code PIX: {pix}")
+
+    payment["pixQrCode"] = pix
+    return payment
+
+
+def get_asaas_payment(payment_id: str) -> dict:
+    if not ASAAS_API_KEY:
+        raise RuntimeError("ASAAS_API_KEY não configurada no Render")
     res = requests.get(
-        f"https://api.mercadopago.com/v1/payments/{payment_id}",
-        headers=mp_headers(),
-        timeout=20,
+        f"{ASAAS_BASE_URL}/payments/{payment_id}",
+        headers=asaas_headers(),
+        timeout=30,
     )
     try:
         data = res.json()
     except Exception:
         data = {"raw": res.text}
     if res.status_code >= 400:
-        raise RuntimeError(f"Erro ao consultar pagamento Mercado Pago: {data}")
+        raise RuntimeError(f"Erro ao consultar pagamento Asaas: {data}")
     return data
 
-def validate_mp_webhook_signature(request: Request, payment_id: Optional[str]) -> bool:
-    """Validação opcional da assinatura do webhook do Mercado Pago.
-    Configure MERCADOPAGO_WEBHOOK_SECRET no Render para ativar.
-    """
-    if not MERCADOPAGO_WEBHOOK_SECRET:
+
+def validate_asaas_webhook_token(request: Request) -> bool:
+    if not ASAAS_WEBHOOK_TOKEN:
         return True
-    signature = request.headers.get("x-signature", "")
-    request_id = request.headers.get("x-request-id", "")
-    if not signature or not request_id:
-        return False
+    received = request.headers.get("asaas-access-token", "")
+    return secrets.compare_digest(received, ASAAS_WEBHOOK_TOKEN)
 
-    parts = {}
-    for item in signature.split(","):
-        if "=" in item:
-            k, v = item.strip().split("=", 1)
-            parts[k] = v
-    ts = parts.get("ts", "")
-    v1 = parts.get("v1", "")
-    if not ts or not v1:
-        return False
 
-    data_id = request.query_params.get("data.id") or payment_id or ""
-    manifest = f"id:{data_id};request-id:{request_id};ts:{ts};"
-    expected = hmac.new(MERCADOPAGO_WEBHOOK_SECRET.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, v1)
-
-def apply_mp_payment_to_walk(walk: WalkRequest, mp_payment: dict) -> bool:
+def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
     before = walk.payment_status
-    status = str(mp_payment.get("status") or "")
-    status_detail = str(mp_payment.get("status_detail") or "")
+    status = str(asaas_payment.get("status") or "").upper()
 
-    walk.mp_payment_id = str(mp_payment.get("id") or walk.mp_payment_id or "")
+    walk.mp_payment_id = str(asaas_payment.get("id") or walk.mp_payment_id or "")
     walk.mp_status = status
-    walk.mp_status_detail = status_detail
+    walk.mp_status_detail = str(asaas_payment.get("event") or asaas_payment.get("billingType") or "")[:120]
 
-    transaction_data = (mp_payment.get("point_of_interaction") or {}).get("transaction_data") or {}
-    qr_code = transaction_data.get("qr_code") or ""
-    qr_code_base64 = transaction_data.get("qr_code_base64") or ""
-    ticket_url = transaction_data.get("ticket_url") or ""
+    pix_data = asaas_payment.get("pixQrCode") or {}
+    qr_code = pix_data.get("payload") or ""
+    qr_code_base64 = pix_data.get("encodedImage") or ""
+    invoice_url = asaas_payment.get("invoiceUrl") or asaas_payment.get("bankSlipUrl") or asaas_payment.get("transactionReceiptUrl") or ""
 
     if qr_code:
         walk.mp_qr_code = qr_code
         walk.pix_code = qr_code
     if qr_code_base64:
         walk.mp_qr_code_base64 = qr_code_base64
-    if ticket_url:
-        walk.mp_ticket_url = ticket_url
+    if invoice_url:
+        walk.mp_ticket_url = invoice_url
 
-    if status == "approved":
+    if status in {"RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"}:
         walk.payment_status = "pago"
         if walk.status in ["pendente", "convite_enviado"]:
             walk.status = "pagamento_confirmado"
-    elif status in ["rejected", "cancelled"]:
+    elif status in {"DELETED", "REFUNDED", "CANCELLED", "CHARGEBACK_REQUESTED", "CHARGEBACK_DISPUTE"}:
         walk.payment_status = "recusado"
-    elif status in ["pending", "in_process"]:
+    elif status in {"PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"}:
         walk.payment_status = "aguardando"
 
     return before != walk.payment_status
+
+# Aliases mantidos para compatibilidade interna com chamadas antigas do código.
+mp_headers = asaas_headers
+create_mercadopago_pix_payment = create_asaas_pix_payment
+get_mercadopago_payment = get_asaas_payment
+validate_mp_webhook_signature = lambda request, payment_id=None: validate_asaas_webhook_token(request)
+apply_mp_payment_to_walk = apply_asaas_payment_to_walk
 
 def walk_to_dict(w: WalkRequest):
     now = datetime.utcnow()
@@ -1041,7 +1099,7 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(walk)
 
-        # Mercado Pago real: cria cobrança PIX e salva QR Code/copia-e-cola no pedido.
+        # Asaas real: cria cobrança PIX e salva QR Code/copia-e-cola no pedido.
         try:
             mp_payment = create_mercadopago_pix_payment(walk)
             apply_mp_payment_to_walk(walk, mp_payment)
@@ -1056,7 +1114,7 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
                 walk.mp_status_detail = str(mp_error)[:120]
                 db.commit()
                 db.refresh(walk)
-            print("[MERCADO PAGO PIX ERROR]", str(mp_error))
+            print("[ASAAS PIX ERROR]", str(mp_error))
     except Exception as e:
         db.rollback()
         msg = str(e)
@@ -1080,7 +1138,7 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
     if walk.status in ["finalizado", "cancelado"]:
         raise HTTPException(status_code=400, detail="Pedido já encerrado")
     if walk.payment_status != "pago":
-        raise HTTPException(status_code=402, detail="Aguardando pagamento PIX confirmado pelo Mercado Pago antes do aceite")
+        raise HTTPException(status_code=402, detail="Aguardando pagamento PIX confirmado pelo Asaas antes do aceite")
     walk.walker_id = walker_id
     walk.status = "aceito"
     walk.expires_at = None
@@ -1110,17 +1168,17 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
 
     changed = False
     if not walk.mp_payment_id:
-        raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Mercado Pago vinculado. Crie um novo pedido para gerar o PIX real.")
+        raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Asaas vinculado. Crie um novo pedido para gerar o PIX real.")
 
-    if not MERCADOPAGO_ACCESS_TOKEN:
-        raise HTTPException(status_code=500, detail="Token do Mercado Pago não configurado no Render.")
+    if not ASAAS_API_KEY:
+        raise HTTPException(status_code=500, detail="ASAAS_API_KEY não configurada no Render.")
 
     try:
         mp_payment = get_mercadopago_payment(walk.mp_payment_id)
         changed = apply_mp_payment_to_walk(walk, mp_payment)
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Não foi possível consultar o Mercado Pago: " + str(e)[:700])
+        raise HTTPException(status_code=500, detail="Não foi possível consultar o Asaas: " + str(e)[:700])
 
     db.commit()
     db.refresh(walk)
@@ -1129,36 +1187,43 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
         await manager.broadcast({"type": "payment_confirmed", "walk": payload})
     return payload
 
-@app.post("/api/payments/mercadopago/webhook")
+@app.post("/api/asaas/webhook")
+@app.post("/api/payments/asaas/webhook")
 @app.post("/api/payments/webhook")
-async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
-    """Webhook real do Mercado Pago. Ele consulta o pagamento e confirma automaticamente o pedido."""
+async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
+    """Webhook real do Asaas. Confirma automaticamente o pedido quando o PIX é pago."""
     try:
         body = await request.json()
     except Exception:
         body = {}
 
-    payment_id = None
-    data = body.get("data") if isinstance(body, dict) else None
-    if isinstance(data, dict):
-        payment_id = data.get("id")
-    payment_id = payment_id or request.query_params.get("data.id") or request.query_params.get("id")
-    topic = body.get("type") or body.get("topic") or request.query_params.get("topic") or request.query_params.get("type")
+    if not validate_mp_webhook_signature(request):
+        raise HTTPException(status_code=401, detail="Token do webhook Asaas inválido")
 
+    topic = body.get("event") or body.get("type") or body.get("topic") or request.query_params.get("topic") or request.query_params.get("type")
+    if topic and not str(topic).startswith("PAYMENT_"):
+        return {"ok": True, "ignored": True, "topic": topic}
+
+    payment_obj = body.get("payment") if isinstance(body, dict) else None
+    if not isinstance(payment_obj, dict):
+        payment_obj = {}
+
+    payment_id = payment_obj.get("id") or body.get("id") or request.query_params.get("id") or request.query_params.get("data.id")
     if not payment_id:
         return {"ok": True, "ignored": True, "reason": "sem payment_id"}
-    if not validate_mp_webhook_signature(request, str(payment_id)):
-        raise HTTPException(status_code=401, detail="Assinatura Mercado Pago inválida")
-    if topic and str(topic) not in ["payment", "payments"]:
-        return {"ok": True, "ignored": True, "topic": topic}
 
     try:
         mp_payment = get_mercadopago_payment(str(payment_id))
     except Exception as e:
-        print("[MP WEBHOOK CONSULT ERROR]", str(e))
-        return JSONResponse(status_code=200, content={"ok": False, "error": str(e)[:300]})
+        print("[ASAAS WEBHOOK CONSULT ERROR]", str(e))
+        mp_payment = payment_obj or {"id": payment_id, "status": "PENDING"}
 
-    external_reference = str(mp_payment.get("external_reference") or "")
+    if topic:
+        mp_payment["event"] = str(topic)
+        if str(topic) in {"PAYMENT_RECEIVED", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED_IN_CASH"}:
+            mp_payment["status"] = mp_payment.get("status") or "RECEIVED"
+
+    external_reference = str(mp_payment.get("externalReference") or mp_payment.get("external_reference") or "")
     walk = None
     if external_reference.startswith("walk_"):
         try:
@@ -1180,13 +1245,14 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
         await manager.broadcast({"type": "payment_updated", "walk": payload})
     return {"ok": True, "walk_id": walk.id, "payment_status": walk.payment_status, "mp_status": walk.mp_status}
 
+@app.post("/api/payments/asaas/sync/{walk_id}")
 @app.post("/api/payments/mercadopago/sync/{walk_id}")
-async def sync_mercadopago_payment(walk_id: int, db: Session = Depends(get_db)):
+async def sync_asaas_payment(walk_id: int, db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     if not walk.mp_payment_id:
-        raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Mercado Pago vinculado")
+        raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Asaas vinculado")
     mp_payment = get_mercadopago_payment(walk.mp_payment_id)
     changed = apply_mp_payment_to_walk(walk, mp_payment)
     db.commit()
@@ -1202,7 +1268,7 @@ async def start_walk(walk_id: int, db: Session = Depends(get_db)):
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     if walk.payment_status != "pago":
-        raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Mercado Pago")
+        raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Asaas")
     walk.status = "em_andamento"
     walk.started_at = datetime.utcnow()
     db.commit()
