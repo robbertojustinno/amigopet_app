@@ -427,28 +427,45 @@ def _only_digits(value: str) -> str:
     return "".join(ch for ch in str(value or "") if ch.isdigit())
 
 
+def _asaas_response_data(res: requests.Response) -> dict:
+    """Retorna resposta do Asaas com detalhes úteis para depuração no Render."""
+    try:
+        data = res.json()
+    except Exception:
+        data = {"raw": (res.text or "").strip()}
+    if isinstance(data, dict):
+        data.setdefault("http_status", res.status_code)
+        data.setdefault("reason", getattr(res, "reason", ""))
+    return data
+
+
 def create_asaas_customer(walk: WalkRequest) -> str:
     if not walk.client:
         raise RuntimeError("Cliente do pedido não encontrado para criar cobrança no Asaas")
 
     customer_payload = {
         "name": walk.client.full_name or f"Cliente AmigoPet {walk.client_id}",
-        "email": walk.client.email or f"cliente{walk.client_id}@amigopet.local",
+        "email": walk.client.email or f"cliente{walk.client_id}@amigopet.com.br",
     }
+
     phone = _only_digits(getattr(walk.client, "phone", ""))
     if phone:
         customer_payload["mobilePhone"] = phone
 
+    cpf_cnpj = _only_digits(getattr(walk.client, "document", ""))
+    if len(cpf_cnpj) in (11, 14):
+        customer_payload["cpfCnpj"] = cpf_cnpj
+
+    # Não enviamos Idempotency-Key aqui. Ela é opcional no Asaas e estava causando
+    # recusas/intermitências. Para o fluxo atual do AmigoPet, criar um customer por
+    # pedido é aceitável e evita travar o PIX.
     res = requests.post(
         f"{ASAAS_BASE_URL}/customers",
         json=customer_payload,
-        headers=asaas_headers(_asaas_idempotency_key("customer", f"{walk.client_id}-{walk.client.email}")),
+        headers=asaas_headers(),
         timeout=30,
     )
-    try:
-        data = res.json()
-    except Exception:
-        data = {"raw": res.text}
+    data = _asaas_response_data(res)
 
     if res.status_code >= 400:
         raise RuntimeError(f"Asaas recusou criação do cliente: {data}")
@@ -480,13 +497,10 @@ def create_asaas_pix_payment(walk: WalkRequest) -> dict:
     res = requests.post(
         f"{ASAAS_BASE_URL}/payments",
         json=payment_payload,
-        headers=asaas_headers(_asaas_idempotency_key("walk", f"{walk.id}-{walk.estimated_price}-{walk.client_id}")),
+        headers=asaas_headers(),
         timeout=30,
     )
-    try:
-        payment = res.json()
-    except Exception:
-        payment = {"raw": res.text}
+    payment = _asaas_response_data(res)
 
     if res.status_code >= 400:
         raise RuntimeError(f"Asaas recusou criação do PIX: {payment}")
@@ -500,10 +514,7 @@ def create_asaas_pix_payment(walk: WalkRequest) -> dict:
         headers=asaas_headers(),
         timeout=30,
     )
-    try:
-        pix = qr_res.json()
-    except Exception:
-        pix = {"raw": qr_res.text}
+    pix = _asaas_response_data(qr_res)
 
     if qr_res.status_code >= 400:
         raise RuntimeError(f"Asaas criou a cobrança, mas não retornou QR Code PIX: {pix}")
