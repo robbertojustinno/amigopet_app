@@ -862,7 +862,7 @@ function renderCurrentWalk(w){
     }
     const ticket = ticketUrl ? `<br><a href="${escapeHtml(ticketUrl)}" target="_blank" rel="noopener">Abrir pagamento Asaas</a>` : '';
     const copyText = copy || 'Aguardando geração do PIX Asaas. Clique em Verificar/Gerar PIX.';
-    const safeCopy = String(copy).replace(/`/g, '').replace(/\/g, '\\');
+    const safeCopy = String(copy).replace(/`/g, '').replace(/\\/g, '\\\\');
     const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${safeCopy}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
     const payButton = w.id && w.payment_status !== 'pago' ? `<button type="button" class="warn" style="margin-top:10px;margin-left:8px" onclick="payWalk(${w.id})">Verificar/Gerar PIX</button>` : '';
     pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${payButton}${ticket}${errorText}`;
