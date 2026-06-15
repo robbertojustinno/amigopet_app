@@ -331,6 +331,37 @@ function takeCameraPhoto(){
 }
 
 
+function loginWithGoogle(){
+  window.location.href = API + '/api/auth/google/login';
+}
+
+async function handleGoogleLoginCallback(){
+  const params = new URLSearchParams(window.location.search);
+  const googleUserId = params.get('google_user_id');
+  const googleError = params.get('google_error');
+
+  if(googleError){
+    toast('Erro no login Google: ' + googleError);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+
+  if(!googleUserId) return;
+
+  try{
+    const user = await api(`/api/auth/google/session/${googleUserId}`);
+    currentUser = user;
+    clearSessions();
+    setLoggedUI();
+    await refreshAll();
+    toast('Login com Google realizado.');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showView('pet', true);
+  }catch(err){
+    toast(err.message || 'Não foi possível concluir o login com Google.');
+  }
+}
+
 function fillClientDemo(){
   $('loginEmail').value = 'cliente@amigopet.com';
   $('loginPassword').value = '123456';
@@ -1051,6 +1082,7 @@ function connectWS(){
 
 clearSessions();
 setLoggedUI();
+handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
 showView('home', true);
 connectWS();
@@ -1137,6 +1169,7 @@ async function loadPricing(){
   function bindAll(){
     // Expõe funções para onclick antigo do HTML.
     window.login = login;
+    window.loginWithGoogle = loginWithGoogle;
     window.logout = logout;
     window.registerClient = registerClient;
     window.verifyCode = verifyCode;
@@ -1180,6 +1213,7 @@ async function loadPricing(){
     bindByText('gerar código de recuperação', requestPasswordReset);
     bindByText('recuperar senha', toggleForgotPassword);
     bindByText('alterar senha', confirmPasswordReset);
+    bindByText('entrar com google', loginWithGoogle);
     bindByText('entrar', login);
     bindByText('criar conta', registerClient);
     bindByText('cadastrar pet', createPet);

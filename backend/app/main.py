@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 import requests
 import smtplib
 from email.message import EmailMessage
+from urllib.parse import urlencode, quote
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -30,6 +31,11 @@ ASAAS_BASE_URL = os.getenv("ASAAS_BASE_URL", "https://api.asaas.com/v3").strip()
 if ASAAS_ENV in {"sandbox", "test", "testing"} and "asaas.com" in ASAAS_BASE_URL and "sandbox" not in ASAAS_BASE_URL:
     ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+if not GOOGLE_REDIRECT_URI and PUBLIC_BASE_URL:
+    GOOGLE_REDIRECT_URI = f"{PUBLIC_BASE_URL}/api/auth/google/callback"
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
 SMTP_USER = os.getenv("SMTP_USER", "").strip()
@@ -952,6 +958,100 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    return user_to_dict(user)
+
+
+@app.get("/api/auth/google/login")
+def google_login():
+    if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID ou GOOGLE_REDIRECT_URI não configurado no Render")
+
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+    }
+    return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
+
+
+@app.get("/api/auth/google/callback")
+def google_callback(code: str = "", error: str = "", db: Session = Depends(get_db)):
+    if error:
+        return RedirectResponse(f"/?google_error={quote(error)}")
+    if not code:
+        return RedirectResponse("/?google_error=missing_code")
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
+        return RedirectResponse("/?google_error=google_not_configured")
+
+    try:
+        token_res = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+            timeout=30,
+        )
+        token_data = token_res.json()
+        if token_res.status_code >= 400 or not token_data.get("access_token"):
+            print("[GOOGLE LOGIN ERROR] token", token_data)
+            return RedirectResponse("/?google_error=token_error")
+
+        user_res = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+            timeout=30,
+        )
+        google_user = user_res.json()
+        if user_res.status_code >= 400 or not google_user.get("email"):
+            print("[GOOGLE LOGIN ERROR] userinfo", google_user)
+            return RedirectResponse("/?google_error=userinfo_error")
+
+        email = str(google_user.get("email") or "").strip().lower()
+        full_name = str(google_user.get("name") or email.split("@", 1)[0]).strip()
+        photo = str(google_user.get("picture") or "").strip()
+
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(
+                full_name=full_name,
+                email=email,
+                password_hash=hash_password(secrets.token_urlsafe(24)),
+                role="client",
+                photo=photo,
+                active=True,
+                email_verified=True,
+                phone_verified=True,
+                verified_at=datetime.utcnow(),
+            )
+            db.add(user)
+        else:
+            user.full_name = user.full_name or full_name
+            if photo and not user.photo:
+                user.photo = photo
+            user.email_verified = True
+            user.active = True
+            user.verified_at = user.verified_at or datetime.utcnow()
+
+        db.commit()
+        db.refresh(user)
+        return RedirectResponse(f"/?google_user_id={user.id}")
+    except Exception as e:
+        print("[GOOGLE LOGIN ERROR]", str(e))
+        return RedirectResponse("/?google_error=server_error")
+
+
+@app.get("/api/auth/google/session/{user_id}")
+def google_session(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user or user.role != "client":
+        raise HTTPException(status_code=404, detail="Usuário Google não encontrado")
     return user_to_dict(user)
 
 
