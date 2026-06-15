@@ -67,6 +67,46 @@ function fillWalkerDemo(){
   $('loginPassword').value = '123456';
 }
 
+
+function loginWithGoogle(){
+  // O Google bloqueia login dentro de WebView/navegador interno.
+  // Use Chrome/Edge/Safari real para testar no celular.
+  window.location.href = API + '/api/auth/google/login/walker';
+}
+
+async function handleGoogleLoginCallback(){
+  const params = new URLSearchParams(window.location.search);
+  const googleUserId = params.get('google_user_id');
+  const googleError = params.get('google_error');
+
+  if(googleError){
+    toast('Erro no login Google: ' + googleError);
+    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+
+  if(!googleUserId) return;
+
+  try{
+    const user = await api(`/api/auth/google/session/${googleUserId}`);
+    if(user.role !== 'walker'){
+      toast('Esta área é exclusiva para passeadores. Use o app Cliente.');
+      if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    setLoggedUI();
+    await refreshAll();
+    showView('pedidos', true);
+    toast('Login com Google realizado.');
+    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+  }catch(err){
+    toast(err.message || 'Não foi possível concluir o login com Google.');
+  }
+}
+
 function showView(id, force=false){
   if(!force && id !== 'login' && !requireWalker()) return;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -824,4 +864,7 @@ function restoreSession(){
 
 bindProfileForm();
 restoreSession();
+handleGoogleLoginCallback().catch(()=>{});
 connectWS();
+
+window.loginWithGoogle = loginWithGoogle;

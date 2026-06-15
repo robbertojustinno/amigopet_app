@@ -332,7 +332,7 @@ function takeCameraPhoto(){
 
 
 function loginWithGoogle(){
-  window.location.href = API + '/api/auth/google/login';
+  window.location.href = API + '/api/auth/google/login/client';
 }
 
 async function handleGoogleLoginCallback(){

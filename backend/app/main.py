@@ -961,8 +961,18 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
     return user_to_dict(user)
 
 
+
 @app.get("/api/auth/google/login")
 def google_login():
+    return google_login_role("client")
+
+
+@app.get("/api/auth/google/login/{role}")
+def google_login_role(role: str):
+    role = (role or "client").strip().lower()
+    if role not in ["client", "walker"]:
+        role = "client"
+
     if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID ou GOOGLE_REDIRECT_URI não configurado no Render")
 
@@ -973,18 +983,25 @@ def google_login():
         "scope": "openid email profile",
         "access_type": "online",
         "prompt": "select_account",
+        "state": role,
     }
     return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
 
 
 @app.get("/api/auth/google/callback")
-def google_callback(code: str = "", error: str = "", db: Session = Depends(get_db)):
+def google_callback(code: str = "", error: str = "", state: str = "client", db: Session = Depends(get_db)):
+    role = (state or "client").strip().lower()
+    if role not in ["client", "walker"]:
+        role = "client"
+
+    redirect_base = "/passeador" if role == "walker" else "/"
+
     if error:
-        return RedirectResponse(f"/?google_error={quote(error)}")
+        return RedirectResponse(f"{redirect_base}?google_error={quote(error)}")
     if not code:
-        return RedirectResponse("/?google_error=missing_code")
+        return RedirectResponse(f"{redirect_base}?google_error=missing_code")
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
-        return RedirectResponse("/?google_error=google_not_configured")
+        return RedirectResponse(f"{redirect_base}?google_error=google_not_configured")
 
     try:
         token_res = requests.post(
@@ -1001,7 +1018,7 @@ def google_callback(code: str = "", error: str = "", db: Session = Depends(get_d
         token_data = token_res.json()
         if token_res.status_code >= 400 or not token_data.get("access_token"):
             print("[GOOGLE LOGIN ERROR] token", token_data)
-            return RedirectResponse("/?google_error=token_error")
+            return RedirectResponse(f"{redirect_base}?google_error=token_error")
 
         user_res = requests.get(
             "https://www.googleapis.com/oauth2/v3/userinfo",
@@ -1011,7 +1028,7 @@ def google_callback(code: str = "", error: str = "", db: Session = Depends(get_d
         google_user = user_res.json()
         if user_res.status_code >= 400 or not google_user.get("email"):
             print("[GOOGLE LOGIN ERROR] userinfo", google_user)
-            return RedirectResponse("/?google_error=userinfo_error")
+            return RedirectResponse(f"{redirect_base}?google_error=userinfo_error")
 
         email = str(google_user.get("email") or "").strip().lower()
         full_name = str(google_user.get("name") or email.split("@", 1)[0]).strip()
@@ -1023,7 +1040,7 @@ def google_callback(code: str = "", error: str = "", db: Session = Depends(get_d
                 full_name=full_name,
                 email=email,
                 password_hash=hash_password(secrets.token_urlsafe(24)),
-                role="client",
+                role=role,
                 photo=photo,
                 active=True,
                 email_verified=True,
@@ -1032,6 +1049,8 @@ def google_callback(code: str = "", error: str = "", db: Session = Depends(get_d
             )
             db.add(user)
         else:
+            # Mantém o papel já existente para não transformar cliente em passeador sem querer.
+            # Se o usuário já existir com outro papel, ele será redirecionado e o frontend bloqueará o acesso errado.
             user.full_name = user.full_name or full_name
             if photo and not user.photo:
                 user.photo = photo
@@ -1041,16 +1060,18 @@ def google_callback(code: str = "", error: str = "", db: Session = Depends(get_d
 
         db.commit()
         db.refresh(user)
-        return RedirectResponse(f"/?google_user_id={user.id}")
+
+        redirect_base = "/passeador" if user.role == "walker" else "/"
+        return RedirectResponse(f"{redirect_base}?google_user_id={user.id}")
     except Exception as e:
         print("[GOOGLE LOGIN ERROR]", str(e))
-        return RedirectResponse("/?google_error=server_error")
+        return RedirectResponse(f"{redirect_base}?google_error=server_error")
 
 
 @app.get("/api/auth/google/session/{user_id}")
 def google_session(user_id: int, db: Session = Depends(get_db)):
     user = db.get(User, user_id)
-    if not user or user.role != "client":
+    if not user:
         raise HTTPException(status_code=404, detail="Usuário Google não encontrado")
     return user_to_dict(user)
 
