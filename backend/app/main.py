@@ -25,6 +25,7 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 ASAAS_ENV = os.getenv("ASAAS_ENV", "production").strip().lower()
 ASAAS_API_KEY = os.getenv("ASAAS_API_KEY", "").strip()
 ASAAS_WEBHOOK_TOKEN = os.getenv("ASAAS_WEBHOOK_TOKEN", "").strip()
+ASAAS_DEFAULT_CPF_CNPJ = os.getenv("ASAAS_DEFAULT_CPF_CNPJ", "").strip()
 ASAAS_BASE_URL = os.getenv("ASAAS_BASE_URL", "https://api.asaas.com/v3").strip().rstrip("/")
 if ASAAS_ENV in {"sandbox", "test", "testing"} and "asaas.com" in ASAAS_BASE_URL and "sandbox" not in ASAAS_BASE_URL:
     ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
@@ -35,6 +36,11 @@ SMTP_USER = os.getenv("SMTP_USER", "").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER).strip()
 SMTP_USE_TLS = str(os.getenv("SMTP_USE_TLS", "true")).lower() in ["1", "true", "yes", "sim"]
+
+# E-mail por API HTTP (recomendado no Render).
+# O SMTP pode falhar no Render com [Errno 101] Network is unreachable.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+EMAIL_FROM = os.getenv("EMAIL_FROM", "AmigoPet <onboarding@resend.dev>").strip()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -314,12 +320,58 @@ def pet_to_dict(p: Pet):
 
 
 def send_email_message(to_email: str, subject: str, body: str) -> bool:
-    """Envia e-mail usando SMTP configurado no Render.
-    Variáveis esperadas:
-    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
+    """Envia e-mail de recuperação.
+
+    Prioridade:
+    1) Resend por HTTPS (RESEND_API_KEY + EMAIL_FROM) — recomendado no Render.
+    2) SMTP antigo como fallback, se configurado.
+
+    Variáveis Resend:
+    RESEND_API_KEY=re_...
+    EMAIL_FROM=AmigoPet <onboarding@resend.dev>  # teste
     """
+    # 1) Resend por HTTP/HTTPS: evita bloqueios/erros de SMTP no Render.
+    if RESEND_API_KEY:
+        payload = {
+            "from": EMAIL_FROM or "AmigoPet <onboarding@resend.dev>",
+            "to": [to_email],
+            "subject": subject,
+            "text": body,
+        }
+        try:
+            res = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=payload,
+                timeout=30,
+            )
+            if 200 <= res.status_code < 300:
+                print("[RESEND OK] E-mail enviado para", to_email)
+                return True
+
+            try:
+                err_data = res.json()
+            except Exception:
+                err_data = {"raw": (res.text or "").strip()}
+
+            print("[RESEND ERROR]", {
+                "status_code": res.status_code,
+                "response": err_data,
+                "from": payload["from"],
+                "to": to_email,
+            })
+            return False
+        except Exception as e:
+            print("[RESEND ERROR]", str(e))
+            return False
+
+    # 2) Fallback SMTP antigo.
     if not SMTP_HOST or not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM:
-        print("[SMTP WARNING] SMTP não configurado. E-mail não enviado.")
+        print("[SMTP WARNING] SMTP não configurado e RESEND_API_KEY ausente. E-mail não enviado.")
         return False
 
     msg = EmailMessage()
@@ -334,11 +386,11 @@ def send_email_message(to_email: str, subject: str, body: str) -> bool:
                 server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
+        print("[SMTP OK] E-mail enviado para", to_email)
         return True
     except Exception as e:
         print("[SMTP ERROR]", str(e))
         return False
-
 
 def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
@@ -453,8 +505,18 @@ def create_asaas_customer(walk: WalkRequest) -> str:
         customer_payload["mobilePhone"] = phone
 
     cpf_cnpj = _only_digits(getattr(walk.client, "document", ""))
+    if len(cpf_cnpj) not in (11, 14):
+        # Produção do Asaas exige CPF/CNPJ para criar cobrança PIX.
+        # Use o CPF/CNPJ salvo no cadastro do cliente. Para testes internos,
+        # também é possível configurar ASAAS_DEFAULT_CPF_CNPJ no Render.
+        cpf_cnpj = _only_digits(ASAAS_DEFAULT_CPF_CNPJ)
     if len(cpf_cnpj) in (11, 14):
         customer_payload["cpfCnpj"] = cpf_cnpj
+    else:
+        raise RuntimeError(
+            "Cliente sem CPF/CNPJ válido. Informe o CPF/CNPJ no cadastro do cliente "
+            "ou configure ASAAS_DEFAULT_CPF_CNPJ no Render para testes."
+        )
 
     # Não enviamos Idempotency-Key aqui. Ela é opcional no Asaas e estava causando
     # recusas/intermitências. Para o fluxo atual do AmigoPet, criar um customer por
@@ -468,6 +530,16 @@ def create_asaas_customer(walk: WalkRequest) -> str:
     data = _asaas_response_data(res)
 
     if res.status_code >= 400:
+        print("[ASAAS CUSTOMER DEBUG V3]", {
+            "url": f"{ASAAS_BASE_URL}/customers",
+            "status_code": res.status_code,
+            "reason": getattr(res, "reason", ""),
+            "response_text": (res.text or "")[:1000],
+            "payload_keys": list(customer_payload.keys()),
+            "api_key_prefix": ASAAS_API_KEY[:12] if ASAAS_API_KEY else "",
+            "env": ASAAS_ENV,
+            "base_url": ASAAS_BASE_URL,
+        })
         raise RuntimeError(f"Asaas recusou criação do cliente: {data}")
 
     customer_id = data.get("id")
@@ -1130,9 +1202,13 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
             db.rollback()
             walk = db.get(WalkRequest, walk.id)
             if walk:
-                walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
-                walk.mp_status = "mp_error"
-                walk.mp_status_detail = str(mp_error)[:120]
+                # Não gerar PIX simulado quando o Asaas falhar. Assim o cliente não copia
+                # um código inválido e o erro real aparece no card do pedido/admin.
+                walk.pix_code = ""
+                walk.mp_qr_code_base64 = ""
+                walk.mp_ticket_url = ""
+                walk.mp_status = "asaas_error"
+                walk.mp_status_detail = str(mp_error)[:240]
                 db.commit()
                 db.refresh(walk)
             print("[ASAAS PIX ERROR]", str(mp_error))
