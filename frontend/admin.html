@@ -128,6 +128,17 @@
         <button type="button" onclick="savePricing()">Salvar valores</button>
         <div id="pricingAdminStatus" class="notice">Carregando valores...</div>
       </div>
+
+      <div class="admin-card" style="margin-top:18px;">
+        <h2>Repasse do passeador</h2>
+        <p class="muted">Defina a porcentagem automática que ficará para o passeador e para a plataforma AmigoPet.</p>
+        <div class="form-grid">
+          <input id="walkerPercent" type="number" min="0" max="100" step="0.01" placeholder="% do passeador" />
+          <input id="platformPercent" type="number" min="0" max="100" step="0.01" placeholder="% da plataforma" />
+        </div>
+        <button type="button" onclick="savePayoutSettings()">Salvar porcentagens</button>
+        <div id="payoutAdminStatus" class="notice">Carregando porcentagens...</div>
+      </div>
     </section>
   </main>
 
@@ -139,6 +150,7 @@
     let users = [];
     let walks = [];
     let pricing = null;
+    let payout = null;
 
     function $(id){ return document.getElementById(id); }
     function money(v){ return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
@@ -196,14 +208,15 @@
     async function refreshAdmin(){
       if(!adminUser) return;
       try{
-        const [allUsers, allWalks, priceData] = await Promise.all([api('/api/users'), api('/api/walks'), api('/api/pricing')]);
+        const [allUsers, allWalks, priceData, payoutData] = await Promise.all([api('/api/users'), api('/api/walks'), api('/api/pricing'), api('/api/admin/payout-settings')]);
         users = allUsers || [];
         walks = allWalks || [];
         pricing = priceData || {};
+        payout = payoutData || {};
         renderAll();
       }catch(e){ toast(e.message); }
     }
-    function renderAll(){ renderMetrics(); renderUsers(); renderOrders(); renderPayments(); renderPricing(); }
+    function renderAll(){ renderMetrics(); renderUsers(); renderOrders(); renderPayments(); renderPricing(); renderPayoutSettings(); }
     function renderMetrics(){
       const clients = users.filter(u=>u.role==='client');
       const walkers = users.filter(u=>u.role==='walker');
@@ -248,6 +261,26 @@
         pricing = await api('/api/admin/pricing', {method:'POST', body:JSON.stringify(body)});
         toast('Valores salvos');
         renderPricing();
+      }catch(e){ toast(e.message); }
+    }
+    function renderPayoutSettings(){
+      if(!payout) return;
+      $('walkerPercent').value = payout.walker_percent ?? '';
+      $('platformPercent').value = payout.platform_percent ?? '';
+      $('payoutAdminStatus').textContent = `Repasse atual: passeador ${Number(payout.walker_percent||0).toFixed(2)}% • plataforma ${Number(payout.platform_percent||0).toFixed(2)}%`;
+    }
+    async function savePayoutSettings(){
+      try{
+        const body = {
+          walker_percent: Number($('walkerPercent').value || 0),
+          platform_percent: Number($('platformPercent').value || 0)
+        };
+        if(Math.round((body.walker_percent + body.platform_percent) * 100) / 100 !== 100){
+          throw new Error('A soma das porcentagens precisa ser 100%.');
+        }
+        payout = await api('/api/admin/payout-settings', {method:'POST', body:JSON.stringify(body)});
+        toast('Porcentagens de repasse salvas');
+        renderPayoutSettings();
       }catch(e){ toast(e.message); }
     }
     function connectWS(){
