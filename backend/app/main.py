@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 import requests
 import smtplib
 from email.message import EmailMessage
+from urllib.parse import urlencode, quote
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -30,12 +31,22 @@ ASAAS_BASE_URL = os.getenv("ASAAS_BASE_URL", "https://api.asaas.com/v3").strip()
 if ASAAS_ENV in {"sandbox", "test", "testing"} and "asaas.com" in ASAAS_BASE_URL and "sandbox" not in ASAAS_BASE_URL:
     ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+if not GOOGLE_REDIRECT_URI and PUBLIC_BASE_URL:
+    GOOGLE_REDIRECT_URI = f"{PUBLIC_BASE_URL}/api/auth/google/callback"
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
 SMTP_USER = os.getenv("SMTP_USER", "").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER).strip()
 SMTP_USE_TLS = str(os.getenv("SMTP_USE_TLS", "true")).lower() in ["1", "true", "yes", "sim"]
+
+# E-mail por API HTTP (recomendado no Render).
+# O SMTP pode falhar no Render com [Errno 101] Network is unreachable.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+EMAIL_FROM = os.getenv("EMAIL_FROM", "AmigoPet <onboarding@resend.dev>").strip()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -65,6 +76,10 @@ class User(Base):
     phone = Column(String(30), default="")
     photo = Column(Text, default="")
     document = Column(String(40), default="")
+    pix_key_type = Column(String(30), default="")
+    pix_key = Column(String(180), default="")
+    pix_holder_name = Column(String(160), default="")
+    pix_holder_document = Column(String(40), default="")
     address = Column(Text, default="")
     neighborhood = Column(String(120), default="")
     city = Column(String(120), default="")
@@ -155,6 +170,10 @@ class RegisterIn(BaseModel):
     phone: str = ""
     photo: str = ""
     document: str = ""
+    pix_key_type: str = ""
+    pix_key: str = ""
+    pix_holder_name: str = ""
+    pix_holder_document: str = ""
     address: str = ""
     neighborhood: str = ""
     city: str = ""
@@ -193,6 +212,10 @@ class WalkerUpdateIn(BaseModel):
     phone: str = ""
     photo: str = ""
     document: str = ""
+    pix_key_type: str = ""
+    pix_key: str = ""
+    pix_holder_name: str = ""
+    pix_holder_document: str = ""
     neighborhood: str = ""
     city: str = ""
     bio: str = ""
@@ -225,6 +248,10 @@ class PricingIn(BaseModel):
     price_60: float = 46.0
     extra_dog: float = 9.0
 
+class PayoutSettingsIn(BaseModel):
+    walker_percent: float = 80.0
+    platform_percent: float = 20.0
+
 class MessageIn(BaseModel):
     request_id: int
     sender_id: int
@@ -233,10 +260,6 @@ class MessageIn(BaseModel):
 class LocationIn(BaseModel):
     lat: float
     lng: float
-
-class GoogleAndroidLoginIn(BaseModel):
-    id_token: str
-    role: str = "client"
 
 class ConnectionManager:
     def __init__(self):
@@ -297,6 +320,10 @@ def user_to_dict(u: User):
     return {
         "id": u.id, "full_name": u.full_name, "email": u.email, "role": u.role,
         "phone": u.phone, "photo": u.photo, "document": u.document, "address": u.address,
+        "pix_key_type": getattr(u, "pix_key_type", "") or "",
+        "pix_key": getattr(u, "pix_key", "") or "",
+        "pix_holder_name": getattr(u, "pix_holder_name", "") or "",
+        "pix_holder_document": getattr(u, "pix_holder_document", "") or "",
         "neighborhood": u.neighborhood, "city": u.city, "lat": u.lat, "lng": u.lng,
         "rating": u.rating, "available": u.available, "bio": u.bio,
         "zip_code": u.zip_code, "street": u.street, "number": u.number,
@@ -319,12 +346,58 @@ def pet_to_dict(p: Pet):
 
 
 def send_email_message(to_email: str, subject: str, body: str) -> bool:
-    """Envia e-mail usando SMTP configurado no Render.
-    Variáveis esperadas:
-    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS
+    """Envia e-mail de recuperação.
+
+    Prioridade:
+    1) Resend por HTTPS (RESEND_API_KEY + EMAIL_FROM) — recomendado no Render.
+    2) SMTP antigo como fallback, se configurado.
+
+    Variáveis Resend:
+    RESEND_API_KEY=re_...
+    EMAIL_FROM=AmigoPet <onboarding@resend.dev>  # teste
     """
+    # 1) Resend por HTTP/HTTPS: evita bloqueios/erros de SMTP no Render.
+    if RESEND_API_KEY:
+        payload = {
+            "from": EMAIL_FROM or "AmigoPet <onboarding@resend.dev>",
+            "to": [to_email],
+            "subject": subject,
+            "text": body,
+        }
+        try:
+            res = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=payload,
+                timeout=30,
+            )
+            if 200 <= res.status_code < 300:
+                print("[RESEND OK] E-mail enviado para", to_email)
+                return True
+
+            try:
+                err_data = res.json()
+            except Exception:
+                err_data = {"raw": (res.text or "").strip()}
+
+            print("[RESEND ERROR]", {
+                "status_code": res.status_code,
+                "response": err_data,
+                "from": payload["from"],
+                "to": to_email,
+            })
+            return False
+        except Exception as e:
+            print("[RESEND ERROR]", str(e))
+            return False
+
+    # 2) Fallback SMTP antigo.
     if not SMTP_HOST or not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM:
-        print("[SMTP WARNING] SMTP não configurado. E-mail não enviado.")
+        print("[SMTP WARNING] SMTP não configurado e RESEND_API_KEY ausente. E-mail não enviado.")
         return False
 
     msg = EmailMessage()
@@ -339,11 +412,11 @@ def send_email_message(to_email: str, subject: str, body: str) -> bool:
                 server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
+        print("[SMTP OK] E-mail enviado para", to_email)
         return True
     except Exception as e:
         print("[SMTP ERROR]", str(e))
         return False
-
 
 def make_pix_code(walk_id: int, amount: float) -> str:
     token = secrets.token_hex(8).upper()
@@ -354,6 +427,11 @@ DEFAULT_PRICING = {
     "price_45": 38.0,
     "price_60": 46.0,
     "extra_dog": 9.0,
+}
+
+DEFAULT_PAYOUT = {
+    "walker_percent": 80.0,
+    "platform_percent": 20.0,
 }
 
 def get_setting(db: Session, key: str, default: str = "") -> str:
@@ -377,6 +455,20 @@ def get_pricing_config(db: Session) -> dict:
             config[key] = default
     return config
 
+def get_payout_config(db: Session) -> dict:
+    config = {}
+    for key, default in DEFAULT_PAYOUT.items():
+        try:
+            value = float(get_setting(db, key, str(default)))
+        except Exception:
+            value = default
+        config[key] = round(max(0.0, min(100.0, value)), 2)
+
+    total = round(config["walker_percent"] + config["platform_percent"], 2)
+    if total != 100.0:
+        config["platform_percent"] = round(100.0 - config["walker_percent"], 2)
+    return config
+
 def calculate_walk_price(db: Session, duration_minutes: int, dogs_count: int) -> float:
     pricing = get_pricing_config(db)
     duration = int(duration_minutes or 30)
@@ -393,6 +485,16 @@ def seed_pricing_settings():
     db = SessionLocal()
     try:
         for key, value in DEFAULT_PRICING.items():
+            if not db.get(AppSetting, key):
+                db.add(AppSetting(key=key, value=str(value)))
+        db.commit()
+    finally:
+        db.close()
+
+def seed_payout_settings():
+    db = SessionLocal()
+    try:
+        for key, value in DEFAULT_PAYOUT.items():
             if not db.get(AppSetting, key):
                 db.add(AppSetting(key=key, value=str(value)))
         db.commit()
@@ -701,6 +803,10 @@ def run_lightweight_migrations():
             ("phone", "VARCHAR(30) DEFAULT ''"),
             ("photo", "TEXT DEFAULT ''"),
             ("document", "VARCHAR(40) DEFAULT ''"),
+            ("pix_key_type", "VARCHAR(30) DEFAULT ''"),
+            ("pix_key", "VARCHAR(180) DEFAULT ''"),
+            ("pix_holder_name", "VARCHAR(160) DEFAULT ''"),
+            ("pix_holder_document", "VARCHAR(40) DEFAULT ''"),
             ("address", "TEXT DEFAULT ''"),
             ("neighborhood", "VARCHAR(120) DEFAULT ''"),
             ("city", "VARCHAR(120) DEFAULT ''"),
@@ -875,6 +981,7 @@ def run_lightweight_migrations():
 run_lightweight_migrations()
 seed_data()
 seed_pricing_settings()
+seed_payout_settings()
 
 
 @app.websocket("/ws")
@@ -905,6 +1012,121 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    return user_to_dict(user)
+
+
+
+@app.get("/api/auth/google/login")
+def google_login():
+    return google_login_role("client")
+
+
+@app.get("/api/auth/google/login/{role}")
+def google_login_role(role: str):
+    role = (role or "client").strip().lower()
+    if role not in ["client", "walker"]:
+        role = "client"
+
+    if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID ou GOOGLE_REDIRECT_URI não configurado no Render")
+
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+        "state": role,
+    }
+    return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
+
+
+@app.get("/api/auth/google/callback")
+def google_callback(code: str = "", error: str = "", state: str = "client", db: Session = Depends(get_db)):
+    role = (state or "client").strip().lower()
+    if role not in ["client", "walker"]:
+        role = "client"
+
+    redirect_base = "/passeador" if role == "walker" else "/"
+
+    if error:
+        return RedirectResponse(f"{redirect_base}?google_error={quote(error)}")
+    if not code:
+        return RedirectResponse(f"{redirect_base}?google_error=missing_code")
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
+        return RedirectResponse(f"{redirect_base}?google_error=google_not_configured")
+
+    try:
+        token_res = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+            timeout=30,
+        )
+        token_data = token_res.json()
+        if token_res.status_code >= 400 or not token_data.get("access_token"):
+            print("[GOOGLE LOGIN ERROR] token", token_data)
+            return RedirectResponse(f"{redirect_base}?google_error=token_error")
+
+        user_res = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+            timeout=30,
+        )
+        google_user = user_res.json()
+        if user_res.status_code >= 400 or not google_user.get("email"):
+            print("[GOOGLE LOGIN ERROR] userinfo", google_user)
+            return RedirectResponse(f"{redirect_base}?google_error=userinfo_error")
+
+        email = str(google_user.get("email") or "").strip().lower()
+        full_name = str(google_user.get("name") or email.split("@", 1)[0]).strip()
+        photo = str(google_user.get("picture") or "").strip()
+
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(
+                full_name=full_name,
+                email=email,
+                password_hash=hash_password(secrets.token_urlsafe(24)),
+                role=role,
+                photo=photo,
+                active=True,
+                email_verified=True,
+                phone_verified=True,
+                verified_at=datetime.utcnow(),
+            )
+            db.add(user)
+        else:
+            # Mantém o papel já existente para não transformar cliente em passeador sem querer.
+            # Se o usuário já existir com outro papel, ele será redirecionado e o frontend bloqueará o acesso errado.
+            user.full_name = user.full_name or full_name
+            if photo and not user.photo:
+                user.photo = photo
+            user.email_verified = True
+            user.active = True
+            user.verified_at = user.verified_at or datetime.utcnow()
+
+        db.commit()
+        db.refresh(user)
+
+        redirect_base = "/passeador" if user.role == "walker" else "/"
+        return RedirectResponse(f"{redirect_base}?google_user_id={user.id}")
+    except Exception as e:
+        print("[GOOGLE LOGIN ERROR]", str(e))
+        return RedirectResponse(f"{redirect_base}?google_error=server_error")
+
+
+@app.get("/api/auth/google/session/{user_id}")
+def google_session(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário Google não encontrado")
     return user_to_dict(user)
 
 
@@ -1034,7 +1256,11 @@ def update_walker_profile(user_id: int, data: WalkerUpdateIn, db: Session = Depe
     if not str(payload.get("full_name", "")).strip():
         raise HTTPException(status_code=400, detail="Informe o nome do passeador")
 
-    allowed = ["full_name", "phone", "photo", "document", "neighborhood", "city", "bio"]
+    allowed = [
+        "full_name", "phone", "photo", "document",
+        "pix_key_type", "pix_key", "pix_holder_name", "pix_holder_document",
+        "neighborhood", "city", "bio"
+    ]
     for key in allowed:
         if hasattr(user, key):
             value = payload.get(key, "")
@@ -1088,6 +1314,27 @@ def update_pricing(data: PricingIn, db: Session = Depends(get_db)):
         set_setting(db, key, str(round(value, 2)))
     db.commit()
     return get_pricing_config(db)
+
+@app.get("/api/admin/payout-settings")
+def get_payout_settings(db: Session = Depends(get_db)):
+    return get_payout_config(db)
+
+@app.post("/api/admin/payout-settings")
+def update_payout_settings(data: PayoutSettingsIn, db: Session = Depends(get_db)):
+    walker_percent = float(data.walker_percent or 0)
+    platform_percent = float(data.platform_percent or 0)
+
+    if walker_percent < 0 or platform_percent < 0:
+        raise HTTPException(status_code=400, detail="Percentuais não podem ser negativos")
+
+    total = round(walker_percent + platform_percent, 2)
+    if total != 100.0:
+        raise HTTPException(status_code=400, detail="A soma dos percentuais precisa ser 100%")
+
+    set_setting(db, "walker_percent", str(round(walker_percent, 2)))
+    set_setting(db, "platform_percent", str(round(platform_percent, 2)))
+    db.commit()
+    return get_payout_config(db)
 
 @app.get("/api/walks")
 def walks(status: Optional[str] = None, db: Session = Depends(get_db)):
@@ -1394,3 +1641,4 @@ def index():
     return FileResponse(FRONTEND_DIR / "index.html")
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+# resend-force-deploy
