@@ -89,6 +89,20 @@
             <input id="registerWalkerPassword" placeholder="Senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
             <input id="registerWalkerPhone" placeholder="Telefone / WhatsApp" />
             <input id="registerWalkerDocument" placeholder="CPF ou documento" />
+
+            <h4>Dados para recebimento automático</h4>
+            <select id="registerWalkerPixType">
+              <option value="">Tipo da chave PIX</option>
+              <option value="cpf">CPF</option>
+              <option value="cnpj">CNPJ</option>
+              <option value="email">E-mail</option>
+              <option value="phone">Telefone</option>
+              <option value="random">Chave aleatória</option>
+            </select>
+            <input id="registerWalkerPixKey" placeholder="Chave PIX do passeador" />
+            <input id="registerWalkerPixHolderName" placeholder="Nome do titular da chave PIX" />
+            <input id="registerWalkerPixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
+
             <input id="registerWalkerNeighborhood" placeholder="Bairro de atendimento" />
             <input id="registerWalkerCity" placeholder="Cidade" />
             <textarea id="registerWalkerBio" placeholder="Resumo profissional, experiência com pets, disponibilidade e cuidados especiais"></textarea>
@@ -161,6 +175,20 @@
           <input id="profileFullName" placeholder="Nome completo" />
           <input id="profilePhone" placeholder="Telefone" />
           <input id="profileDocument" placeholder="Documento / CPF" />
+
+          <h4>Dados para recebimento automático</h4>
+          <select id="profilePixType">
+            <option value="">Tipo da chave PIX</option>
+            <option value="cpf">CPF</option>
+            <option value="cnpj">CNPJ</option>
+            <option value="email">E-mail</option>
+            <option value="phone">Telefone</option>
+            <option value="random">Chave aleatória</option>
+          </select>
+          <input id="profilePixKey" placeholder="Chave PIX do passeador" />
+          <input id="profilePixHolderName" placeholder="Nome do titular da chave PIX" />
+          <input id="profilePixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
+
           <input id="profileNeighborhood" placeholder="Bairro" />
           <input id="profileCity" placeholder="Cidade" />
           <textarea id="profileBio" placeholder="Resumo profissional, experiência, cuidados especiais"></textarea>
@@ -211,7 +239,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-perfil-v1"></script>
-  <script src="/static/pwa.js?v=walker-perfil-v1"></script>
+  <script src="/static/walker.js?v=walker-pix-v1"></script>
+  <script src="/static/pwa.js?v=walker-pix-v1"></script>
 </body>
 </html>

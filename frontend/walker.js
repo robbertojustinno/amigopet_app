@@ -157,6 +157,10 @@ function fillProfileForm(){
     profileFullName: currentUser.full_name || '',
     profilePhone: currentUser.phone || '',
     profileDocument: currentUser.document || '',
+    profilePixType: currentUser.pix_key_type || '',
+    profilePixKey: currentUser.pix_key || '',
+    profilePixHolderName: currentUser.pix_holder_name || '',
+    profilePixHolderDocument: currentUser.pix_holder_document || '',
     profileNeighborhood: currentUser.neighborhood || '',
     profileCity: currentUser.city || '',
     profileBio: currentUser.bio || ''
@@ -175,6 +179,8 @@ function renderProfilePreview(){
   const city = $('profileCity')?.value || currentUser.city || '-';
   const neighborhood = $('profileNeighborhood')?.value || currentUser.neighborhood || '-';
   const bio = $('profileBio')?.value || currentUser.bio || 'Passeador disponível.';
+  const pixType = $('profilePixType')?.value || currentUser.pix_key_type || '';
+  const pixKey = $('profilePixKey')?.value || currentUser.pix_key || '';
   const photo = walkerPhotoData || currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`;
   box.innerHTML = `
     <div class="item-head">
@@ -186,6 +192,7 @@ function renderProfilePreview(){
       </div>
     </div>
     <p>Telefone: ${phone}</p>
+    <p>PIX: ${pixType && pixKey ? `${pixType} • ${pixKey}` : 'Dados PIX não preenchidos'}</p>
     <p class="muted">${bio}</p>
   `;
   const preview = $('profilePhotoPreview');
@@ -195,7 +202,7 @@ function renderProfilePreview(){
 }
 
 function bindProfileForm(){
-  ['profileFullName','profilePhone','profileDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
+  ['profileFullName','profilePhone','profileDocument','profilePixType','profilePixKey','profilePixHolderName','profilePixHolderDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener('input', renderProfilePreview);
   });
@@ -221,6 +228,10 @@ async function saveWalkerProfile(){
       full_name: $('profileFullName').value.trim(),
       phone: $('profilePhone').value.trim(),
       document: $('profileDocument').value.trim(),
+      pix_key_type: $('profilePixType')?.value?.trim() || '',
+      pix_key: $('profilePixKey')?.value?.trim() || '',
+      pix_holder_name: $('profilePixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('profilePixHolderDocument')?.value?.trim() || '',
       neighborhood: $('profileNeighborhood').value.trim(),
       city: $('profileCity').value.trim(),
       bio: $('profileBio').value.trim(),
@@ -274,6 +285,10 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
+      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
+      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
+      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -286,6 +301,10 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
+      ['pix_key_type','tipo da chave PIX'],
+      ['pix_key','chave PIX'],
+      ['pix_holder_name','nome do titular da chave PIX'],
+      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -406,6 +425,10 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
+      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
+      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
+      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -418,6 +441,10 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
+      ['pix_key_type','tipo da chave PIX'],
+      ['pix_key','chave PIX'],
+      ['pix_holder_name','nome do titular da chave PIX'],
+      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
