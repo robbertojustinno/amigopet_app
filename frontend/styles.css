@@ -1,11 +1,39 @@
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;background:#eef5f8;color:#0f172a}button,input,select,textarea{font:inherit}button{border:0;background:#0f766e;color:white;border-radius:14px;padding:12px 16px;font-weight:900;cursor:pointer;box-shadow:0 12px 24px rgba(15,118,110,.18)}button:hover{filter:brightness(.96)}button.secondary{background:#334155}.ghost{background:#e2e8f0;color:#0f172a;box-shadow:none}.warn{background:#d97706}.ok{background:#16a34a}.danger{background:#dc2626}.full{width:100%;margin:7px 0}input,select,textarea{width:100%;border:1px solid #d5e1ec;border-radius:14px;padding:12px;margin:7px 0;background:white}textarea{min-height:92px;resize:vertical}label{display:block;font-weight:900;color:#334155;margin-top:8px}#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 28px);background:#0f172a;color:white;padding:12px 18px;border-radius:999px;font-weight:900;box-shadow:0 18px 45px rgba(15,23,42,.25);display:none;z-index:99;text-align:center}.hidden{display:none!important}.app-header{display:flex;align-items:center;gap:14px;padding:16px 22px;background:white;border-bottom:1px solid #dbe4ef}.brand-mark{width:62px;height:62px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#16a34a,#06b6d4);font-size:30px;box-shadow:0 16px 32px rgba(15,118,110,.18)}.app-header h1{margin:0;font-size:30px;line-height:1.05}.app-header p{margin:5px 0 0;color:#64748b}.profile-chip{margin-left:auto;display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid #dbe4ef;border-radius:999px;padding:8px 12px}.profile-chip img{width:42px;height:42px;border-radius:999px;object-fit:cover}.profile-chip strong{display:block}.profile-chip small{color:#64748b}.nav{display:flex;gap:8px;overflow:auto;background:white;padding:12px 18px;box-shadow:0 10px 28px rgba(15,23,42,.08);position:sticky;top:0;z-index:10}.nav-btn{background:#e2e8f0;color:#0f172a;box-shadow:none;white-space:nowrap;padding:10px 15px;border-radius:14px}.nav-btn.active{background:#0f766e;color:white}.logout-btn{margin-left:auto;background:#991b1b!important;color:white!important}main{max-width:1220px;margin:0 auto;padding:22px}.view{display:none}.view.active{display:block}.grid{display:grid;gap:18px}.grid.two{grid-template-columns:1.05fr .95fr}.card,.hero-card,.auth-card{background:white;border:1px solid #e5edf5;border-radius:28px;padding:22px;box-shadow:0 18px 45px rgba(15,23,42,.08)}.hero-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:22px;align-items:start}.eyebrow{display:inline-flex;background:#dcfce7;color:#166534;font-weight:900;padding:10px 16px;border-radius:999px;margin-bottom:16px}.hero-card h2{font-size:48px;line-height:1.02;letter-spacing:-1.3px;margin:0 0 14px}.hero-card p{font-size:21px;line-height:1.35;color:#64748b}.feature-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}.feature-row div,.benefit-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:22px;padding:16px;min-height:125px}.feature-row b{font-size:30px;display:block}.feature-row strong{display:block;font-size:18px}.feature-row small{color:#64748b}.tabs{display:flex;gap:8px;background:#f8fafc;border-radius:18px;padding:6px;margin-bottom:12px}.tab{flex:1;background:transparent;color:#334155;box-shadow:none;padding:10px;border-radius:14px}.tab.active{background:#0f766e;color:white}.auth-panel{display:none}.auth-panel.active{display:block}.auth-card h3{font-size:28px;margin:6px 0}.auth-card p{color:#64748b;margin:0 0 12px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}.photo-preview-wrap{display:flex;align-items:center;gap:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:18px;padding:10px;margin:8px 0 12px}.photo-preview{width:78px;height:78px;border-radius:18px;object-fit:cover;border:3px solid white;box-shadow:0 10px 22px rgba(15,23,42,.14)}.notice{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:18px;padding:14px;color:#334155;margin-top:10px}.dev-code{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:16px;padding:12px;margin-top:10px;font-weight:900}.page-title h2{font-size:34px;margin:0 0 4px}.page-title p{margin:0 0 18px;color:#64748b}.profile-large{width:132px;height:132px;border-radius:30px;object-fit:cover;box-shadow:0 16px 36px rgba(15,23,42,.16);border:5px solid white}.details-box{margin-top:14px;line-height:1.65}.pet-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.pet-card{display:flex;gap:12px;align-items:center;border:1px solid #e2e8f0;border-radius:20px;padding:12px;background:#fbfdff}.pet-card img{width:72px;height:72px;object-fit:cover;border-radius:18px}.walker-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.walker-grid.compact{grid-template-columns:1fr}.walker-card{border:1px solid #e2e8f0;border-radius:22px;padding:14px;background:#fbfdff;display:grid;gap:7px}.avatar{width:52px;height:52px;border-radius:18px;background:#ccfbf1;display:grid;place-items:center;font-size:28px}.muted{color:#64748b}.item{border:1px solid #e2e8f0;border-radius:20px;padding:15px;margin:12px 0;background:#fff}.item-head{display:flex;justify-content:space-between;gap:14px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.actions button{padding:10px 12px;border-radius:12px}.badge{display:inline-block;border-radius:999px;padding:5px 9px;margin:2px;font-size:12px;font-weight:900;background:#e2e8f0;color:#0f172a}.badge.convite_enviado,.badge.aguardando{background:#fef3c7;color:#92400e}.badge.aceito,.badge.pago,.badge.em_andamento{background:#dcfce7;color:#166534}.badge.cancelado,.badge.recusado{background:#fee2e2;color:#991b1b}.badge.finalizado{background:#dbeafe;color:#1d4ed8}#map{height:520px;width:100%;border-radius:24px;border:1px solid #dbe4ef;overflow:hidden;background:#e2e8f0}.pin{display:grid;place-items:center;border-radius:999px;background:white;border:3px solid #0f766e;box-shadow:0 10px 22px rgba(0,0,0,.18);font-size:21px}.walker-pin{border-color:#0f766e}.home-pin{border-color:#2563eb}.map-fallback{height:100%;display:grid;place-items:center;font-weight:900;color:#475569}.chat-box{position:fixed;right:18px;bottom:18px;width:360px;max-width:calc(100vw - 36px);height:470px;background:white;border:1px solid #dbe4ef;border-radius:24px;box-shadow:0 24px 70px rgba(15,23,42,.22);display:none;overflow:hidden;z-index:20}.chat-box.open{display:flex;flex-direction:column}.chat-head{display:flex;justify-content:space-between;align-items:center;background:#0f172a;color:white;padding:14px 16px}.chat-head button{background:transparent;box-shadow:none;font-size:24px;padding:0}.chat-messages{flex:1;overflow:auto;padding:14px;background:#f8fafc}.bubble{background:#ccfbf1;border-radius:18px;padding:10px;margin:8px 0}.chat-send{display:flex;gap:8px;padding:10px;border-top:1px solid #e2e8f0}.chat-send input{margin:0}.chat-send button{border-radius:12px}pre{white-space:pre-wrap;word-break:break-word;background:#0f172a;color:#d1fae5;border-radius:18px;padding:14px}footer{text-align:center;color:#64748b;padding:28px}@media(max-width:980px){.hero-grid,.grid.two{grid-template-columns:1fr}.feature-row{grid-template-columns:1fr}.hero-card h2{font-size:38px}.hero-card p{font-size:19px}.profile-chip{margin-left:0}.app-header{flex-wrap:wrap}}@media(max-width:640px){.app-header{padding:14px 16px}.brand-mark{width:54px;height:54px}.app-header h1{font-size:27px}.app-header p{font-size:15px}.nav{padding:10px}.hero-card,.auth-card,.card{border-radius:22px;padding:16px}.hero-card h2{font-size:34px}.form-grid{grid-template-columns:1fr}main{padding:12px}.item-head{display:block}.actions button{flex:1;min-width:120px}#map{height:430px}.logout-btn{margin-left:0}}
 
-/* ===== AmigoPet identidade visual + login Google ===== */
-.brand-mark.image-mark{overflow:hidden;background:#0f766e;padding:0;box-shadow:0 16px 32px rgba(15,118,110,.18)}
-.brand-mark.image-mark img{width:100%;height:100%;object-fit:cover;display:block}
-.hero-banner-img{width:100%;max-height:330px;object-fit:cover;border-radius:26px;margin-bottom:18px;box-shadow:0 18px 45px rgba(15,23,42,.10);border:1px solid #dbe4ef;background:#dcfce7}
-.auth-card .tab[disabled]{opacity:.45;cursor:not-allowed}
-.auth-card .tab.hidden{display:none!important}
-.payment-confirmed-box{background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:16px;padding:12px;margin:10px 0;font-weight:900}
-.payment-waiting-box{background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:16px;padding:12px;margin:10px 0;font-weight:800}
-@media(max-width:640px){.hero-banner-img{max-height:230px;border-radius:22px}.app-header h1{font-size:26px}.app-header p{font-size:14px}.brand-mark.image-mark{width:58px;height:58px}}
+/* AmigoPet ajuste 17/06: banner sem corte e mapa no passeio atual */
+.hero-card img,
+.amigopet-banner,
+.hero-banner img,
+.login-banner img{
+  width:100%;
+  height:auto!important;
+  max-height:none!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  display:block;
+  border-radius:24px;
+}
+
+.hero-card:has(img){
+  overflow:visible;
+}
+
+.map-embedded{
+  height:360px!important;
+  min-height:320px;
+  margin-bottom:14px;
+}
+
+.map-status-card{
+  margin-top:14px;
+}
+
+@media(max-width:640px){
+  .map-embedded{height:330px!important;min-height:300px;}
+  .hero-card img,
+  .amigopet-banner,
+  .hero-banner img,
+  .login-banner img{
+    border-radius:18px;
+  }
+}

@@ -6,20 +6,20 @@
   <title>AmigoPet Passeador • ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/static/assets/amigopet-banner.png" />
+  <link rel="apple-touch-icon" href="/static/assets/logo.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=fluxo-pix-visual-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=walker-v1" />
 </head>
 <body>
   <div id="toast"></div>
 
   <header class="app-header">
-    <div class="brand-mark image-mark"><img src="/static/assets/amigopet-banner.png" alt="AmigoPet Passeador" /></div>
+    <div class="brand-mark">🐕</div>
     <div>
       <h1>AmigoPet Passeador</h1>
-      <p>Passeador • Aceite passeios, acompanhe pagamentos e envie localização em tempo real</p>
+      <p>Receba convites, aceite passeios e envie localização em tempo real</p>
     </div>
     <div id="profileChip" class="profile-chip hidden">
       <img id="profilePhoto" alt="Foto do passeador" />
@@ -43,10 +43,9 @@
     <section id="login" class="view active">
       <div class="hero-grid">
         <div class="hero-card">
-          <img class="hero-banner-img" src="/static/assets/amigopet-banner.png" alt="AmigoPet" />
           <span class="eyebrow">Aplicativo do passeador</span>
           <h2>Receba convites em tempo real e gerencie seus passeios.</h2>
-          <p>Receba pedidos pagos, aceite o passeio, envie sua localização e finalize com segurança.</p>
+          <p>Essa área é separada do cliente. O passeador pode aceitar, recusar, iniciar, finalizar e atualizar localização.</p>
           <div class="feature-row">
             <div><b>⚡</b><strong>Convite ao vivo</strong><small>WebSocket conectado.</small></div>
             <div><b>📍</b><strong>GPS do passeador</strong><small>Atualização para o cliente.</small></div>
@@ -54,20 +53,15 @@
           </div>
         </div>
 
-        <div class="auth-card" id="authCard">
-          <div class="tabs">
-            <button class="tab active" type="button">Google</button>
-            <button class="tab hidden" type="button" disabled>Criar conta</button>
-          </div>
-          <h3>Entrar com Google</h3>
-          <p>Use sua conta Google para acessar o AmigoPet Passeador com rapidez e segurança.</p>
-          <button class="full" type="button" onclick="loginWithGoogle()">🔵 Entrar com Google</button>
-          <div class="notice" style="margin-top:12px;">Após o pagamento do cliente ser confirmado, o botão Aceitar será liberado automaticamente.</div>
-          <button class="secondary full hidden" type="button" onclick="fillWalkerDemo()">Preencher conta teste</button>
-          <input class="hidden" id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
-          <input class="hidden" id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
+        <div class="auth-card">
+          <h3>Entrar como passeador</h3>
+          <p>Entre com sua conta Google para acessar como passeador.</p>
+          <button class="secondary full" type="button" onclick="fillWalkerDemo()">Preencher conta teste</button>
+          <input id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
+          <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
+          <button class="full" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
 
-          <button class="ghost full hidden" type="button" onclick="toggleWalkerForgotPassword()">Esqueci minha senha</button>
+          <button class="ghost full" type="button" onclick="toggleWalkerForgotPassword()">Esqueci minha senha</button>
 
           <div id="forgotWalkerPasswordBox" class="auth-panel hidden" style="margin-top:16px;">
             <h3>Recuperar senha</h3>
@@ -79,7 +73,7 @@
             <button class="full" type="button" onclick="confirmWalkerPasswordReset()">Alterar senha</button>
           </div>
 
-          <button class="ghost full hidden" type="button" onclick="toggleWalkerRegister()" disabled>Criar conta de passeador</button>
+          <button class="ghost full" type="button" onclick="toggleWalkerRegister()">Criar conta de passeador</button>
 
           <div id="registerWalkerBox" class="auth-panel hidden" style="margin-top:16px;">
             <h3>Criar conta de passeador</h3>
@@ -135,8 +129,9 @@
       </div>
       <div class="grid two">
         <div class="card">
-          <h3>Pedido em atendimento</h3>
-          <div id="currentWalk" class="notice">Nenhum passeio aceito ainda.</div>
+          <h3>Mapa do passeio</h3>
+          <div id="map" class="map-embedded"></div>
+          <div id="currentWalk" class="notice map-status-card">Nenhum passeio aceito ainda.</div>
         </div>
         <div class="card">
           <h3>Ações rápidas</h3>
@@ -185,16 +180,13 @@
     <section id="mapa" class="view">
       <div class="page-title">
         <h2>Mapa do passeio</h2>
-        <p>Visualização do cliente e do passeador.</p>
+        <p>O mapa principal agora fica em Passeio atual para facilitar o uso durante o atendimento.</p>
       </div>
-      <div class="grid two">
-        <div class="card">
-          <h3>Mapa em tempo real</h3>
-          <div id="map"></div>
-        </div>
-        <div class="card">
-          <h3>Resumo</h3>
-          <div id="mapSummary" class="notice">Nenhum passeio selecionado.</div>
+      <div class="card">
+        <h3>Resumo</h3>
+        <div id="mapSummary" class="notice">Nenhum passeio selecionado.</div>
+        <div class="actions">
+          <button type="button" onclick="showView('atual')">Abrir passeio atual</button>
         </div>
       </div>
     </section>

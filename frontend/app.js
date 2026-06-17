@@ -331,37 +331,6 @@ function takeCameraPhoto(){
 }
 
 
-function loginWithGoogle(){
-  window.location.href = API + '/api/auth/google/login/client';
-}
-
-async function handleGoogleLoginCallback(){
-  const params = new URLSearchParams(window.location.search);
-  const googleUserId = params.get('google_user_id');
-  const googleError = params.get('google_error');
-
-  if(googleError){
-    toast('Erro no login Google: ' + googleError);
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
-
-  if(!googleUserId) return;
-
-  try{
-    const user = await api(`/api/auth/google/session/${googleUserId}`);
-    currentUser = user;
-    clearSessions();
-    setLoggedUI();
-    await refreshAll();
-    toast('Login com Google realizado.');
-    window.history.replaceState({}, document.title, window.location.pathname);
-    showView('pet', true);
-  }catch(err){
-    toast(err.message || 'Não foi possível concluir o login com Google.');
-  }
-}
-
 function fillClientDemo(){
   $('loginEmail').value = 'cliente@amigopet.com';
   $('loginPassword').value = '123456';
@@ -1082,7 +1051,6 @@ function connectWS(){
 
 clearSessions();
 setLoggedUI();
-handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
 showView('home', true);
 connectWS();
@@ -1135,99 +1103,3 @@ async function loadPricing(){
     `;
   }
 }
-
-
-// ===== AmigoPet: bindings seguros para botões sem onclick =====
-// Este bloco evita que botões fiquem sem ação quando o HTML não tem onclick
-// ou quando o navegador/PWA carrega uma versão com handlers removidos.
-(function bindAmigoPetClientActions(){
-  function bindById(id, handler){
-    const el = document.getElementById(id);
-    if(el && !el.dataset.boundAmigopet){
-      el.dataset.boundAmigopet = '1';
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        handler();
-      });
-    }
-  }
-
-  function bindByText(textPart, handler){
-    const needle = String(textPart || '').toLowerCase();
-    document.querySelectorAll('button, a, [role="button"]').forEach(function(el){
-      const label = String(el.textContent || el.value || '').trim().toLowerCase();
-      if(label.includes(needle) && !el.dataset.boundAmigopet){
-        el.dataset.boundAmigopet = '1';
-        el.addEventListener('click', function(ev){
-          ev.preventDefault();
-          handler();
-        });
-      }
-    });
-  }
-
-  function bindAll(){
-    // Expõe funções para onclick antigo do HTML.
-    window.login = login;
-    window.loginWithGoogle = loginWithGoogle;
-    window.logout = logout;
-    window.registerClient = registerClient;
-    window.verifyCode = verifyCode;
-    window.resendCode = resendCode;
-    window.toggleForgotPassword = toggleForgotPassword;
-    window.requestPasswordReset = requestPasswordReset;
-    window.confirmPasswordReset = confirmPasswordReset;
-    window.fillClientDemo = fillClientDemo;
-    window.createPet = createPet;
-    window.createWalk = createWalk;
-    window.payWalk = payWalk;
-    window.simulateMove = simulateMove;
-    window.toggleClientEdit = toggleClientEdit;
-    window.updateClientProfile = updateClientProfile;
-    window.openCameraCapture = openCameraCapture;
-    window.closeCameraCapture = closeCameraCapture;
-    window.takeCameraPhoto = takeCameraPhoto;
-    window.showView = showView;
-
-    bindById('loginBtn', login);
-    bindById('btnLogin', login);
-    bindById('logoutBtn', logout);
-    bindById('registerBtn', registerClient);
-    bindById('btnRegister', registerClient);
-    bindById('verifyBtn', verifyCode);
-    bindById('resendCodeBtn', resendCode);
-    bindById('forgotPasswordBtn', toggleForgotPassword);
-    bindById('btnForgotPassword', toggleForgotPassword);
-    bindById('requestPasswordResetBtn', requestPasswordReset);
-    bindById('btnRequestPasswordReset', requestPasswordReset);
-    bindById('generateResetCodeBtn', requestPasswordReset);
-    bindById('confirmPasswordResetBtn', confirmPasswordReset);
-    bindById('btnConfirmPasswordReset', confirmPasswordReset);
-    bindById('createPetBtn', createPet);
-    bindById('btnCreatePet', createPet);
-    bindById('createWalkBtn', createWalk);
-    bindById('btnCreateWalk', createWalk);
-    bindById('updateClientBtn', updateClientProfile);
-    bindById('btnUpdateClient', updateClientProfile);
-
-    bindByText('gerar código de recuperação', requestPasswordReset);
-    bindByText('recuperar senha', toggleForgotPassword);
-    bindByText('alterar senha', confirmPasswordReset);
-    bindByText('entrar com google', loginWithGoogle);
-    bindByText('entrar', login);
-    bindByText('criar conta', registerClient);
-    bindByText('cadastrar pet', createPet);
-    bindByText('solicitar passeio', createWalk);
-  }
-
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', bindAll);
-  }else{
-    bindAll();
-  }
-
-  // Se o PWA ou troca de abas recriar partes da tela, rebinda sem duplicar.
-  setTimeout(bindAll, 600);
-  setTimeout(bindAll, 1800);
-})();
-

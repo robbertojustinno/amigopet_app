@@ -13,7 +13,6 @@ let online = true;
 let gpsWatchId = null;
 let gpsActive = false;
 let lastGpsSentAt = 0;
-let lastPaymentSyncAt = {};
 let walkerPhotoData = "";
 let registerWalkerPhotoData = "";
 let walkerCameraStream = null;
@@ -33,48 +32,6 @@ function kmBetween(lat1, lng1, lat2, lng2){
 function etaMinutesFromKm(km){
   if(!Number.isFinite(km)) return 0;
   return Math.max(1, Math.ceil((km / 4.5) * 60));
-}
-
-
-function isPaidWalk(w){
-  const payment = String(w?.payment_status || '').toLowerCase();
-  const gateway = String(w?.mp_status || '').toUpperCase();
-  return ['pago','paid','recebido','confirmado','confirmed'].includes(payment) ||
-    ['RECEIVED','CONFIRMED','RECEIVED_IN_CASH','PAYMENT_RECEIVED','PAYMENT_CONFIRMED'].includes(gateway);
-}
-
-async function syncWalkPayment(id, silent=false){
-  try{
-    const walk = await api(`/api/payments/asaas/sync/${id}`, {method:'POST'});
-    const idx = availableWalks.findIndex(item => item.id === walk.id);
-    if(idx >= 0) availableWalks[idx] = walk;
-    else availableWalks.unshift(walk);
-    if(currentWalk && currentWalk.id === walk.id) currentWalk = walk;
-    renderAvailableWalks();
-    renderCurrentWalk();
-    if(!silent){
-      toast(isPaidWalk(walk) ? 'Pagamento confirmado. Você já pode aceitar.' : 'Pagamento ainda aguardando confirmação.');
-    }
-    return walk;
-  }catch(err){
-    if(!silent) toast(err.message || 'Não foi possível verificar o pagamento.');
-    return null;
-  }
-}
-
-async function autoSyncPendingPayments(walks){
-  const now = Date.now();
-  const pending = (walks || []).filter(w =>
-    isAvailable(w) && !isPaidWalk(w) && w.mp_payment_id && (!lastPaymentSyncAt[w.id] || now - lastPaymentSyncAt[w.id] > 30000)
-  ).slice(0, 5);
-  for(const w of pending){
-    lastPaymentSyncAt[w.id] = now;
-    const synced = await syncWalkPayment(w.id, true);
-    if(synced){
-      const idx = walks.findIndex(item => item.id === synced.id);
-      if(idx >= 0) walks[idx] = synced;
-    }
-  }
 }
 
 function toast(msg){
@@ -110,46 +67,6 @@ function fillWalkerDemo(){
   $('loginPassword').value = '123456';
 }
 
-
-function loginWithGoogle(){
-  // O Google bloqueia login dentro de WebView/navegador interno.
-  // Use Chrome/Edge/Safari real para testar no celular.
-  window.location.href = API + '/api/auth/google/login/walker';
-}
-
-async function handleGoogleLoginCallback(){
-  const params = new URLSearchParams(window.location.search);
-  const googleUserId = params.get('google_user_id');
-  const googleError = params.get('google_error');
-
-  if(googleError){
-    toast('Erro no login Google: ' + googleError);
-    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
-
-  if(!googleUserId) return;
-
-  try{
-    const user = await api(`/api/auth/google/session/${googleUserId}`);
-    if(user.role !== 'walker'){
-      toast('Esta área é exclusiva para passeadores. Use o app Cliente.');
-      if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    setLoggedUI();
-    await refreshAll();
-    showView('pedidos', true);
-    toast('Login com Google realizado.');
-    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
-  }catch(err){
-    toast(err.message || 'Não foi possível concluir o login com Google.');
-  }
-}
-
 function showView(id, force=false){
   if(!force && id !== 'login' && !requireWalker()) return;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -158,7 +75,7 @@ function showView(id, force=false){
   document.querySelectorAll('.nav-btn[data-view]').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`[data-view="${id}"]`);
   if(btn) btn.classList.add('active');
-  if(id === 'mapa') setTimeout(() => { initMap(); renderMap(); }, 250);
+  if(id === 'mapa' || id === 'atual') setTimeout(() => { initMap(); renderMap(); }, 250);
 }
 
 document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
@@ -624,13 +541,12 @@ function isAvailable(w){
 }
 
 function canAcceptPaid(w){
-  return isAvailable(w) && isPaidWalk(w);
+  return isAvailable(w) && String(w.payment_status || '').toLowerCase() === 'pago';
 }
 
 function walkCard(w, mode='available'){
-  const paid = isPaidWalk(w);
   const canAccept = mode === 'available' && canAcceptPaid(w);
-  const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && !paid;
+  const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && String(w.payment_status || '').toLowerCase() !== 'pago';
   const waitingPayment = mode === 'available' && !canAccept;
   return `
     <div class="item">
@@ -647,11 +563,9 @@ function walkCard(w, mode='available'){
       </div>
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
-      ${canAccept ? `<div class="payment-confirmed-box">✅ Pagamento confirmado. Você já pode aceitar este passeio.</div>` : ''}
-      ${waitingPayment ? `<div class="payment-waiting-box">Aguardando confirmação do PIX. Assim que o Asaas confirmar, o botão Aceitar será liberado.</div>` : ''}
+      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar só aparece depois do Mercado Pago confirmar.</div>` : ''}
       <div class="actions">
         ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
-        ${waitingPayment && w.mp_payment_id ? `<button class="warn" type="button" onclick="syncWalkPayment(${w.id})">Verificar pagamento</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
         <button class="secondary" type="button" onclick="selectWalk(${w.id})">Ver detalhes</button>
       </div>
@@ -709,7 +623,6 @@ async function refreshAll(){
   if(!currentUser) return;
   try{
     const walks = await api('/api/walks');
-    await autoSyncPendingPayments(walks);
     availableWalks = walks;
     const activeStatuses = ['aceito','pagamento_confirmado','em_andamento'];
     currentWalk = walks.find(w => w.walker_id === currentUser.id && activeStatuses.includes(w.status)) || currentWalk;
@@ -731,7 +644,7 @@ async function acceptWalk(id){
   try{
     if(!requireWalker()) return;
     const selected = availableWalks.find(w => w.id === id) || currentWalk;
-    if(selected && !isPaidWalk(selected)) return toast('Aguardando pagamento PIX confirmado pelo Asaas.');
+    if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Asaas.');
     const walk = await api(`/api/walks/${id}/accept?walker_id=${currentUser.id}`, {method:'POST'});
     currentWalk = walk;
     await refreshAll();
@@ -751,7 +664,7 @@ async function rejectWalk(id){
 async function startCurrentWalk(){
   try{
     if(!currentWalk) return toast('Selecione ou aceite um passeio primeiro.');
-    if(!isPaidWalk(currentWalk)) return toast('Pagamento PIX ainda não confirmado pelo Asaas.');
+    if(currentWalk.payment_status !== 'pago') return toast('Pagamento PIX ainda não confirmado pelo Asaas.');
     currentWalk = await api(`/api/walks/${currentWalk.id}/start`, {method:'POST'});
     renderCurrentWalk();
     startGpsTracking();
@@ -848,12 +761,15 @@ async function simulateMove(){
 }
 
 function initMap(){
-  if(map || !window.L || !$('map')) return;
+  if(map){ setTimeout(() => map.invalidateSize(), 120); return; }
+  if(!window.L || !$('map')) return;
   map = L.map('map').setView([-22.5884, -43.1847], 15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(map);
+  setTimeout(() => map.invalidateSize(), 180);
 }
 
 function renderMap(){
+  if(!map) initMap();
   if(!map || !currentWalk || !window.L) return;
   const pickup = [Number(currentWalk.pickup_lat || -22.5884), Number(currentWalk.pickup_lng || -43.1847)];
   const walker = [Number(currentWalk.walker_lat || -22.5900), Number(currentWalk.walker_lng || -43.1810)];
@@ -911,9 +827,4 @@ function restoreSession(){
 
 bindProfileForm();
 restoreSession();
-handleGoogleLoginCallback().catch(()=>{});
 connectWS();
-
-window.loginWithGoogle = loginWithGoogle;
-
-window.syncWalkPayment = syncWalkPayment;
