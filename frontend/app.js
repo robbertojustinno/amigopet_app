@@ -105,7 +105,6 @@ function setLoggedUI(){
     if(profilePhoto) profilePhoto.src = clientPhotoSrc(currentUser);
     if(profilePhotoLarge) profilePhotoLarge.src = clientPhotoSrc(currentUser);
     renderClientDetails();
-    fillClientEditForm();
     loadPricing().catch(()=>{});
   }else{
     if(logged) logged.textContent = 'Nenhum cliente conectado.';
@@ -332,38 +331,6 @@ function takeCameraPhoto(){
 }
 
 
-function loginWithGoogle(){
-  window.location.href = API + '/api/auth/google/login/client';
-}
-
-async function handleGoogleLoginCallback(){
-  const params = new URLSearchParams(window.location.search);
-  const googleUserId = params.get('google_user_id');
-  const googleError = params.get('google_error');
-
-  if(googleError){
-    toast('Erro no login Google: ' + googleError);
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
-
-  if(!googleUserId) return;
-
-  try{
-    const user = await api(`/api/auth/google/session/${googleUserId}`);
-    currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
-    setLoggedUI();
-    fillClientEditForm();
-    await refreshAll();
-    toast('Login com Google realizado.');
-    window.history.replaceState({}, document.title, window.location.pathname);
-    showView('pet', true);
-  }catch(err){
-    toast(err.message || 'Não foi possível concluir o login com Google.');
-  }
-}
-
 function fillClientDemo(){
   $('loginEmail').value = 'cliente@amigopet.com';
   $('loginPassword').value = '123456';
@@ -420,7 +387,7 @@ async function registerClient(){
     });
 
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    clearSessions();
     setLoggedUI();
     await refreshAll();
 
@@ -447,7 +414,7 @@ async function verifyCode(){
     });
 
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    clearSessions();
     setLoggedUI();
     await refreshAll();
     toast('Conta confirmada com sucesso.');
@@ -547,7 +514,7 @@ async function login(){
     }
 
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    clearSessions();
     setLoggedUI();
     await refreshAll();
     toast('Login realizado.');
@@ -953,17 +920,19 @@ async function refreshAll(){
     return;
   }
 
+  const availableWalkerList = walkers.filter(w => w.available !== false);
+
   renderClientDetails();
   renderPets(pets);
 
   if($('walkerSelect')){
-    $('walkerSelect').innerHTML = `<option value="">Escolha um passeador</option>` + walkers.map(w =>
+    $('walkerSelect').innerHTML = `<option value="">Escolha um passeador</option>` + availableWalkerList.map(w =>
       `<option value="${w.id}">${w.full_name} • ⭐ ${w.rating} • ${w.neighborhood || '-'}</option>`
     ).join('');
   }
 
   if($('walkerCards')){
-    const visibleWalkers = walkers.slice(0, 6);
+    const visibleWalkers = availableWalkerList.slice(0, 6);
     $('walkerCards').innerHTML = `
       <div class="notice" style="padding:12px;margin:6px 0 10px;border-radius:16px;">
         <strong>${walkers.length}</strong> passeador(es) disponíveis. Use o campo acima para escolher.
@@ -1062,7 +1031,10 @@ function connectWS(){
         message:'Nova mensagem'
       };
 
-      if(data.type) toast(labels[data.type] || 'Atualização recebida');
+      if(data.type === 'walker_availability_changed'){
+        const status = data.walker?.available === false ? 'ficou offline' : 'está online';
+        toast(`Passeador ${status}.`);
+      }else if(data.type) toast(labels[data.type] || 'Atualização recebida');
 
       if(data.type && data.walk && currentUser && data.walk.client_id === currentUser.id){
         window.amigoPetPWA?.notify('AmigoPet Cliente', labels[data.type] || 'Atualização do passeio', '/');
@@ -1082,31 +1054,10 @@ function connectWS(){
   }catch(e){}
 }
 
-
-function restoreClientSession(){
-  try{
-    const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
-    if(saved){
-      currentUser = JSON.parse(saved);
-      if(currentUser && currentUser.role === 'client'){
-        setLoggedUI();
-        fillClientEditForm();
-        refreshAll().catch(()=>{});
-        showView('pet', true);
-        return;
-      }
-    }
-  }catch(e){
-    localStorage.removeItem('amigopet_cliente_user');
-    localStorage.removeItem('amigopet_user');
-  }
-  setLoggedUI();
-  showView('home', true);
-}
-
-restoreClientSession();
-handleGoogleLoginCallback().catch(()=>{});
+clearSessions();
+setLoggedUI();
 loadPricing().catch(()=>{});
+showView('home', true);
 connectWS();
 
 async function loadPricing(){
@@ -1157,97 +1108,3 @@ async function loadPricing(){
     `;
   }
 }
-
-
-// ===== AmigoPet: bindings seguros para botões sem onclick =====
-// Este bloco evita que botões fiquem sem ação quando o HTML não tem onclick
-// ou quando o navegador/PWA carrega uma versão com handlers removidos.
-(function bindAmigoPetClientActions(){
-  function bindById(id, handler){
-    const el = document.getElementById(id);
-    if(el && !el.dataset.boundAmigopet){
-      el.dataset.boundAmigopet = '1';
-      el.addEventListener('click', function(ev){
-        ev.preventDefault();
-        handler();
-      });
-    }
-  }
-
-  function bindByText(textPart, handler){
-    const needle = String(textPart || '').toLowerCase();
-    document.querySelectorAll('button, a, [role="button"]').forEach(function(el){
-      const label = String(el.textContent || el.value || '').trim().toLowerCase();
-      if(label.includes(needle) && !el.dataset.boundAmigopet){
-        el.dataset.boundAmigopet = '1';
-        el.addEventListener('click', function(ev){
-          ev.preventDefault();
-          handler();
-        });
-      }
-    });
-  }
-
-  function bindAll(){
-    // Expõe funções para onclick antigo do HTML.
-    window.login = login;
-    window.loginWithGoogle = loginWithGoogle;
-    window.logout = logout;
-    window.registerClient = registerClient;
-    window.verifyCode = verifyCode;
-    window.resendCode = resendCode;
-    window.toggleForgotPassword = toggleForgotPassword;
-    window.requestPasswordReset = requestPasswordReset;
-    window.confirmPasswordReset = confirmPasswordReset;
-    window.fillClientDemo = fillClientDemo;
-    window.createPet = createPet;
-    window.createWalk = createWalk;
-    window.payWalk = payWalk;
-    window.simulateMove = simulateMove;
-    window.toggleClientEdit = toggleClientEdit;
-    window.updateClientProfile = updateClientProfile;
-    window.openCameraCapture = openCameraCapture;
-    window.closeCameraCapture = closeCameraCapture;
-    window.takeCameraPhoto = takeCameraPhoto;
-    window.showView = showView;
-
-    bindById('loginBtn', login);
-    bindById('btnLogin', login);
-    bindById('logoutBtn', logout);
-    bindById('registerBtn', registerClient);
-    bindById('btnRegister', registerClient);
-    bindById('verifyBtn', verifyCode);
-    bindById('resendCodeBtn', resendCode);
-    bindById('forgotPasswordBtn', toggleForgotPassword);
-    bindById('btnForgotPassword', toggleForgotPassword);
-    bindById('requestPasswordResetBtn', requestPasswordReset);
-    bindById('btnRequestPasswordReset', requestPasswordReset);
-    bindById('generateResetCodeBtn', requestPasswordReset);
-    bindById('confirmPasswordResetBtn', confirmPasswordReset);
-    bindById('btnConfirmPasswordReset', confirmPasswordReset);
-    bindById('createPetBtn', createPet);
-    bindById('btnCreatePet', createPet);
-    bindById('createWalkBtn', createWalk);
-    bindById('btnCreateWalk', createWalk);
-    bindById('updateClientBtn', updateClientProfile);
-    bindById('btnUpdateClient', updateClientProfile);
-
-    bindByText('entrar com google', loginWithGoogle);
-    bindByText('gerar código de recuperação', requestPasswordReset);
-    bindByText('recuperar senha', toggleForgotPassword);
-    bindByText('alterar senha', confirmPasswordReset);
-    bindByText('cadastrar pet', createPet);
-    bindByText('solicitar passeio', createWalk);
-  }
-
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', bindAll);
-  }else{
-    bindAll();
-  }
-
-  // Se o PWA ou troca de abas recriar partes da tela, rebinda sem duplicar.
-  setTimeout(bindAll, 600);
-  setTimeout(bindAll, 1800);
-})();
-

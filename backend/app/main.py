@@ -265,6 +265,9 @@ class LocationIn(BaseModel):
     lat: float
     lng: float
 
+class AvailabilityIn(BaseModel):
+    available: bool = True
+
 class ConnectionManager:
     def __init__(self):
         self.active: list[WebSocket] = []
@@ -1361,6 +1364,26 @@ def update_walker_profile(user_id: int, data: WalkerUpdateIn, db: Session = Depe
     db.refresh(user)
     return user_to_dict(user)
 
+
+@app.put("/api/walkers/{user_id}/availability")
+async def update_walker_availability(user_id: int, data: AvailabilityIn, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Passeador não encontrado")
+    if user.role != "walker":
+        raise HTTPException(status_code=400, detail="Esta ação é exclusiva para passeadores")
+
+    user.available = bool(data.available)
+    db.commit()
+    db.refresh(user)
+
+    payload = user_to_dict(user)
+    await manager.broadcast({
+        "type": "walker_availability_changed",
+        "walker": payload
+    })
+    return payload
+
 @app.get("/api/pets")
 def pets(owner_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(Pet)
@@ -1706,10 +1729,15 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
         walk.payout_amount = amount
         try:
             transfer = create_asaas_pix_transfer_to_walker(db, walk)
-            walk.payout_status = "pago"
+            transfer_status = str(transfer.get("status") or transfer.get("situation") or "solicitado").lower()
+            walk.payout_status = transfer_status or "solicitado"
             walk.payout_transfer_id = str(transfer.get("id") or transfer.get("transfer") or "")
             walk.payout_error = ""
-            messages.append(add_walk_system_message(db, walk, f"💵 Pagamento do passeador processado. Valor do repasse: R$ {amount:.2f}."))
+            messages.append(add_walk_system_message(
+                db,
+                walk,
+                f"💵 Repasse PIX solicitado com sucesso. Valor: R$ {amount:.2f}. Aguardando confirmação da instituição financeira."
+            ))
         except Exception as e:
             walk.payout_status = "erro"
             walk.payout_error = str(e)[:700]
