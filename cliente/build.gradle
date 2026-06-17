@@ -1,0 +1,21 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.rovix.amigopet.cliente'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.rovix.amigopet.cliente'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+}
+
+
+dependencies {
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+}

@@ -1,37 +1,29 @@
-# AmigoPet V6 nível Uber
+# AmigoPet Android Studio
 
-Plataforma FastAPI + HTML/CSS/JS com fluxo estilo Uber para passeios com pets.
+Projeto com 2 APKs WebView:
 
-## Recursos
-- Login cliente, passeador e admin
-- Cadastro de pet
-- Escolha do passeador antes da solicitação
-- Convite com contador
-- Aceitar/recusar pedido
-- PIX simulado
-- Chat interno
-- Rastreamento visual simulado
-- WebSocket para atualizações em tempo real
-- Painel admin
+- cliente: abre https://amigopet-6td8.onrender.com
+- passeador: abre https://amigopet-6td8.onrender.com/passeador
 
-## Rodar local
-```powershell
-cd E:\amigopet_app
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m uvicorn backend.app.main:app --reload
-```
+## Abrir no Android Studio
 
-Abra: http://127.0.0.1:8000
+1. Extraia este ZIP.
+2. Abra o Android Studio.
+3. Clique em Open.
+4. Selecione a pasta amigopet_android_webview.
+5. Aguarde o Gradle sincronizar.
+6. Escolha o módulo `cliente` ou `passeador`.
+7. Clique em Run.
 
-## Logins
-- admin@amigopet.com / 123456
-- cliente@amigopet.com / 123456
-- passeador@amigopet.com / 123456
-- ana@amigopet.com / 123456
+## Gerar APK
 
-## Render start command
+Menu:
+
+Build > Build Bundle(s) / APK(s) > Build APK(s)
+
+Ou terminal:
+
 ```bash
-python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+gradlew :cliente:assembleDebug
+gradlew :passeador:assembleDebug
 ```
