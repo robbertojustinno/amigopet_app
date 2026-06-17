@@ -105,6 +105,7 @@ function setLoggedUI(){
     if(profilePhoto) profilePhoto.src = clientPhotoSrc(currentUser);
     if(profilePhotoLarge) profilePhotoLarge.src = clientPhotoSrc(currentUser);
     renderClientDetails();
+    fillClientEditForm();
     loadPricing().catch(()=>{});
   }else{
     if(logged) logged.textContent = 'Nenhum cliente conectado.';
@@ -351,8 +352,9 @@ async function handleGoogleLoginCallback(){
   try{
     const user = await api(`/api/auth/google/session/${googleUserId}`);
     currentUser = user;
-    clearSessions();
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
+    fillClientEditForm();
     await refreshAll();
     toast('Login com Google realizado.');
     window.history.replaceState({}, document.title, window.location.pathname);
@@ -418,7 +420,7 @@ async function registerClient(){
     });
 
     currentUser = user;
-    clearSessions();
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
 
@@ -445,7 +447,7 @@ async function verifyCode(){
     });
 
     currentUser = user;
-    clearSessions();
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
     toast('Conta confirmada com sucesso.');
@@ -545,7 +547,7 @@ async function login(){
     }
 
     currentUser = user;
-    clearSessions();
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
     toast('Login realizado.');
@@ -1080,11 +1082,31 @@ function connectWS(){
   }catch(e){}
 }
 
-clearSessions();
-setLoggedUI();
+
+function restoreClientSession(){
+  try{
+    const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
+    if(saved){
+      currentUser = JSON.parse(saved);
+      if(currentUser && currentUser.role === 'client'){
+        setLoggedUI();
+        fillClientEditForm();
+        refreshAll().catch(()=>{});
+        showView('pet', true);
+        return;
+      }
+    }
+  }catch(e){
+    localStorage.removeItem('amigopet_cliente_user');
+    localStorage.removeItem('amigopet_user');
+  }
+  setLoggedUI();
+  showView('home', true);
+}
+
+restoreClientSession();
 handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
-showView('home', true);
 connectWS();
 
 async function loadPricing(){
@@ -1210,10 +1232,10 @@ async function loadPricing(){
     bindById('updateClientBtn', updateClientProfile);
     bindById('btnUpdateClient', updateClientProfile);
 
+    bindByText('entrar com google', loginWithGoogle);
     bindByText('gerar código de recuperação', requestPasswordReset);
     bindByText('recuperar senha', toggleForgotPassword);
     bindByText('alterar senha', confirmPasswordReset);
-    bindByText('entrar com google', loginWithGoogle);
     bindByText('entrar', login);
     bindByText('criar conta', registerClient);
     bindByText('cadastrar pet', createPet);

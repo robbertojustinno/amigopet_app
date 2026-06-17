@@ -142,7 +142,9 @@ function setLoggedUI(){
   if(loggedIn){
     $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>Passeador</strong>`;
     $('profileName').textContent = currentUser.full_name;
-    $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
+    const walkerAvatar = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
+    $('profilePhoto').src = walkerAvatar;
+    $('profilePhoto').onerror = () => { $('profilePhoto').src = `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name || 'Passeador')}`; };
     renderWalkerDetails();
     fillProfileForm();
   }else{
