@@ -139,6 +139,10 @@ class WalkRequest(Base):
     mp_qr_code = Column(Text, default="")
     mp_qr_code_base64 = Column(Text, default="")
     mp_ticket_url = Column(Text, default="")
+    payout_status = Column(String(40), default="aguardando", nullable=False)
+    payout_transfer_id = Column(String(120), default="")
+    payout_amount = Column(Float, default=0.0)
+    payout_error = Column(Text, default="")
     notes = Column(Text, default="")
     expires_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
@@ -706,6 +710,75 @@ def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
 
     return before != walk.payment_status
 
+
+def normalize_asaas_pix_key_type(value: str) -> str:
+    raw = str(value or "").strip().upper()
+    raw = raw.replace("CPF/CNPJ", "CPF").replace("CELULAR", "PHONE").replace("TELEFONE", "PHONE")
+    mapping = {"CPF":"CPF","CNPJ":"CNPJ","EMAIL":"EMAIL","E-MAIL":"EMAIL","PHONE":"PHONE","TELEFONE":"PHONE","CELULAR":"PHONE","EVP":"EVP","ALEATORIA":"EVP","ALEATÓRIA":"EVP"}
+    return mapping.get(raw, raw)
+
+
+def calculate_walker_payout_amount(db: Session, walk: WalkRequest) -> float:
+    payout = get_payout_config(db)
+    percent = float(payout.get("walker_percent", 80.0) or 80.0)
+    return round(max(float(walk.estimated_price or 0) * (percent / 100.0), 0.0), 2)
+
+
+def create_asaas_pix_transfer_to_walker(db: Session, walk: WalkRequest) -> dict:
+    if not ASAAS_API_KEY:
+        raise RuntimeError("ASAAS_API_KEY não configurada no Render")
+    if not walk.walker:
+        raise RuntimeError("Passeador não vinculado ao passeio")
+    pix_key = str(getattr(walk.walker, "pix_key", "") or "").strip()
+    pix_key_type = normalize_asaas_pix_key_type(getattr(walk.walker, "pix_key_type", "") or "")
+    if not pix_key:
+        raise RuntimeError("Passeador sem chave PIX cadastrada")
+    if pix_key_type not in {"CPF", "CNPJ", "EMAIL", "PHONE", "EVP"}:
+        raise RuntimeError("Tipo da chave PIX do passeador inválido")
+    amount = calculate_walker_payout_amount(db, walk)
+    if amount <= 0:
+        raise RuntimeError("Valor de repasse inválido")
+    payload = {
+        "value": amount,
+        "operationType": "PIX",
+        "pixAddressKey": pix_key,
+        "pixAddressKeyType": pix_key_type,
+        "description": f"Repasse AmigoPet - Passeio #{walk.id}",
+        "externalReference": f"amigopet_payout_walk_{walk.id}",
+    }
+    res = requests.post(
+        f"{ASAAS_BASE_URL}/transfers",
+        json=payload,
+        headers=asaas_headers(_asaas_idempotency_key("payout", f"walk-{walk.id}-{amount}")),
+        timeout=30,
+    )
+    data = _asaas_response_data(res)
+    if res.status_code >= 400:
+        raise RuntimeError(f"Asaas recusou transferência PIX ao passeador: {data}")
+    return data
+
+
+def get_system_sender_id(db: Session, walk: WalkRequest) -> int:
+    admin = db.query(User).filter(User.role == "admin").order_by(User.id.asc()).first()
+    return admin.id if admin else walk.client_id
+
+
+def add_walk_system_message(db: Session, walk: WalkRequest, text_value: str) -> Optional[Message]:
+    if not walk or not text_value:
+        return None
+    exists = db.query(Message).filter(Message.request_id == walk.id, Message.text == text_value).first()
+    if exists:
+        return None
+    msg = Message(request_id=walk.id, sender_id=get_system_sender_id(db, walk), text=text_value)
+    db.add(msg)
+    db.flush()
+    return msg
+
+
+def message_to_dict(msg: Message) -> dict:
+    return {"id": msg.id, "request_id": msg.request_id, "sender_id": msg.sender_id, "text": msg.text, "created_at": msg.created_at.isoformat()}
+
+
 # Aliases mantidos para compatibilidade interna com chamadas antigas do código.
 mp_headers = asaas_headers
 create_mercadopago_pix_payment = create_asaas_pix_payment
@@ -726,6 +799,10 @@ def walk_to_dict(w: WalkRequest):
         "status": w.status, "payment_status": w.payment_status, "pix_code": w.pix_code,
         "mp_payment_id": w.mp_payment_id, "mp_status": w.mp_status, "mp_status_detail": w.mp_status_detail,
         "mp_qr_code": w.mp_qr_code, "mp_qr_code_base64": w.mp_qr_code_base64, "mp_ticket_url": w.mp_ticket_url,
+        "payout_status": getattr(w, "payout_status", "") or "aguardando",
+        "payout_transfer_id": getattr(w, "payout_transfer_id", "") or "",
+        "payout_amount": getattr(w, "payout_amount", 0) or 0,
+        "payout_error": getattr(w, "payout_error", "") or "",
         "notes": w.notes, "seconds_left": seconds_left,
         "expires_at": w.expires_at.isoformat() if w.expires_at else None,
         "started_at": w.started_at.isoformat() if w.started_at else None,
@@ -879,6 +956,10 @@ def run_lightweight_migrations():
             ("mp_qr_code", "TEXT DEFAULT ''"),
             ("mp_qr_code_base64", "TEXT DEFAULT ''"),
             ("mp_ticket_url", "TEXT DEFAULT ''"),
+            ("payout_status", "VARCHAR(40) DEFAULT 'aguardando'"),
+            ("payout_transfer_id", "VARCHAR(120) DEFAULT ''"),
+            ("payout_amount", "DOUBLE PRECISION DEFAULT 0"),
+            ("payout_error", "TEXT DEFAULT ''"),
             ("notes", "TEXT DEFAULT ''"),
             ("expires_at", "TIMESTAMP NULL"),
             ("started_at", "TIMESTAMP NULL"),
@@ -909,6 +990,10 @@ def run_lightweight_migrations():
             ("mp_qr_code", "''"),
             ("mp_qr_code_base64", "''"),
             ("mp_ticket_url", "''"),
+            ("payout_status", "'aguardando'"),
+            ("payout_transfer_id", "''"),
+            ("payout_amount", "0"),
+            ("payout_error", "''"),
             ("notes", "''"),
             ("created_at", "NOW()"),
         ]
@@ -935,6 +1020,10 @@ def run_lightweight_migrations():
         safe("UPDATE walk_requests SET mp_qr_code='' WHERE mp_qr_code IS NULL", "normalize walk_requests.mp_qr_code")
         safe("UPDATE walk_requests SET mp_qr_code_base64='' WHERE mp_qr_code_base64 IS NULL", "normalize walk_requests.mp_qr_code_base64")
         safe("UPDATE walk_requests SET mp_ticket_url='' WHERE mp_ticket_url IS NULL", "normalize walk_requests.mp_ticket_url")
+        safe("UPDATE walk_requests SET payout_status='aguardando' WHERE payout_status IS NULL", "normalize walk_requests.payout_status")
+        safe("UPDATE walk_requests SET payout_transfer_id='' WHERE payout_transfer_id IS NULL", "normalize walk_requests.payout_transfer_id")
+        safe("UPDATE walk_requests SET payout_amount=0 WHERE payout_amount IS NULL", "normalize walk_requests.payout_amount")
+        safe("UPDATE walk_requests SET payout_error='' WHERE payout_error IS NULL", "normalize walk_requests.payout_error")
         safe("UPDATE walk_requests SET notes='' WHERE notes IS NULL", "normalize walk_requests.notes")
         safe("UPDATE walk_requests SET created_at=NOW() WHERE created_at IS NULL", "normalize walk_requests.created_at")
 
@@ -1477,11 +1566,18 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail="Não foi possível consultar o Asaas: " + str(e)[:700])
 
+    messages = []
+    if changed or walk.payment_status == "pago":
+        messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
+
     db.commit()
     db.refresh(walk)
     payload = walk_to_dict(walk)
     if changed or walk.payment_status == "pago":
         await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+        for msg in messages:
+            if msg:
+                await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
     return payload
 
 @app.post("/api/asaas/webhook")
@@ -1533,11 +1629,18 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
         return {"ok": True, "ignored": True, "reason": "pedido não encontrado"}
 
     changed = apply_mp_payment_to_walk(walk, mp_payment)
+    messages = []
+    if changed or walk.payment_status == "pago":
+        messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
+
     db.commit()
     db.refresh(walk)
     payload = walk_to_dict(walk)
     if changed or walk.payment_status == "pago":
         await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+        for msg in messages:
+            if msg:
+                await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
     else:
         await manager.broadcast({"type": "payment_updated", "walk": payload})
     return {"ok": True, "walk_id": walk.id, "payment_status": walk.payment_status, "mp_status": walk.mp_status}
@@ -1552,11 +1655,18 @@ async def sync_asaas_payment(walk_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Asaas vinculado")
     mp_payment = get_mercadopago_payment(walk.mp_payment_id)
     changed = apply_mp_payment_to_walk(walk, mp_payment)
+    messages = []
+    if changed or walk.payment_status == "pago":
+        messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
+
     db.commit()
     db.refresh(walk)
     payload = walk_to_dict(walk)
     if changed or walk.payment_status == "pago":
         await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+        for msg in messages:
+            if msg:
+                await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
     return payload
 
 @app.post("/api/walks/{walk_id}/start")
@@ -1578,11 +1688,41 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walk.payment_status != "pago":
+        raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Asaas")
+
     walk.status = "finalizado"
     walk.finished_at = datetime.utcnow()
+    messages = [add_walk_system_message(db, walk, "🐶 Passeio finalizado com sucesso. Obrigado por utilizar o AmigoPet.")]
+
+    if not walk.walker_id or not walk.walker:
+        walk.payout_status = "pendente"
+        walk.payout_error = "Passeador não vinculado ao passeio"
+        messages.append(add_walk_system_message(db, walk, "⚠️ Passeio finalizado, mas o repasse ao passeador ficou pendente porque o passeador não foi identificado."))
+    elif (getattr(walk, "payout_status", "") or "") == "pago" and getattr(walk, "payout_transfer_id", ""):
+        messages.append(add_walk_system_message(db, walk, "💵 Repasse do passeador já havia sido processado anteriormente."))
+    else:
+        amount = calculate_walker_payout_amount(db, walk)
+        walk.payout_amount = amount
+        try:
+            transfer = create_asaas_pix_transfer_to_walker(db, walk)
+            walk.payout_status = "pago"
+            walk.payout_transfer_id = str(transfer.get("id") or transfer.get("transfer") or "")
+            walk.payout_error = ""
+            messages.append(add_walk_system_message(db, walk, f"💵 Pagamento do passeador processado. Valor do repasse: R$ {amount:.2f}."))
+        except Exception as e:
+            walk.payout_status = "erro"
+            walk.payout_error = str(e)[:700]
+            messages.append(add_walk_system_message(db, walk, "⚠️ Passeio finalizado. O repasse automático ao passeador ficou pendente e precisa ser verificado pela administração."))
+            print("[ASAAS PAYOUT ERROR]", {"walk_id": walk.id, "error": str(e)})
+
     db.commit()
+    db.refresh(walk)
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_finished", "walk": payload})
+    for msg in messages:
+        if msg:
+            await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
     return payload
 
 @app.post("/api/walks/{walk_id}/location")
