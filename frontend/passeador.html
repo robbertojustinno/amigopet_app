@@ -6,20 +6,20 @@
   <title>AmigoPet Passeador • ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/static/assets/logo.png" />
+  <link rel="apple-touch-icon" href="/static/assets/amigopet-banner.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=walker-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=fluxo-pix-visual-v1" />
 </head>
 <body>
   <div id="toast"></div>
 
   <header class="app-header">
-    <div class="brand-mark">🐕</div>
+    <div class="brand-mark image-mark"><img src="/static/assets/amigopet-banner.png" alt="AmigoPet Passeador" /></div>
     <div>
       <h1>AmigoPet Passeador</h1>
-      <p>Receba convites, aceite passeios e envie localização em tempo real</p>
+      <p>Passeador • Aceite passeios, acompanhe pagamentos e envie localização em tempo real</p>
     </div>
     <div id="profileChip" class="profile-chip hidden">
       <img id="profilePhoto" alt="Foto do passeador" />
@@ -43,9 +43,10 @@
     <section id="login" class="view active">
       <div class="hero-grid">
         <div class="hero-card">
+          <img class="hero-banner-img" src="/static/assets/amigopet-banner.png" alt="AmigoPet" />
           <span class="eyebrow">Aplicativo do passeador</span>
           <h2>Receba convites em tempo real e gerencie seus passeios.</h2>
-          <p>Essa área é separada do cliente. O passeador pode aceitar, recusar, iniciar, finalizar e atualizar localização.</p>
+          <p>Receba pedidos pagos, aceite o passeio, envie sua localização e finalize com segurança.</p>
           <div class="feature-row">
             <div><b>⚡</b><strong>Convite ao vivo</strong><small>WebSocket conectado.</small></div>
             <div><b>📍</b><strong>GPS do passeador</strong><small>Atualização para o cliente.</small></div>
@@ -53,15 +54,20 @@
           </div>
         </div>
 
-        <div class="auth-card">
-          <h3>Entrar como passeador</h3>
-          <p>Entre com sua conta Google para acessar como passeador.</p>
-          <button class="secondary full" type="button" onclick="fillWalkerDemo()">Preencher conta teste</button>
-          <input id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
-          <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
-          <button class="full" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
+        <div class="auth-card" id="authCard">
+          <div class="tabs">
+            <button class="tab active" type="button">Google</button>
+            <button class="tab hidden" type="button" disabled>Criar conta</button>
+          </div>
+          <h3>Entrar com Google</h3>
+          <p>Use sua conta Google para acessar o AmigoPet Passeador com rapidez e segurança.</p>
+          <button class="full" type="button" onclick="loginWithGoogle()">🔵 Entrar com Google</button>
+          <div class="notice" style="margin-top:12px;">Após o pagamento do cliente ser confirmado, o botão Aceitar será liberado automaticamente.</div>
+          <button class="secondary full hidden" type="button" onclick="fillWalkerDemo()">Preencher conta teste</button>
+          <input class="hidden" id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
+          <input class="hidden" id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
 
-          <button class="ghost full" type="button" onclick="toggleWalkerForgotPassword()">Esqueci minha senha</button>
+          <button class="ghost full hidden" type="button" onclick="toggleWalkerForgotPassword()">Esqueci minha senha</button>
 
           <div id="forgotWalkerPasswordBox" class="auth-panel hidden" style="margin-top:16px;">
             <h3>Recuperar senha</h3>
@@ -73,7 +79,7 @@
             <button class="full" type="button" onclick="confirmWalkerPasswordReset()">Alterar senha</button>
           </div>
 
-          <button class="ghost full" type="button" onclick="toggleWalkerRegister()">Criar conta de passeador</button>
+          <button class="ghost full hidden" type="button" onclick="toggleWalkerRegister()" disabled>Criar conta de passeador</button>
 
           <div id="registerWalkerBox" class="auth-panel hidden" style="margin-top:16px;">
             <h3>Criar conta de passeador</h3>
@@ -89,20 +95,6 @@
             <input id="registerWalkerPassword" placeholder="Senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
             <input id="registerWalkerPhone" placeholder="Telefone / WhatsApp" />
             <input id="registerWalkerDocument" placeholder="CPF ou documento" />
-
-            <h4>Dados para recebimento automático</h4>
-            <select id="registerWalkerPixType">
-              <option value="">Tipo da chave PIX</option>
-              <option value="cpf">CPF</option>
-              <option value="cnpj">CNPJ</option>
-              <option value="email">E-mail</option>
-              <option value="phone">Telefone</option>
-              <option value="random">Chave aleatória</option>
-            </select>
-            <input id="registerWalkerPixKey" placeholder="Chave PIX do passeador" />
-            <input id="registerWalkerPixHolderName" placeholder="Nome do titular da chave PIX" />
-            <input id="registerWalkerPixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
-
             <input id="registerWalkerNeighborhood" placeholder="Bairro de atendimento" />
             <input id="registerWalkerCity" placeholder="Cidade" />
             <textarea id="registerWalkerBio" placeholder="Resumo profissional, experiência com pets, disponibilidade e cuidados especiais"></textarea>
@@ -175,20 +167,6 @@
           <input id="profileFullName" placeholder="Nome completo" />
           <input id="profilePhone" placeholder="Telefone" />
           <input id="profileDocument" placeholder="Documento / CPF" />
-
-          <h4>Dados para recebimento automático</h4>
-          <select id="profilePixType">
-            <option value="">Tipo da chave PIX</option>
-            <option value="cpf">CPF</option>
-            <option value="cnpj">CNPJ</option>
-            <option value="email">E-mail</option>
-            <option value="phone">Telefone</option>
-            <option value="random">Chave aleatória</option>
-          </select>
-          <input id="profilePixKey" placeholder="Chave PIX do passeador" />
-          <input id="profilePixHolderName" placeholder="Nome do titular da chave PIX" />
-          <input id="profilePixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
-
           <input id="profileNeighborhood" placeholder="Bairro" />
           <input id="profileCity" placeholder="Cidade" />
           <textarea id="profileBio" placeholder="Resumo profissional, experiência, cuidados especiais"></textarea>
@@ -239,7 +217,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-pix-v1"></script>
-  <script src="/static/pwa.js?v=walker-pix-v1"></script>
+  <script src="/static/walker.js?v=walker-perfil-v1"></script>
+  <script src="/static/pwa.js?v=walker-perfil-v1"></script>
 </body>
 </html>

@@ -13,6 +13,7 @@ let online = true;
 let gpsWatchId = null;
 let gpsActive = false;
 let lastGpsSentAt = 0;
+let lastPaymentSyncAt = {};
 let walkerPhotoData = "";
 let registerWalkerPhotoData = "";
 let walkerCameraStream = null;
@@ -32,6 +33,48 @@ function kmBetween(lat1, lng1, lat2, lng2){
 function etaMinutesFromKm(km){
   if(!Number.isFinite(km)) return 0;
   return Math.max(1, Math.ceil((km / 4.5) * 60));
+}
+
+
+function isPaidWalk(w){
+  const payment = String(w?.payment_status || '').toLowerCase();
+  const gateway = String(w?.mp_status || '').toUpperCase();
+  return ['pago','paid','recebido','confirmado','confirmed'].includes(payment) ||
+    ['RECEIVED','CONFIRMED','RECEIVED_IN_CASH','PAYMENT_RECEIVED','PAYMENT_CONFIRMED'].includes(gateway);
+}
+
+async function syncWalkPayment(id, silent=false){
+  try{
+    const walk = await api(`/api/payments/asaas/sync/${id}`, {method:'POST'});
+    const idx = availableWalks.findIndex(item => item.id === walk.id);
+    if(idx >= 0) availableWalks[idx] = walk;
+    else availableWalks.unshift(walk);
+    if(currentWalk && currentWalk.id === walk.id) currentWalk = walk;
+    renderAvailableWalks();
+    renderCurrentWalk();
+    if(!silent){
+      toast(isPaidWalk(walk) ? 'Pagamento confirmado. Você já pode aceitar.' : 'Pagamento ainda aguardando confirmação.');
+    }
+    return walk;
+  }catch(err){
+    if(!silent) toast(err.message || 'Não foi possível verificar o pagamento.');
+    return null;
+  }
+}
+
+async function autoSyncPendingPayments(walks){
+  const now = Date.now();
+  const pending = (walks || []).filter(w =>
+    isAvailable(w) && !isPaidWalk(w) && w.mp_payment_id && (!lastPaymentSyncAt[w.id] || now - lastPaymentSyncAt[w.id] > 30000)
+  ).slice(0, 5);
+  for(const w of pending){
+    lastPaymentSyncAt[w.id] = now;
+    const synced = await syncWalkPayment(w.id, true);
+    if(synced){
+      const idx = walks.findIndex(item => item.id === synced.id);
+      if(idx >= 0) walks[idx] = synced;
+    }
+  }
 }
 
 function toast(msg){
@@ -142,9 +185,7 @@ function setLoggedUI(){
   if(loggedIn){
     $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>Passeador</strong>`;
     $('profileName').textContent = currentUser.full_name;
-    const walkerAvatar = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
-    $('profilePhoto').src = walkerAvatar;
-    $('profilePhoto').onerror = () => { $('profilePhoto').src = `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name || 'Passeador')}`; };
+    $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
     renderWalkerDetails();
     fillProfileForm();
   }else{
@@ -159,10 +200,6 @@ function fillProfileForm(){
     profileFullName: currentUser.full_name || '',
     profilePhone: currentUser.phone || '',
     profileDocument: currentUser.document || '',
-    profilePixType: currentUser.pix_key_type || '',
-    profilePixKey: currentUser.pix_key || '',
-    profilePixHolderName: currentUser.pix_holder_name || '',
-    profilePixHolderDocument: currentUser.pix_holder_document || '',
     profileNeighborhood: currentUser.neighborhood || '',
     profileCity: currentUser.city || '',
     profileBio: currentUser.bio || ''
@@ -181,8 +218,6 @@ function renderProfilePreview(){
   const city = $('profileCity')?.value || currentUser.city || '-';
   const neighborhood = $('profileNeighborhood')?.value || currentUser.neighborhood || '-';
   const bio = $('profileBio')?.value || currentUser.bio || 'Passeador disponível.';
-  const pixType = $('profilePixType')?.value || currentUser.pix_key_type || '';
-  const pixKey = $('profilePixKey')?.value || currentUser.pix_key || '';
   const photo = walkerPhotoData || currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`;
   box.innerHTML = `
     <div class="item-head">
@@ -194,7 +229,6 @@ function renderProfilePreview(){
       </div>
     </div>
     <p>Telefone: ${phone}</p>
-    <p>PIX: ${pixType && pixKey ? `${pixType} • ${pixKey}` : 'Dados PIX não preenchidos'}</p>
     <p class="muted">${bio}</p>
   `;
   const preview = $('profilePhotoPreview');
@@ -204,7 +238,7 @@ function renderProfilePreview(){
 }
 
 function bindProfileForm(){
-  ['profileFullName','profilePhone','profileDocument','profilePixType','profilePixKey','profilePixHolderName','profilePixHolderDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
+  ['profileFullName','profilePhone','profileDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener('input', renderProfilePreview);
   });
@@ -230,10 +264,6 @@ async function saveWalkerProfile(){
       full_name: $('profileFullName').value.trim(),
       phone: $('profilePhone').value.trim(),
       document: $('profileDocument').value.trim(),
-      pix_key_type: $('profilePixType')?.value?.trim() || '',
-      pix_key: $('profilePixKey')?.value?.trim() || '',
-      pix_holder_name: $('profilePixHolderName')?.value?.trim() || '',
-      pix_holder_document: $('profilePixHolderDocument')?.value?.trim() || '',
       neighborhood: $('profileNeighborhood').value.trim(),
       city: $('profileCity').value.trim(),
       bio: $('profileBio').value.trim(),
@@ -287,10 +317,6 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
-      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
-      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
-      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
-      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -303,10 +329,6 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
-      ['pix_key_type','tipo da chave PIX'],
-      ['pix_key','chave PIX'],
-      ['pix_holder_name','nome do titular da chave PIX'],
-      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -427,10 +449,6 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
-      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
-      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
-      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
-      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -443,10 +461,6 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
-      ['pix_key_type','tipo da chave PIX'],
-      ['pix_key','chave PIX'],
-      ['pix_holder_name','nome do titular da chave PIX'],
-      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -610,12 +624,13 @@ function isAvailable(w){
 }
 
 function canAcceptPaid(w){
-  return isAvailable(w) && String(w.payment_status || '').toLowerCase() === 'pago';
+  return isAvailable(w) && isPaidWalk(w);
 }
 
 function walkCard(w, mode='available'){
+  const paid = isPaidWalk(w);
   const canAccept = mode === 'available' && canAcceptPaid(w);
-  const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && String(w.payment_status || '').toLowerCase() !== 'pago';
+  const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && !paid;
   const waitingPayment = mode === 'available' && !canAccept;
   return `
     <div class="item">
@@ -632,9 +647,11 @@ function walkCard(w, mode='available'){
       </div>
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
-      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar só aparece depois do Mercado Pago confirmar.</div>` : ''}
+      ${canAccept ? `<div class="payment-confirmed-box">✅ Pagamento confirmado. Você já pode aceitar este passeio.</div>` : ''}
+      ${waitingPayment ? `<div class="payment-waiting-box">Aguardando confirmação do PIX. Assim que o Asaas confirmar, o botão Aceitar será liberado.</div>` : ''}
       <div class="actions">
         ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
+        ${waitingPayment && w.mp_payment_id ? `<button class="warn" type="button" onclick="syncWalkPayment(${w.id})">Verificar pagamento</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
         <button class="secondary" type="button" onclick="selectWalk(${w.id})">Ver detalhes</button>
       </div>
@@ -692,6 +709,7 @@ async function refreshAll(){
   if(!currentUser) return;
   try{
     const walks = await api('/api/walks');
+    await autoSyncPendingPayments(walks);
     availableWalks = walks;
     const activeStatuses = ['aceito','pagamento_confirmado','em_andamento'];
     currentWalk = walks.find(w => w.walker_id === currentUser.id && activeStatuses.includes(w.status)) || currentWalk;
@@ -713,7 +731,7 @@ async function acceptWalk(id){
   try{
     if(!requireWalker()) return;
     const selected = availableWalks.find(w => w.id === id) || currentWalk;
-    if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Asaas.');
+    if(selected && !isPaidWalk(selected)) return toast('Aguardando pagamento PIX confirmado pelo Asaas.');
     const walk = await api(`/api/walks/${id}/accept?walker_id=${currentUser.id}`, {method:'POST'});
     currentWalk = walk;
     await refreshAll();
@@ -733,7 +751,7 @@ async function rejectWalk(id){
 async function startCurrentWalk(){
   try{
     if(!currentWalk) return toast('Selecione ou aceite um passeio primeiro.');
-    if(currentWalk.payment_status !== 'pago') return toast('Pagamento PIX ainda não confirmado pelo Asaas.');
+    if(!isPaidWalk(currentWalk)) return toast('Pagamento PIX ainda não confirmado pelo Asaas.');
     currentWalk = await api(`/api/walks/${currentWalk.id}/start`, {method:'POST'});
     renderCurrentWalk();
     startGpsTracking();
@@ -897,3 +915,5 @@ handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 
 window.loginWithGoogle = loginWithGoogle;
+
+window.syncWalkPayment = syncWalkPayment;

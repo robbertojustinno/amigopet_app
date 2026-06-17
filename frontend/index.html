@@ -6,17 +6,17 @@
   <title>AmigoPet Pro Cliente • ROVIX</title>
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/static/assets/logo.png" />
+  <link rel="apple-touch-icon" href="/static/assets/amigopet-banner.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=precos-editaveis-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=fluxo-pix-visual-v1" />
 </head>
 <body>
   <div id="toast"></div>
 
   <header class="app-header">
-    <div class="brand-mark">🐾</div>
+    <div class="brand-mark image-mark"><img src="/static/assets/amigopet-banner.png" alt="AmigoPet" /></div>
     <div>
       <h1>AmigoPet Pro</h1>
       <p>Cliente • Passeios com segurança, pagamento e mapa em tempo real</p>
@@ -43,11 +43,11 @@
     <section id="home" class="view active">
       <div class="hero-grid">
         <div class="hero-card">
+          <img class="hero-banner-img" src="/static/assets/amigopet-banner.png" alt="AmigoPet" />
           <span class="eyebrow">Aplicativo profissional do cliente</span>
           <h2>Cuidado pet com experiência de aplicativo premium.</h2>
           <p>
-            Cadastre seu perfil com foto, confirme telefone por código enviado ao e-mail,
-            cadastre seu pet com foto obrigatória, escolha um passeador e acompanhe tudo no mapa.
+            Entre com sua conta Google, cadastre seu pet, escolha um passeador e acompanhe o passeio no mapa em tempo real.
           </p>
           <div class="feature-row">
             <div><b>📸</b><strong>Perfil com foto</strong><small>Cliente e pet identificados.</small></div>
@@ -58,15 +58,18 @@
 
         <div class="auth-card" id="authCard">
           <div class="tabs">
-            <button id="loginTab" class="tab active" type="button" onclick="setAuthMode('login')">Google</button>
-            <button id="registerTab" class="tab" type="button" onclick="setAuthMode('register')">Criar conta</button>
+            <button id="loginTab" class="tab active" type="button" onclick="setAuthMode('login')">Entrar</button>
+            <button id="registerTab" class="tab hidden" type="button" disabled>Criar conta</button>
           </div>
 
           <div id="loginPanel" class="auth-panel active">
-            <h3>Entrar com Google</h3>
-            <p>Use sua conta Google para entrar no AmigoPet. Não precisa senha, SMTP, Resend ou código por e-mail.</p>
-            <button class="full" type="button" onclick="loginWithGoogle()">🔵 Entrar com Google</button>
-            <div class="notice" style="margin-top:12px;">Se for o primeiro acesso, sua conta de cliente será criada automaticamente.</div>
+            <h3>Entrar como cliente</h3>
+            <p>Entre com seu e-mail e senha cadastrados.</p>
+            <button class="secondary full" type="button" onclick="fillClientDemo()">Preencher conta teste</button>
+            <input id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
+            <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
+            <button class="full" type="button" onclick="login()">Entrar na minha conta</button>
+            <button class="ghost full" type="button" onclick="toggleForgotPassword()">Esqueci minha senha</button>
           </div>
 
 
@@ -315,7 +318,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=precos-editaveis-v1"></script>
-  <script src="/static/pwa.js?v=precos-editaveis-v1"></script>
+  <script src="/static/app.js?v=fluxo-pix-visual-v1"></script>
+  <script src="/static/pwa.js?v=fluxo-pix-visual-v1"></script>
 </body>
 </html>

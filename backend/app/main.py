@@ -695,9 +695,12 @@ def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
     if invoice_url:
         walk.mp_ticket_url = invoice_url
 
-    if status in {"RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"}:
+    event = str(asaas_payment.get("event") or "").upper()
+    paid_statuses = {"RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "PAID", "PAYMENT_RECEIVED", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED_IN_CASH"}
+
+    if status in paid_statuses or event in paid_statuses:
         walk.payment_status = "pago"
-        if walk.status in ["pendente", "convite_enviado"]:
+        if walk.status in ["pendente", "convite_enviado", "aguardando"]:
             walk.status = "pagamento_confirmado"
     elif status in {"DELETED", "REFUNDED", "CANCELLED", "CHARGEBACK_REQUESTED", "CHARGEBACK_DISPUTE"}:
         walk.payment_status = "recusado"
@@ -1434,7 +1437,16 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     if walk.status in ["finalizado", "cancelado"]:
         raise HTTPException(status_code=400, detail="Pedido já encerrado")
-    if walk.payment_status != "pago":
+    if str(walk.payment_status or "").lower() != "pago":
+        try:
+            if walk.mp_payment_id:
+                mp_payment = get_mercadopago_payment(walk.mp_payment_id)
+                apply_mp_payment_to_walk(walk, mp_payment)
+                db.commit()
+                db.refresh(walk)
+        except Exception as e:
+            print("[ASAAS ACCEPT SYNC WARNING]", str(e))
+    if str(walk.payment_status or "").lower() != "pago":
         raise HTTPException(status_code=402, detail="Aguardando pagamento PIX confirmado pelo Asaas antes do aceite")
     walk.walker_id = walker_id
     walk.status = "aceito"
@@ -1564,7 +1576,7 @@ async def start_walk(walk_id: int, db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
-    if walk.payment_status != "pago":
+    if str(walk.payment_status or "").lower() != "pago":
         raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Asaas")
     walk.status = "em_andamento"
     walk.started_at = datetime.utcnow()
