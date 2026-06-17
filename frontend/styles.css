@@ -40,3 +40,30 @@ body{background:radial-gradient(circle at top left,rgba(20,184,166,.14),transpar
 #loginPanel .google-button{
   display:block!important;
 }
+
+
+/* AmigoPet - correção final dos cantos do banner */
+.premium-hero{
+  overflow:hidden!important;
+  border-radius:28px!important;
+}
+
+.premium-hero .amigopet-banner,
+.amigopet-banner{
+  border-radius:24px!important;
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  object-fit:contain!important;
+  background:#dcfce7!important;
+}
+
+@media(max-width:640px){
+  .premium-hero{
+    border-radius:22px!important;
+  }
+  .premium-hero .amigopet-banner,
+  .amigopet-banner{
+    border-radius:18px!important;
+  }
+}
