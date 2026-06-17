@@ -31,7 +31,7 @@
   </header>
 
   <nav class="nav">
-    <button class="nav-btn active" id="btnLogin" type="button" data-view="login">Login</button>
+    <button class="nav-btn active" id="btnLogin" type="button" data-view="login">Início</button>
     <button class="nav-btn locked hidden" id="btnPedidos" type="button" data-view="pedidos">Pedidos</button>
     <button class="nav-btn locked hidden" id="btnAtual" type="button" data-view="atual">Passeio atual</button>
     <button class="nav-btn locked hidden" id="btnMapa" type="button" data-view="mapa">Mapa</button>
@@ -89,6 +89,20 @@
             <input id="registerWalkerPassword" placeholder="Senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
             <input id="registerWalkerPhone" placeholder="Telefone / WhatsApp" />
             <input id="registerWalkerDocument" placeholder="CPF ou documento" />
+
+            <h4>Dados para recebimento automático</h4>
+            <select id="registerWalkerPixType">
+              <option value="">Tipo da chave PIX</option>
+              <option value="cpf">CPF</option>
+              <option value="cnpj">CNPJ</option>
+              <option value="email">E-mail</option>
+              <option value="phone">Telefone</option>
+              <option value="random">Chave aleatória</option>
+            </select>
+            <input id="registerWalkerPixKey" placeholder="Chave PIX do passeador" />
+            <input id="registerWalkerPixHolderName" placeholder="Nome do titular da chave PIX" />
+            <input id="registerWalkerPixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
+
             <input id="registerWalkerNeighborhood" placeholder="Bairro de atendimento" />
             <input id="registerWalkerCity" placeholder="Cidade" />
             <textarea id="registerWalkerBio" placeholder="Resumo profissional, experiência com pets, disponibilidade e cuidados especiais"></textarea>
@@ -133,7 +147,7 @@
           <div id="map" class="map-embedded"></div>
           <div id="currentWalk" class="notice map-status-card">Nenhum passeio aceito ainda.</div>
         </div>
-        <div class="card">
+        <div class="card actions-card">
           <h3>Ações rápidas</h3>
           <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio + GPS automático</button>
           <button class="full secondary" type="button" onclick="startGpsTracking()">Ativar GPS em tempo real</button>
@@ -162,6 +176,20 @@
           <input id="profileFullName" placeholder="Nome completo" />
           <input id="profilePhone" placeholder="Telefone" />
           <input id="profileDocument" placeholder="Documento / CPF" />
+
+          <h4>Dados para recebimento automático</h4>
+          <select id="profilePixType">
+            <option value="">Tipo da chave PIX</option>
+            <option value="cpf">CPF</option>
+            <option value="cnpj">CNPJ</option>
+            <option value="email">E-mail</option>
+            <option value="phone">Telefone</option>
+            <option value="random">Chave aleatória</option>
+          </select>
+          <input id="profilePixKey" placeholder="Chave PIX do passeador" />
+          <input id="profilePixHolderName" placeholder="Nome do titular da chave PIX" />
+          <input id="profilePixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
+
           <input id="profileNeighborhood" placeholder="Bairro" />
           <input id="profileCity" placeholder="Cidade" />
           <textarea id="profileBio" placeholder="Resumo profissional, experiência, cuidados especiais"></textarea>
@@ -180,14 +208,12 @@
     <section id="mapa" class="view">
       <div class="page-title">
         <h2>Mapa do passeio</h2>
-        <p>O mapa principal agora fica em Passeio atual para facilitar o uso durante o atendimento.</p>
+        <p>O mapa principal fica em Passeio atual para facilitar o atendimento.</p>
       </div>
       <div class="card">
         <h3>Resumo</h3>
         <div id="mapSummary" class="notice">Nenhum passeio selecionado.</div>
-        <div class="actions">
-          <button type="button" onclick="showView('atual')">Abrir passeio atual</button>
-        </div>
+        <div class="actions"><button type="button" onclick="showView('atual')">Abrir passeio atual</button></div>
       </div>
     </section>
   </main>
@@ -209,7 +235,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-perfil-v1"></script>
-  <script src="/static/pwa.js?v=walker-perfil-v1"></script>
+  <script src="/static/walker.js?v=walker-pix-v1"></script>
+  <script src="/static/pwa.js?v=walker-pix-v1"></script>
 </body>
 </html>

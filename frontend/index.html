@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=precos-editaveis-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=design-premium-v1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -42,7 +42,8 @@
   <main>
     <section id="home" class="view active">
       <div class="hero-grid">
-        <div class="hero-card">
+        <div class="hero-card premium-hero">
+          <img class="amigopet-banner" src="/static/assets/amigopet-banner.png" alt="AmigoPet" />
           <span class="eyebrow">Aplicativo profissional do cliente</span>
           <h2>Cuidado pet com experiência de aplicativo premium.</h2>
           <p>
@@ -62,16 +63,12 @@
             <button id="registerTab" class="tab hidden" type="button" disabled>Criar conta</button>
           </div>
 
-          <div id="loginPanel" class="auth-panel active">
-            <h3>Entrar como cliente</h3>
-            <p>Entre com seu e-mail e senha cadastrados.</p>
-            <button class="secondary full" type="button" onclick="fillClientDemo()">Preencher conta teste</button>
-            <input id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
-            <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
-            <button class="full" type="button" onclick="login()">Entrar na minha conta</button>
-            <button class="ghost full" type="button" onclick="toggleForgotPassword()">Esqueci minha senha</button>
+          <div id="loginPanel" class="auth-panel active premium-login-panel">
+            <h3>Entrar com Google</h3>
+            <p>Acesse sua conta AmigoPet com rapidez e segurança usando o Google.</p>
+            <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
+            <div class="notice soft-note" style="margin-top:12px;">No primeiro acesso, sua conta de cliente será criada automaticamente.</div>
           </div>
-
 
           <div id="forgotClientPasswordPanel" class="auth-panel">
             <h3>Recuperar senha</h3>
@@ -270,7 +267,7 @@
     <section id="tracking" class="view">
       <div class="grid two">
         <div class="card">
-          <h3>Acompanhar passeio no mapa</h3>
+          <h3>Mapa em tempo real</h3>
           <div id="map"></div>
           <div class="actions">
             <button class="warn" type="button" onclick="simulateMove()">Simular movimento</button>
@@ -318,7 +315,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=precos-editaveis-v1"></script>
-  <script src="/static/pwa.js?v=precos-editaveis-v1"></script>
+  <script src="/static/app.js?v=design-premium-v1"></script>
+  <script src="/static/pwa.js?v=design-premium-v1"></script>
 </body>
 </html>

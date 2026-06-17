@@ -67,6 +67,46 @@ function fillWalkerDemo(){
   $('loginPassword').value = '123456';
 }
 
+
+function loginWithGoogle(){
+  // O Google bloqueia login dentro de WebView/navegador interno.
+  // Use Chrome/Edge/Safari real para testar no celular.
+  window.location.href = API + '/api/auth/google/login/walker';
+}
+
+async function handleGoogleLoginCallback(){
+  const params = new URLSearchParams(window.location.search);
+  const googleUserId = params.get('google_user_id');
+  const googleError = params.get('google_error');
+
+  if(googleError){
+    toast('Erro no login Google: ' + googleError);
+    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+
+  if(!googleUserId) return;
+
+  try{
+    const user = await api(`/api/auth/google/session/${googleUserId}`);
+    if(user.role !== 'walker'){
+      toast('Esta área é exclusiva para passeadores. Use o app Cliente.');
+      if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    setLoggedUI();
+    await refreshAll();
+    showView('pedidos', true);
+    toast('Login com Google realizado.');
+    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+  }catch(err){
+    toast(err.message || 'Não foi possível concluir o login com Google.');
+  }
+}
+
 function showView(id, force=false){
   if(!force && id !== 'login' && !requireWalker()) return;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -117,6 +157,10 @@ function fillProfileForm(){
     profileFullName: currentUser.full_name || '',
     profilePhone: currentUser.phone || '',
     profileDocument: currentUser.document || '',
+    profilePixType: currentUser.pix_key_type || '',
+    profilePixKey: currentUser.pix_key || '',
+    profilePixHolderName: currentUser.pix_holder_name || '',
+    profilePixHolderDocument: currentUser.pix_holder_document || '',
     profileNeighborhood: currentUser.neighborhood || '',
     profileCity: currentUser.city || '',
     profileBio: currentUser.bio || ''
@@ -135,6 +179,8 @@ function renderProfilePreview(){
   const city = $('profileCity')?.value || currentUser.city || '-';
   const neighborhood = $('profileNeighborhood')?.value || currentUser.neighborhood || '-';
   const bio = $('profileBio')?.value || currentUser.bio || 'Passeador disponível.';
+  const pixType = $('profilePixType')?.value || currentUser.pix_key_type || '';
+  const pixKey = $('profilePixKey')?.value || currentUser.pix_key || '';
   const photo = walkerPhotoData || currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`;
   box.innerHTML = `
     <div class="item-head">
@@ -146,6 +192,7 @@ function renderProfilePreview(){
       </div>
     </div>
     <p>Telefone: ${phone}</p>
+    <p>PIX: ${pixType && pixKey ? `${pixType} • ${pixKey}` : 'Dados PIX não preenchidos'}</p>
     <p class="muted">${bio}</p>
   `;
   const preview = $('profilePhotoPreview');
@@ -155,7 +202,7 @@ function renderProfilePreview(){
 }
 
 function bindProfileForm(){
-  ['profileFullName','profilePhone','profileDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
+  ['profileFullName','profilePhone','profileDocument','profilePixType','profilePixKey','profilePixHolderName','profilePixHolderDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener('input', renderProfilePreview);
   });
@@ -181,6 +228,10 @@ async function saveWalkerProfile(){
       full_name: $('profileFullName').value.trim(),
       phone: $('profilePhone').value.trim(),
       document: $('profileDocument').value.trim(),
+      pix_key_type: $('profilePixType')?.value?.trim() || '',
+      pix_key: $('profilePixKey')?.value?.trim() || '',
+      pix_holder_name: $('profilePixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('profilePixHolderDocument')?.value?.trim() || '',
       neighborhood: $('profileNeighborhood').value.trim(),
       city: $('profileCity').value.trim(),
       bio: $('profileBio').value.trim(),
@@ -234,6 +285,10 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
+      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
+      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
+      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -246,6 +301,10 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
+      ['pix_key_type','tipo da chave PIX'],
+      ['pix_key','chave PIX'],
+      ['pix_holder_name','nome do titular da chave PIX'],
+      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -366,6 +425,10 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
+      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
+      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
+      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -378,6 +441,10 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
+      ['pix_key_type','tipo da chave PIX'],
+      ['pix_key','chave PIX'],
+      ['pix_holder_name','nome do titular da chave PIX'],
+      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -563,7 +630,7 @@ function walkCard(w, mode='available'){
       </div>
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
-      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar só aparece depois do Mercado Pago confirmar.</div>` : ''}
+      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar aparece assim que o pagamento PIX for confirmado.</div>` : ''}
       <div class="actions">
         ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
@@ -827,4 +894,7 @@ function restoreSession(){
 
 bindProfileForm();
 restoreSession();
+handleGoogleLoginCallback().catch(()=>{});
 connectWS();
+
+window.loginWithGoogle = loginWithGoogle;

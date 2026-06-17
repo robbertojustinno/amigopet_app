@@ -76,6 +76,10 @@ class User(Base):
     phone = Column(String(30), default="")
     photo = Column(Text, default="")
     document = Column(String(40), default="")
+    pix_key_type = Column(String(30), default="")
+    pix_key = Column(String(180), default="")
+    pix_holder_name = Column(String(160), default="")
+    pix_holder_document = Column(String(40), default="")
     address = Column(Text, default="")
     neighborhood = Column(String(120), default="")
     city = Column(String(120), default="")
@@ -166,6 +170,10 @@ class RegisterIn(BaseModel):
     phone: str = ""
     photo: str = ""
     document: str = ""
+    pix_key_type: str = ""
+    pix_key: str = ""
+    pix_holder_name: str = ""
+    pix_holder_document: str = ""
     address: str = ""
     neighborhood: str = ""
     city: str = ""
@@ -204,6 +212,10 @@ class WalkerUpdateIn(BaseModel):
     phone: str = ""
     photo: str = ""
     document: str = ""
+    pix_key_type: str = ""
+    pix_key: str = ""
+    pix_holder_name: str = ""
+    pix_holder_document: str = ""
     neighborhood: str = ""
     city: str = ""
     bio: str = ""
@@ -235,6 +247,10 @@ class PricingIn(BaseModel):
     price_45: float = 38.0
     price_60: float = 46.0
     extra_dog: float = 9.0
+
+class PayoutSettingsIn(BaseModel):
+    walker_percent: float = 80.0
+    platform_percent: float = 20.0
 
 class MessageIn(BaseModel):
     request_id: int
@@ -304,6 +320,10 @@ def user_to_dict(u: User):
     return {
         "id": u.id, "full_name": u.full_name, "email": u.email, "role": u.role,
         "phone": u.phone, "photo": u.photo, "document": u.document, "address": u.address,
+        "pix_key_type": getattr(u, "pix_key_type", "") or "",
+        "pix_key": getattr(u, "pix_key", "") or "",
+        "pix_holder_name": getattr(u, "pix_holder_name", "") or "",
+        "pix_holder_document": getattr(u, "pix_holder_document", "") or "",
         "neighborhood": u.neighborhood, "city": u.city, "lat": u.lat, "lng": u.lng,
         "rating": u.rating, "available": u.available, "bio": u.bio,
         "zip_code": u.zip_code, "street": u.street, "number": u.number,
@@ -409,6 +429,11 @@ DEFAULT_PRICING = {
     "extra_dog": 9.0,
 }
 
+DEFAULT_PAYOUT = {
+    "walker_percent": 80.0,
+    "platform_percent": 20.0,
+}
+
 def get_setting(db: Session, key: str, default: str = "") -> str:
     item = db.get(AppSetting, key)
     return item.value if item else default
@@ -430,6 +455,20 @@ def get_pricing_config(db: Session) -> dict:
             config[key] = default
     return config
 
+def get_payout_config(db: Session) -> dict:
+    config = {}
+    for key, default in DEFAULT_PAYOUT.items():
+        try:
+            value = float(get_setting(db, key, str(default)))
+        except Exception:
+            value = default
+        config[key] = round(max(0.0, min(100.0, value)), 2)
+
+    total = round(config["walker_percent"] + config["platform_percent"], 2)
+    if total != 100.0:
+        config["platform_percent"] = round(100.0 - config["walker_percent"], 2)
+    return config
+
 def calculate_walk_price(db: Session, duration_minutes: int, dogs_count: int) -> float:
     pricing = get_pricing_config(db)
     duration = int(duration_minutes or 30)
@@ -446,6 +485,16 @@ def seed_pricing_settings():
     db = SessionLocal()
     try:
         for key, value in DEFAULT_PRICING.items():
+            if not db.get(AppSetting, key):
+                db.add(AppSetting(key=key, value=str(value)))
+        db.commit()
+    finally:
+        db.close()
+
+def seed_payout_settings():
+    db = SessionLocal()
+    try:
+        for key, value in DEFAULT_PAYOUT.items():
             if not db.get(AppSetting, key):
                 db.add(AppSetting(key=key, value=str(value)))
         db.commit()
@@ -754,6 +803,10 @@ def run_lightweight_migrations():
             ("phone", "VARCHAR(30) DEFAULT ''"),
             ("photo", "TEXT DEFAULT ''"),
             ("document", "VARCHAR(40) DEFAULT ''"),
+            ("pix_key_type", "VARCHAR(30) DEFAULT ''"),
+            ("pix_key", "VARCHAR(180) DEFAULT ''"),
+            ("pix_holder_name", "VARCHAR(160) DEFAULT ''"),
+            ("pix_holder_document", "VARCHAR(40) DEFAULT ''"),
             ("address", "TEXT DEFAULT ''"),
             ("neighborhood", "VARCHAR(120) DEFAULT ''"),
             ("city", "VARCHAR(120) DEFAULT ''"),
@@ -928,6 +981,7 @@ def run_lightweight_migrations():
 run_lightweight_migrations()
 seed_data()
 seed_pricing_settings()
+seed_payout_settings()
 
 
 @app.websocket("/ws")
@@ -1202,7 +1256,11 @@ def update_walker_profile(user_id: int, data: WalkerUpdateIn, db: Session = Depe
     if not str(payload.get("full_name", "")).strip():
         raise HTTPException(status_code=400, detail="Informe o nome do passeador")
 
-    allowed = ["full_name", "phone", "photo", "document", "neighborhood", "city", "bio"]
+    allowed = [
+        "full_name", "phone", "photo", "document",
+        "pix_key_type", "pix_key", "pix_holder_name", "pix_holder_document",
+        "neighborhood", "city", "bio"
+    ]
     for key in allowed:
         if hasattr(user, key):
             value = payload.get(key, "")
@@ -1256,6 +1314,27 @@ def update_pricing(data: PricingIn, db: Session = Depends(get_db)):
         set_setting(db, key, str(round(value, 2)))
     db.commit()
     return get_pricing_config(db)
+
+@app.get("/api/admin/payout-settings")
+def get_payout_settings(db: Session = Depends(get_db)):
+    return get_payout_config(db)
+
+@app.post("/api/admin/payout-settings")
+def update_payout_settings(data: PayoutSettingsIn, db: Session = Depends(get_db)):
+    walker_percent = float(data.walker_percent or 0)
+    platform_percent = float(data.platform_percent or 0)
+
+    if walker_percent < 0 or platform_percent < 0:
+        raise HTTPException(status_code=400, detail="Percentuais não podem ser negativos")
+
+    total = round(walker_percent + platform_percent, 2)
+    if total != 100.0:
+        raise HTTPException(status_code=400, detail="A soma dos percentuais precisa ser 100%")
+
+    set_setting(db, "walker_percent", str(round(walker_percent, 2)))
+    set_setting(db, "platform_percent", str(round(platform_percent, 2)))
+    db.commit()
+    return get_payout_config(db)
 
 @app.get("/api/walks")
 def walks(status: Optional[str] = None, db: Session = Depends(get_db)):
