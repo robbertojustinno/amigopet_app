@@ -1,1 +1,0 @@
-Correção: login obrigatório e telas separadas por perfil. Cliente vê Cliente/Mapa, Passeador vê Passeador/Mapa, Admin vê Admin e áreas de gestão.
