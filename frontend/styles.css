@@ -60,3 +60,27 @@ body{background:radial-gradient(circle at top left,rgba(20,184,166,.14),transpar
 @media(max-width:640px){
   .premium-hero .amigopet-banner,.amigopet-banner{max-height:180px!important;border-radius:18px!important;}
 }
+
+
+/* Banner AmigoPet - ajuste final */
+.premium-hero{
+    overflow:hidden !important;
+    border-radius:24px !important;
+    padding:0 !important;
+}
+
+.amigopet-banner{
+    display:block !important;
+    width:100% !important;
+    height:380px !important;
+    object-fit:cover !important;
+    object-position:center center !important;
+    border-radius:24px !important;
+    background:#dcfce7 !important;
+}
+
+@media (max-width: 768px){
+    .amigopet-banner{
+        height:260px !important;
+    }
+}
