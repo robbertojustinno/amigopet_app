@@ -10,13 +10,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=walker-chat-online-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=walker-v1" />
 </head>
 <body>
   <div id="toast"></div>
 
   <header class="app-header">
-    <div class="brand-mark">🐕</div>
+    <div class="brand-mark"><img src="/static/assets/amigopet-banner.png" alt="AmigoPet" /></div>
     <div>
       <h1>AmigoPet Passeador</h1>
       <p>Receba convites, aceite passeios e envie localização em tempo real</p>
@@ -31,7 +31,7 @@
   </header>
 
   <nav class="nav">
-    <button class="nav-btn active" id="btnLogin" type="button" data-view="login">Login</button>
+    <button class="nav-btn active" id="btnLogin" type="button" data-view="login">Início</button>
     <button class="nav-btn locked hidden" id="btnPedidos" type="button" data-view="pedidos">Pedidos</button>
     <button class="nav-btn locked hidden" id="btnAtual" type="button" data-view="atual">Passeio atual</button>
     <button class="nav-btn locked hidden" id="btnMapa" type="button" data-view="mapa">Mapa</button>
@@ -42,10 +42,11 @@
   <main>
     <section id="login" class="view active">
       <div class="hero-grid">
-        <div class="hero-card">
+        <div class="hero-card premium-hero">
+          <img class="amigopet-banner" src="/static/assets/amigopet-banner.png" alt="AmigoPet" />
           <span class="eyebrow">Aplicativo do passeador</span>
-          <h2>Receba convites em tempo real e gerencie seus passeios.</h2>
-          <p>Essa área é separada do cliente. O passeador pode aceitar, recusar, iniciar, finalizar e atualizar localização.</p>
+          <h2>Receba convites, aceite passeios e envie localização em tempo real.</h2>
+          <p>Área exclusiva do passeador, com convites, mapa, GPS e controle do passeio.</p>
           <div class="feature-row">
             <div><b>⚡</b><strong>Convite ao vivo</strong><small>WebSocket conectado.</small></div>
             <div><b>📍</b><strong>GPS do passeador</strong><small>Atualização para o cliente.</small></div>
@@ -89,6 +90,20 @@
             <input id="registerWalkerPassword" placeholder="Senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
             <input id="registerWalkerPhone" placeholder="Telefone / WhatsApp" />
             <input id="registerWalkerDocument" placeholder="CPF ou documento" />
+
+            <h4>Dados para recebimento automático</h4>
+            <select id="registerWalkerPixType">
+              <option value="">Tipo da chave PIX</option>
+              <option value="cpf">CPF</option>
+              <option value="cnpj">CNPJ</option>
+              <option value="email">E-mail</option>
+              <option value="phone">Telefone</option>
+              <option value="random">Chave aleatória</option>
+            </select>
+            <input id="registerWalkerPixKey" placeholder="Chave PIX do passeador" />
+            <input id="registerWalkerPixHolderName" placeholder="Nome do titular da chave PIX" />
+            <input id="registerWalkerPixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
+
             <input id="registerWalkerNeighborhood" placeholder="Bairro de atendimento" />
             <input id="registerWalkerCity" placeholder="Cidade" />
             <textarea id="registerWalkerBio" placeholder="Resumo profissional, experiência com pets, disponibilidade e cuidados especiais"></textarea>
@@ -129,17 +144,17 @@
       </div>
       <div class="grid two">
         <div class="card">
-          <h3>Pedido em atendimento</h3>
-          <div id="currentWalk" class="notice">Nenhum passeio aceito ainda.</div>
+          <h3>Mapa do passeio</h3>
+          <div id="map" class="map-embedded"></div>
+          <div id="currentWalk" class="notice map-status-card">Nenhum passeio aceito ainda.</div>
         </div>
-        <div class="card">
+        <div class="card actions-card">
           <h3>Ações rápidas</h3>
           <button class="full ok" type="button" onclick="startCurrentWalk()">Iniciar passeio + GPS automático</button>
           <button class="full secondary" type="button" onclick="startGpsTracking()">Ativar GPS em tempo real</button>
           <button class="full ghost" type="button" onclick="stopGpsTracking()">Parar GPS automático</button>
           <button class="full secondary" type="button" onclick="sendMyLocation()">Enviar minha localização uma vez</button>
           <button class="full warn" type="button" onclick="simulateMove()">Simular movimento</button>
-          <button class="full secondary" type="button" onclick="openWalkerChat()">Abrir chat com cliente</button>
           <button class="full danger" type="button" onclick="finishCurrentWalk()">Finalizar passeio</button>
         </div>
       </div>
@@ -162,6 +177,20 @@
           <input id="profileFullName" placeholder="Nome completo" />
           <input id="profilePhone" placeholder="Telefone" />
           <input id="profileDocument" placeholder="Documento / CPF" />
+
+          <h4>Dados para recebimento automático</h4>
+          <select id="profilePixType">
+            <option value="">Tipo da chave PIX</option>
+            <option value="cpf">CPF</option>
+            <option value="cnpj">CNPJ</option>
+            <option value="email">E-mail</option>
+            <option value="phone">Telefone</option>
+            <option value="random">Chave aleatória</option>
+          </select>
+          <input id="profilePixKey" placeholder="Chave PIX do passeador" />
+          <input id="profilePixHolderName" placeholder="Nome do titular da chave PIX" />
+          <input id="profilePixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
+
           <input id="profileNeighborhood" placeholder="Bairro" />
           <input id="profileCity" placeholder="Cidade" />
           <textarea id="profileBio" placeholder="Resumo profissional, experiência, cuidados especiais"></textarea>
@@ -180,34 +209,16 @@
     <section id="mapa" class="view">
       <div class="page-title">
         <h2>Mapa do passeio</h2>
-        <p>Visualização do cliente e do passeador.</p>
+        <p>O mapa principal fica em Passeio atual para facilitar o atendimento.</p>
       </div>
-      <div class="grid two">
-        <div class="card">
-          <h3>Mapa em tempo real</h3>
-          <div id="map"></div>
-        </div>
-        <div class="card">
-          <h3>Resumo</h3>
-          <div id="mapSummary" class="notice">Nenhum passeio selecionado.</div>
-        </div>
+      <div class="card">
+        <h3>Resumo</h3>
+        <div id="mapSummary" class="notice">Nenhum passeio selecionado.</div>
+        <div class="actions"><button type="button" onclick="showView('atual')">Abrir passeio atual</button></div>
       </div>
     </section>
   </main>
 
-
-
-  <aside id="walkerChatBox" class="chat-box">
-    <div class="chat-head">
-      <strong>Chat com cliente</strong>
-      <button type="button" onclick="toggleWalkerChat()">×</button>
-    </div>
-    <div id="walkerChatMessages" class="chat-messages"></div>
-    <div class="chat-send">
-      <input id="walkerChatText" placeholder="Digite sua mensagem..." />
-      <button type="button" onclick="sendWalkerMessage()">Enviar</button>
-    </div>
-  </aside>
 
   <div id="walkerCameraModal" class="chat-box" style="max-width:420px;">
     <div class="chat-head">
@@ -225,7 +236,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-perfil-v1"></script>
-  <script src="/static/pwa.js?v=walker-perfil-v1"></script>
+  <script src="/static/walker.js?v=walker-pix-v1"></script>
+  <script src="/static/pwa.js?v=walker-pix-v1"></script>
 </body>
 </html>

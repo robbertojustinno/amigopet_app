@@ -24,120 +24,48 @@ body{background:radial-gradient(circle at top left,rgba(20,184,166,.14),transpar
 @media(max-width:640px){.premium-hero{padding:16px}.amigopet-banner,.hero-card img,.hero-banner img,.login-banner img{border-radius:18px}.map-embedded{height:330px!important;min-height:300px}.premium-login-panel h3{font-size:28px}}
 
 
-/* EMERGÊNCIA CLIENTE: banner compacto e login Google funcional */
-.hero-grid{
-  grid-template-columns:minmax(0,1fr) 360px;
-  align-items:start;
+/* Passeador login limpo v2 */
+.brand-mark img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  border-radius:inherit;
 }
-.premium-hero{
-  overflow:hidden!important;
-}
-.premium-hero .amigopet-banner,
-.amigopet-banner{
-  width:100%!important;
-  max-height:260px!important;
-  object-fit:cover!important;
-  object-position:center 38%!important;
-  border-radius:22px!important;
-  display:block!important;
-  background:#dcfce7!important;
-}
-.premium-login-panel .google-button{
-  display:block!important;
-  width:100%!important;
-  min-height:54px!important;
-}
-#loginTab.single-tab{
-  display:none!important;
-}
-.auth-card .tabs:has(#loginTab.single-tab){
-  display:none!important;
-}
-@media(max-width:980px){
-  .hero-grid{grid-template-columns:1fr;}
-  .premium-hero .amigopet-banner,.amigopet-banner{max-height:220px!important;}
-}
-@media(max-width:640px){
-  .premium-hero .amigopet-banner,.amigopet-banner{max-height:180px!important;border-radius:18px!important;}
-}
-
-
-/* Cliente igual ao Passeador - ajuste final */
-.app-header .brand-mark{
-  width:62px!important;
-  height:62px!important;
-  border-radius:20px!important;
-  overflow:hidden!important;
-  padding:0!important;
-}
-.app-header .brand-mark img{
-  width:100%!important;
-  height:100%!important;
-  object-fit:cover!important;
-  border-radius:20px!important;
-  display:block!important;
-}
-
-.cliente-home-grid{
-  grid-template-columns:minmax(0,1fr) 360px!important;
-  align-items:start!important;
-}
-
-.cliente-home-grid .premium-hero{
-  padding:22px!important;
-  border-radius:28px!important;
-  overflow:hidden!important;
-}
-
-.cliente-home-grid .amigopet-banner{
-  width:100%!important;
-  height:360px!important;
-  max-height:360px!important;
-  object-fit:cover!important;
-  object-position:center center!important;
-  border-radius:24px!important;
-  display:block!important;
-  background:#dcfce7!important;
-  box-shadow:0 22px 45px rgba(15,23,42,.12)!important;
-}
-
-.premium-login-panel .google-button{
-  width:100%!important;
-  min-height:54px!important;
-  display:block!important;
-}
-
-#authCard .tabs,
-#loginTab,
-#registerTab,
 #loginPanel input,
 #loginPanel .ghost,
 #loginPanel button.secondary,
 #loginPanel button.warn{
   display:none!important;
 }
-
 #loginPanel .google-button{
   display:block!important;
 }
 
-@media(max-width:980px){
-  .cliente-home-grid{
-    grid-template-columns:1fr!important;
-  }
-  .cliente-home-grid .amigopet-banner{
-    height:300px!important;
-    max-height:300px!important;
-  }
+
+/* RESTAURAÇÃO PASSEADOR FUNCIONANDO */
+.brand-mark{
+  overflow:hidden!important;
 }
-@media(max-width:640px){
-  .cliente-home-grid .premium-hero{
-    padding:16px!important;
-    border-radius:22px!important;
-  }
-  .cliente-home-grid .amigopet-banner{
-    height:240px!important;
-    max-height:240px!important;
-    border-radius:18px!important;
-  }
+.brand-mark img{
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  border-radius:inherit!important;
+  display:block!important;
+}
+.amigopet-banner{
+  width:100%!important;
+  height:auto!important;
+  max-height:360px!important;
+  object-fit:cover!important;
+  object-position:center center!important;
+  border-radius:24px!important;
+  display:block!important;
+  background:#dcfce7!important;
+}
+#loginPanel .google-button,
+#loginPanel button[onclick="loginWithGoogle()"]{
+  display:block!important;
+  width:100%!important;
+  min-height:54px!important;
 }

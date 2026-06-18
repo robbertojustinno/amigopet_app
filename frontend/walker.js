@@ -67,6 +67,46 @@ function fillWalkerDemo(){
   $('loginPassword').value = '123456';
 }
 
+
+function loginWithGoogle(){
+  // O Google bloqueia login dentro de WebView/navegador interno.
+  // Use Chrome/Edge/Safari real para testar no celular.
+  window.location.href = API + '/api/auth/google/login/walker';
+}
+
+async function handleGoogleLoginCallback(){
+  const params = new URLSearchParams(window.location.search);
+  const googleUserId = params.get('google_user_id');
+  const googleError = params.get('google_error');
+
+  if(googleError){
+    toast('Erro no login Google: ' + googleError);
+    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+
+  if(!googleUserId) return;
+
+  try{
+    const user = await api(`/api/auth/google/session/${googleUserId}`);
+    if(user.role !== 'walker'){
+      toast('Esta área é exclusiva para passeadores. Use o app Cliente.');
+      if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    setLoggedUI();
+    await refreshAll();
+    showView('pedidos', true);
+    toast('Login com Google realizado.');
+    if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
+  }catch(err){
+    toast(err.message || 'Não foi possível concluir o login com Google.');
+  }
+}
+
 function showView(id, force=false){
   if(!force && id !== 'login' && !requireWalker()) return;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -75,7 +115,7 @@ function showView(id, force=false){
   document.querySelectorAll('.nav-btn[data-view]').forEach(b => b.classList.remove('active'));
   const btn = document.querySelector(`[data-view="${id}"]`);
   if(btn) btn.classList.add('active');
-  if(id === 'mapa') setTimeout(() => { initMap(); renderMap(); }, 250);
+  if(id === 'mapa' || id === 'atual') setTimeout(() => { initMap(); renderMap(); }, 250);
 }
 
 document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
@@ -100,7 +140,6 @@ function setLoggedUI(){
   const chip = $('profileChip');
   if(chip) chip.classList.toggle('hidden', !loggedIn);
   if(loggedIn){
-    online = currentUser.available !== false;
     $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>Passeador</strong>`;
     $('profileName').textContent = currentUser.full_name;
     $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
@@ -118,6 +157,10 @@ function fillProfileForm(){
     profileFullName: currentUser.full_name || '',
     profilePhone: currentUser.phone || '',
     profileDocument: currentUser.document || '',
+    profilePixType: currentUser.pix_key_type || '',
+    profilePixKey: currentUser.pix_key || '',
+    profilePixHolderName: currentUser.pix_holder_name || '',
+    profilePixHolderDocument: currentUser.pix_holder_document || '',
     profileNeighborhood: currentUser.neighborhood || '',
     profileCity: currentUser.city || '',
     profileBio: currentUser.bio || ''
@@ -136,6 +179,8 @@ function renderProfilePreview(){
   const city = $('profileCity')?.value || currentUser.city || '-';
   const neighborhood = $('profileNeighborhood')?.value || currentUser.neighborhood || '-';
   const bio = $('profileBio')?.value || currentUser.bio || 'Passeador disponível.';
+  const pixType = $('profilePixType')?.value || currentUser.pix_key_type || '';
+  const pixKey = $('profilePixKey')?.value || currentUser.pix_key || '';
   const photo = walkerPhotoData || currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`;
   box.innerHTML = `
     <div class="item-head">
@@ -147,6 +192,7 @@ function renderProfilePreview(){
       </div>
     </div>
     <p>Telefone: ${phone}</p>
+    <p>PIX: ${pixType && pixKey ? `${pixType} • ${pixKey}` : 'Dados PIX não preenchidos'}</p>
     <p class="muted">${bio}</p>
   `;
   const preview = $('profilePhotoPreview');
@@ -156,7 +202,7 @@ function renderProfilePreview(){
 }
 
 function bindProfileForm(){
-  ['profileFullName','profilePhone','profileDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
+  ['profileFullName','profilePhone','profileDocument','profilePixType','profilePixKey','profilePixHolderName','profilePixHolderDocument','profileNeighborhood','profileCity','profileBio'].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener('input', renderProfilePreview);
   });
@@ -182,6 +228,10 @@ async function saveWalkerProfile(){
       full_name: $('profileFullName').value.trim(),
       phone: $('profilePhone').value.trim(),
       document: $('profileDocument').value.trim(),
+      pix_key_type: $('profilePixType')?.value?.trim() || '',
+      pix_key: $('profilePixKey')?.value?.trim() || '',
+      pix_holder_name: $('profilePixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('profilePixHolderDocument')?.value?.trim() || '',
       neighborhood: $('profileNeighborhood').value.trim(),
       city: $('profileCity').value.trim(),
       bio: $('profileBio').value.trim(),
@@ -235,6 +285,10 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
+      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
+      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
+      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -247,6 +301,10 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
+      ['pix_key_type','tipo da chave PIX'],
+      ['pix_key','chave PIX'],
+      ['pix_holder_name','nome do titular da chave PIX'],
+      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -367,6 +425,10 @@ async function registerWalker(){
       phone: $('registerWalkerPhone').value.trim(),
       photo: registerWalkerPhotoData,
       document: $('registerWalkerDocument').value.trim(),
+      pix_key_type: $('registerWalkerPixType')?.value?.trim() || '',
+      pix_key: $('registerWalkerPixKey')?.value?.trim() || '',
+      pix_holder_name: $('registerWalkerPixHolderName')?.value?.trim() || '',
+      pix_holder_document: $('registerWalkerPixHolderDocument')?.value?.trim() || '',
       neighborhood: $('registerWalkerNeighborhood').value.trim(),
       city: $('registerWalkerCity').value.trim(),
       bio: $('registerWalkerBio').value.trim()
@@ -379,6 +441,10 @@ async function registerWalker(){
       ['phone','telefone'],
       ['photo','foto do passeador'],
       ['document','documento'],
+      ['pix_key_type','tipo da chave PIX'],
+      ['pix_key','chave PIX'],
+      ['pix_holder_name','nome do titular da chave PIX'],
+      ['pix_holder_document','CPF/CNPJ do titular da chave PIX'],
       ['neighborhood','bairro'],
       ['city','cidade']
     ];
@@ -515,22 +581,10 @@ function logout(){
   toast('Sessão encerrada.');
 }
 
-async function setOnline(value){
-  try{
-    if(!requireWalker()) return;
-    const user = await api(`/api/walkers/${currentUser.id}/availability`, {
-      method:'PUT',
-      body: JSON.stringify({available: !!value})
-    });
-    currentUser = user;
-    online = !!user.available;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    setLoggedUI();
-    await refreshAll();
-    toast(online ? 'Você está online para receber convites.' : 'Você está offline. Clientes não verão você como disponível.');
-  }catch(err){
-    toast(err.message || 'Não foi possível atualizar seu status.');
-  }
+function setOnline(value){
+  online = value;
+  renderWalkerDetails();
+  toast(value ? 'Você está online para receber convites.' : 'Você está offline.');
 }
 
 function renderWalkerDetails(){
@@ -576,7 +630,7 @@ function walkCard(w, mode='available'){
       </div>
       <p>Distância: ${w.distance_km || 0} km • ${w.duration_minutes || 30} min • R$ ${Number(w.estimated_price || 0).toFixed(2)}</p>
       <p class="muted">Local cliente: ${Number(w.pickup_lat || 0).toFixed(5)}, ${Number(w.pickup_lng || 0).toFixed(5)}</p>
-      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar só aparece depois do Mercado Pago confirmar.</div>` : ''}
+      ${waitingPayment ? `<div class="notice" style="padding:10px;margin:10px 0;border-radius:14px;">Aguardando pagamento PIX confirmado. O botão Aceitar aparece assim que o pagamento PIX for confirmado.</div>` : ''}
       <div class="actions">
         ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
@@ -774,12 +828,15 @@ async function simulateMove(){
 }
 
 function initMap(){
-  if(map || !window.L || !$('map')) return;
+  if(map){ setTimeout(() => map.invalidateSize(), 120); return; }
+  if(!window.L || !$('map')) return;
   map = L.map('map').setView([-22.5884, -43.1847], 15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(map);
+  setTimeout(() => map.invalidateSize(), 180);
 }
 
 function renderMap(){
+  if(!map) initMap();
   if(!map || !currentWalk || !window.L) return;
   const pickup = [Number(currentWalk.pickup_lat || -22.5884), Number(currentWalk.pickup_lng || -43.1847)];
   const walker = [Number(currentWalk.walker_lat || -22.5900), Number(currentWalk.walker_lng || -43.1810)];
@@ -792,77 +849,6 @@ function renderMap(){
   map.fitBounds([walker, pickup], {padding:[35,35]});
 }
 
-
-function ensureCurrentWalkForChat(){
-  if(currentWalk && currentWalk.id) return currentWalk.id;
-  const selected = availableWalks.find(w => w.walker_id === currentUser?.id && ['aceito','em_andamento','pagamento_confirmado'].includes(w.status));
-  if(selected){
-    currentWalk = selected;
-    return selected.id;
-  }
-  return null;
-}
-
-function toggleWalkerChat(){
-  const box = $('walkerChatBox');
-  if(!box) return;
-  box.classList.toggle('open');
-  if(box.classList.contains('open')) loadWalkerMessages();
-}
-
-function openWalkerChat(){
-  const requestId = ensureCurrentWalkForChat();
-  if(!requestId) return toast('Abra ou aceite um passeio antes de usar o chat.');
-  const box = $('walkerChatBox');
-  if(box) box.classList.add('open');
-  loadWalkerMessages();
-}
-
-async function loadWalkerMessages(){
-  try{
-    const requestId = ensureCurrentWalkForChat();
-    const box = $('walkerChatMessages');
-    if(!box) return;
-    if(!requestId){
-      box.innerHTML = '<div class="notice">Aceite um passeio para conversar com o cliente.</div>';
-      return;
-    }
-    const msgs = await api(`/api/messages/${requestId}`);
-    box.innerHTML = msgs.length
-      ? msgs.map(m => `<div class="bubble">${escapeText(m.text)}<br><small>${new Date(m.created_at).toLocaleString('pt-BR')}</small></div>`).join('')
-      : '<div class="notice">Nenhuma mensagem ainda.</div>';
-    box.scrollTop = box.scrollHeight;
-  }catch(err){
-    toast(err.message || 'Não foi possível carregar o chat.');
-  }
-}
-
-async function sendWalkerMessage(){
-  try{
-    if(!requireWalker()) return;
-    const requestId = ensureCurrentWalkForChat();
-    if(!requestId) return toast('Aceite um passeio para enviar mensagem.');
-    const input = $('walkerChatText');
-    const text = (input?.value || '').trim();
-    if(!text) return;
-
-    await api('/api/messages', {
-      method:'POST',
-      body: JSON.stringify({request_id: requestId, sender_id: currentUser.id, text})
-    });
-
-    if(input) input.value = '';
-    await loadWalkerMessages();
-  }catch(err){
-    toast(err.message || 'Não foi possível enviar a mensagem.');
-  }
-}
-
-function escapeText(value){
-  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-}
-
-
 function connectWS(){
   try{
     const ws = new WebSocket(WS_URL);
@@ -872,21 +858,6 @@ function connectWS(){
       if(data.type === 'walk_created'){
         toast('Novo convite recebido.');
         window.amigoPetPWA?.notify('AmigoPet Passeador', 'Novo convite de passeio recebido.', '/passeador');
-      }
-      if(data.type === 'message'){
-        const msg = data.message;
-        if(msg && currentWalk && Number(msg.request_id) === Number(currentWalk.id)){
-          toast('Nova mensagem do cliente.');
-          const box = $('walkerChatBox');
-          if(box && !box.classList.contains('open')) box.classList.add('open');
-          await loadWalkerMessages();
-        }
-      }
-      if(data.type === 'walker_availability_changed' && data.walker && currentUser && Number(data.walker.id) === Number(currentUser.id)){
-        currentUser = data.walker;
-        online = currentUser.available !== false;
-        localStorage.setItem('amigopet_walker_user', JSON.stringify(currentUser));
-        setLoggedUI();
       }
       if(data.walk){
         const w = data.walk;
@@ -923,10 +894,7 @@ function restoreSession(){
 
 bindProfileForm();
 restoreSession();
+handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 
-
-window.setOnline = setOnline;
-window.openWalkerChat = openWalkerChat;
-window.toggleWalkerChat = toggleWalkerChat;
-window.sendWalkerMessage = sendWalkerMessage;
+window.loginWithGoogle = loginWithGoogle;
