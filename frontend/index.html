@@ -10,16 +10,16 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=cliente-google-fix-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=cliente-igual-passeador-v1" />
 </head>
 <body>
   <div id="toast"></div>
 
   <header class="app-header">
-    <div class="brand-mark">🐾</div>
+    <div class="brand-mark"><img src="/static/assets/amigopet-banner.png" alt="AmigoPet" /></div>
     <div>
       <h1>AmigoPet Pro</h1>
-      <p>Cliente • Passeios com segurança, pagamento e mapa em tempo real</p>
+      <p>Cliente • Solicite passeios, acompanhe pagamentos e veja o mapa em tempo real</p>
     </div>
     <div id="profileChip" class="profile-chip hidden">
       <img id="profilePhoto" alt="Foto do cliente" />
@@ -41,87 +41,30 @@
 
   <main>
     <section id="home" class="view active">
-      <div class="hero-grid">
+      <div class="hero-grid cliente-home-grid">
         <div class="hero-card premium-hero">
           <img class="amigopet-banner" src="/static/assets/amigopet-banner.png" alt="AmigoPet" />
-          <span class="eyebrow">Aplicativo profissional do cliente</span>
-          <h2>Cuidado pet com experiência de aplicativo premium.</h2>
-          <p>
-            Cadastre seu perfil com foto, confirme telefone por código enviado ao e-mail,
-            cadastre seu pet com foto obrigatória, escolha um passeador e acompanhe tudo no mapa.
-          </p>
+          <span class="eyebrow">Aplicativo do cliente</span>
+          <h2>Solicite passeios com segurança e acompanhe tudo em tempo real.</h2>
+          <p>Entre com Google, cadastre seu pet, escolha um passeador, pague por PIX e acompanhe o passeio no mapa.</p>
           <div class="feature-row">
-            <div><b>📸</b><strong>Perfil com foto</strong><small>Cliente e pet identificados.</small></div>
-            <div><b>🔐</b><strong>Confirmação real</strong><small>Código enviado por e-mail.</small></div>
-            <div><b>📍</b><strong>Mapa ao vivo</strong><small>Acompanhamento estilo Uber.</small></div>
+            <div><b>🐶</b><strong>Pet cadastrado</strong><small>Dados e foto do seu pet.</small></div>
+            <div><b>💳</b><strong>Pagamento seguro</strong><small>PIX confirmado pela plataforma.</small></div>
+            <div><b>📍</b><strong>Mapa ao vivo</strong><small>Acompanhe o passeador.</small></div>
           </div>
         </div>
 
         <div class="auth-card" id="authCard">
-          <div class="tabs">
-            <button id="loginTab" class="tab active" type="button" onclick="setAuthMode('login')">Entrar</button>
-            <button id="registerTab" class="tab hidden" type="button" disabled>Criar conta</button>
-          </div>
-
           <div id="loginPanel" class="auth-panel active premium-login-panel">
             <h3>Entrar com Google</h3>
-            <p>Acesse sua conta AmigoPet com rapidez e segurança usando o Google.</p>
+            <p>Acesse sua conta de cliente com rapidez e segurança usando o Google.</p>
             <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
             <div class="notice soft-note" style="margin-top:12px;">No primeiro acesso, sua conta de cliente será criada automaticamente.</div>
           </div>
 
-          <div id="forgotClientPasswordPanel" class="auth-panel">
-            <h3>Recuperar senha</h3>
-            <p>Informe seu e-mail para receber um código de recuperação. Depois crie uma nova senha.</p>
-            <input id="forgotEmail" placeholder="E-mail cadastrado" autocomplete="username" />
-            <button class="full" type="button" onclick="requestPasswordReset()">Gerar código de recuperação</button>
-            <input id="resetCode" placeholder="Código recebido" maxlength="6" />
-            <input id="resetNewPassword" placeholder="Nova senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
-            <button class="full" type="button" onclick="confirmPasswordReset()">Alterar senha</button>
-            <button class="ghost full" type="button" onclick="setAuthMode('login')">Voltar para login</button>
-          </div>
-
-          <div id="registerPanel" class="auth-panel">
-            <h3>Cadastro profissional</h3>
-            <p>Todos os campos principais são obrigatórios. A confirmação chega por e-mail.</p>
-
-            <label>Foto obrigatória do cliente — selecione ou tire uma foto</label>
-            <input id="clientPhotoFile" type="file" accept="image/*" capture="user" onchange="handleClientPhoto(event)" />
-            <div class="photo-preview-wrap">
-              <img id="clientPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do cliente" />
-              <span id="clientPhotoStatus">Nenhuma foto selecionada</span>
-            </div>
-            <button class="ghost full" type="button" onclick="openCameraCapture('client')">📷 Tirar foto agora</button>
-
-            <input id="registerName" placeholder="Nome completo" />
-            <input id="registerEmail" placeholder="E-mail" />
-            <input id="registerPassword" placeholder="Senha com no mínimo 6 caracteres" type="password" />
-            <input id="registerPhone" placeholder="Telefone / WhatsApp" />
-            <input id="registerDocument" placeholder="CPF ou documento (opcional)" />
-
-            <div class="form-grid">
-              <input id="registerZip" placeholder="CEP" />
-              <input id="registerStreet" placeholder="Rua" />
-              <input id="registerNumber" placeholder="Número" />
-              <input id="registerComplement" placeholder="Complemento" />
-              <input id="registerNeighborhood" placeholder="Bairro" />
-              <input id="registerCity" placeholder="Cidade" />
-              <input id="registerState" placeholder="Estado" value="RJ" />
-            </div>
-
-            <textarea id="registerBio" placeholder="Observações de contato, preferência de horário, portaria, etc."></textarea>
-            <button class="full" type="button" onclick="registerClient()">Criar conta e enviar código</button>
-          </div>
-
-          <div id="verifyPanel" class="auth-panel">
-            <h3>Confirmar telefone</h3>
-            <p>Digite o código enviado para o e-mail cadastrado. Essa confirmação libera o login do cliente.</p>
-            <input id="verifyEmail" placeholder="E-mail cadastrado" />
-            <input id="verifyCode" placeholder="Código de 6 dígitos" maxlength="6" />
-            <button class="full" type="button" onclick="verifyCode()">Confirmar conta</button>
-            <button class="ghost full" type="button" onclick="resendCode()">Reenviar código</button>
-            <div id="devCodeBox" class="dev-code hidden"></div>
-          </div>
+          <div id="forgotClientPasswordPanel" class="auth-panel hidden"></div>
+          <div id="registerPanel" class="auth-panel hidden"></div>
+          <div id="verifyPanel" class="auth-panel hidden"></div>
 
           <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
         </div>
@@ -131,7 +74,7 @@
           <p>Você já está conectado. Use o menu para solicitar passeio, acompanhar pedidos e ver o mapa em tempo real.</p>
           <div class="feature-row" style="grid-template-columns:1fr;">
             <div><b>🐶</b><strong>Solicitar passeio</strong><small>Escolha pet, endereço, duração e passeador.</small></div>
-            <div><b>💳</b><strong>PIX Mercado Pago</strong><small>Pagamento confirmado automaticamente por webhook.</small></div>
+            <div><b>💳</b><strong>PIX Asaas</strong><small>Pagamento confirmado automaticamente.</small></div>
             <div><b>📍</b><strong>Tracking em tempo real</strong><small>Acompanhe o passeador no mapa.</small></div>
           </div>
           <h3 style="margin-top:18px;">Valores dos passeios</h3>
@@ -315,7 +258,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=cliente-google-fix-v1"></script>
-  <script src="/static/pwa.js?v=cliente-google-fix-v1"></script>
+  <script src="/static/app.js?v=cliente-igual-passeador-v1"></script>
+  <script src="/static/pwa.js?v=cliente-igual-passeador-v1"></script>
 </body>
 </html>
