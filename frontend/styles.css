@@ -69,3 +69,62 @@ body{background:radial-gradient(circle at top left,rgba(20,184,166,.14),transpar
   width:100%!important;
   min-height:54px!important;
 }
+
+
+/* Termo de Responsabilidade do Passeador - Patch 001 */
+.terms-open{overflow:hidden}
+.terms-modal{
+  position:fixed;
+  inset:0;
+  z-index:120;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(15,23,42,.62);
+  backdrop-filter:blur(8px);
+}
+.terms-card{
+  width:min(760px,100%);
+  max-height:92vh;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  background:white;
+  border:1px solid rgba(226,232,240,.96);
+  border-radius:30px;
+  padding:22px;
+  box-shadow:0 32px 90px rgba(15,23,42,.32);
+}
+.terms-head h2{margin:0 0 6px;font-size:32px;letter-spacing:-.8px}
+.terms-head p{margin:0;color:#64748b;font-weight:700}
+.terms-scroll{
+  overflow:auto;
+  max-height:48vh;
+  padding:14px;
+  border:1px solid #e2e8f0;
+  border-radius:22px;
+  background:#f8fafc;
+  line-height:1.55;
+}
+.terms-scroll h3{margin:14px 0 6px;color:#0f766e;font-size:18px}
+.terms-scroll h3:first-child{margin-top:0}
+.terms-scroll p{margin:0 0 10px;color:#334155}
+.terms-check{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:4px 0 0;
+  padding:14px;
+  border-radius:20px;
+  background:#ecfdf5;
+  border:1px solid #bbf7d0;
+  color:#14532d;
+}
+.terms-check input{width:20px;height:20px;margin:2px 0 0;flex:0 0 auto}
+.terms-check span{font-weight:900;line-height:1.35}
+#walkerTermsAcceptBtn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.4);box-shadow:none}
+@media(max-width:640px){
+  .terms-card{border-radius:24px;padding:16px;max-height:94vh}
+  .terms-head h2{font-size:26px}
+  .terms-scroll{max-height:50vh;border-radius:18px}
+}

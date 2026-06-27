@@ -23,6 +23,7 @@ from urllib.parse import urlencode, quote
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
+WALKER_TERMS_VERSION = "1.0"
 ASAAS_ENV = os.getenv("ASAAS_ENV", "production").strip().lower()
 ASAAS_API_KEY = os.getenv("ASAAS_API_KEY", "").strip()
 ASAAS_WEBHOOK_TOKEN = os.getenv("ASAAS_WEBHOOK_TOKEN", "").strip()
@@ -99,6 +100,9 @@ class User(Base):
     verification_code_hash = Column(String(255), default="")
     verification_expires_at = Column(DateTime, nullable=True)
     verified_at = Column(DateTime, nullable=True)
+    accepted_terms = Column(Boolean, default=False, nullable=False)
+    accepted_terms_at = Column(DateTime, nullable=True)
+    terms_version = Column(String(20), default="", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Pet(Base):
@@ -333,6 +337,9 @@ def user_to_dict(u: User):
         "pix_holder_document": getattr(u, "pix_holder_document", "") or "",
         "neighborhood": u.neighborhood, "city": u.city, "lat": u.lat, "lng": u.lng,
         "rating": u.rating, "available": u.available, "bio": u.bio,
+        "accepted_terms": bool(getattr(u, "accepted_terms", False)),
+        "accepted_terms_at": getattr(u, "accepted_terms_at", None).isoformat() if getattr(u, "accepted_terms_at", None) else None,
+        "terms_version": getattr(u, "terms_version", "") or "",
         "zip_code": u.zip_code, "street": u.street, "number": u.number,
         "complement": u.complement, "state": u.state,
     }
@@ -906,6 +913,9 @@ def run_lightweight_migrations():
             ("verification_code_hash", "VARCHAR(255) DEFAULT ''"),
             ("verification_expires_at", "TIMESTAMP NULL"),
             ("verified_at", "TIMESTAMP NULL"),
+            ("accepted_terms", "BOOLEAN DEFAULT FALSE"),
+            ("accepted_terms_at", "TIMESTAMP NULL"),
+            ("terms_version", "VARCHAR(20) DEFAULT ''"),
             ("created_at", "TIMESTAMP DEFAULT NOW()"),
         ]
 
@@ -919,6 +929,12 @@ def run_lightweight_migrations():
 
         safe("UPDATE users SET password_hash='sha256$legacy$invalid' WHERE password_hash IS NULL", "normalize users.password_hash")
         safe("ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL", "not null users.password_hash")
+
+        safe("ALTER TABLE users ALTER COLUMN accepted_terms SET DEFAULT FALSE", "default users.accepted_terms")
+        safe("UPDATE users SET accepted_terms=FALSE WHERE accepted_terms IS NULL", "normalize users.accepted_terms")
+        safe("UPDATE users SET terms_version='' WHERE terms_version IS NULL", "normalize users.terms_version")
+        safe("ALTER TABLE users ALTER COLUMN accepted_terms SET NOT NULL", "not null users.accepted_terms")
+        safe("ALTER TABLE users ALTER COLUMN terms_version SET DEFAULT ''", "default users.terms_version")
 
         pet_columns_sql = [
             ("species", "VARCHAR(60) DEFAULT 'Cachorro'"),
@@ -1360,6 +1376,22 @@ def update_walker_profile(user_id: int, data: WalkerUpdateIn, db: Session = Depe
                 continue
             setattr(user, key, value)
 
+    db.commit()
+    db.refresh(user)
+    return user_to_dict(user)
+
+
+@app.post("/api/walkers/{user_id}/accept-terms")
+def accept_walker_terms(user_id: int, request: Request, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Passeador não encontrado")
+    if user.role != "walker":
+        raise HTTPException(status_code=400, detail="Esta ação é exclusiva para passeadores")
+
+    user.accepted_terms = True
+    user.accepted_terms_at = datetime.utcnow()
+    user.terms_version = WALKER_TERMS_VERSION
     db.commit()
     db.refresh(user)
     return user_to_dict(user)

@@ -17,6 +17,7 @@ let walkerPhotoData = "";
 let registerWalkerPhotoData = "";
 let walkerCameraStream = null;
 let walkerCameraTarget = "";
+const WALKER_TERMS_VERSION = '1.0';
 
 const $ = (id) => document.getElementById(id);
 
@@ -65,6 +66,50 @@ async function api(path, options={}){
 function fillWalkerDemo(){
   $('loginEmail').value = 'passeador@amigopet.com';
   $('loginPassword').value = '123456';
+}
+
+
+function needsWalkerTerms(){
+  if(!currentUser || currentUser.role !== 'walker') return false;
+  return currentUser.accepted_terms !== true || String(currentUser.terms_version || '') !== WALKER_TERMS_VERSION;
+}
+
+function showWalkerTermsIfNeeded(){
+  const modal = $('walkerTermsModal');
+  if(!modal) return;
+  if(needsWalkerTerms()){
+    modal.classList.remove('hidden');
+    document.body.classList.add('terms-open');
+    const check = $('walkerTermsCheck');
+    const btn = $('walkerTermsAcceptBtn');
+    if(check) check.checked = false;
+    if(btn) btn.disabled = true;
+  }else{
+    modal.classList.add('hidden');
+    document.body.classList.remove('terms-open');
+  }
+}
+
+function toggleWalkerTermsAcceptButton(){
+  const check = $('walkerTermsCheck');
+  const btn = $('walkerTermsAcceptBtn');
+  if(btn) btn.disabled = !(check && check.checked);
+}
+
+async function acceptWalkerTerms(){
+  try{
+    if(!currentUser || currentUser.role !== 'walker') return toast('Faça login como passeador.');
+    const check = $('walkerTermsCheck');
+    if(!check || !check.checked) return toast('Marque que leu e aceita os termos para continuar.');
+    const user = await api(`/api/walkers/${currentUser.id}/accept-terms`, {method:'POST'});
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    showWalkerTermsIfNeeded();
+    setLoggedUI();
+    toast('Termo aceito com sucesso.');
+  }catch(err){
+    toast(err.message || 'Não foi possível registrar o aceite dos termos.');
+  }
 }
 
 
@@ -145,8 +190,10 @@ function setLoggedUI(){
     $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
     renderWalkerDetails();
     fillProfileForm();
+    showWalkerTermsIfNeeded();
   }else{
     $('loggedUser').textContent = 'Nenhum passeador conectado.';
+    showWalkerTermsIfNeeded();
   }
 }
 
@@ -898,3 +945,6 @@ handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 
 window.loginWithGoogle = loginWithGoogle;
+
+window.acceptWalkerTerms = acceptWalkerTerms;
+window.toggleWalkerTermsAcceptButton = toggleWalkerTermsAcceptButton;
