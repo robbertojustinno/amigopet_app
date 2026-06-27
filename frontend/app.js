@@ -14,6 +14,8 @@ let clientPhotoData = '';
 let petPhotoData = '';
 let editClientPhotoData = '';
 let pricingConfig = null;
+const CLIENT_TERMS_VERSION = '1.0';
+let clientTermsReadComplete = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,6 +65,101 @@ function safeText(id, value){
   const el = $(id);
   if(el) el.textContent = value;
 }
+
+
+function clientTermsAccepted(user){
+  return Boolean(user?.client_terms_accepted) && String(user?.client_terms_version || '') === CLIENT_TERMS_VERSION;
+}
+
+function needsClientTerms(){
+  return Boolean(currentUser && currentUser.role === 'client' && !clientTermsAccepted(currentUser));
+}
+
+function showClientTermsModal(){
+  const modal = $('clientTermsModal');
+  if(!modal) return;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('terms-locked');
+  clientTermsReadComplete = false;
+  const checkbox = $('clientTermsCheckbox');
+  const btn = $('clientTermsAcceptBtn');
+  const label = $('clientTermsCheckboxLabel');
+  if(checkbox){ checkbox.checked = false; checkbox.disabled = true; }
+  if(btn) btn.disabled = true;
+  if(label) label.classList.add('disabled');
+  setTimeout(updateClientTermsProgress, 80);
+}
+
+function hideClientTermsModal(){
+  const modal = $('clientTermsModal');
+  if(!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('terms-locked');
+}
+
+function updateClientTermsProgress(){
+  const content = $('clientTermsContent');
+  const bar = $('clientTermsProgressBar');
+  const text = $('clientTermsProgressText');
+  const checkbox = $('clientTermsCheckbox');
+  const label = $('clientTermsCheckboxLabel');
+  if(!content) return;
+  const maxScroll = Math.max(content.scrollHeight - content.clientHeight, 1);
+  const pct = Math.min(100, Math.round((content.scrollTop / maxScroll) * 100));
+  if(bar) bar.style.width = pct + '%';
+  if(text) text.textContent = pct + '%';
+  if(pct >= 98 || content.scrollHeight <= content.clientHeight + 5){
+    clientTermsReadComplete = true;
+    if(checkbox) checkbox.disabled = false;
+    if(label) label.classList.remove('disabled');
+  }
+  updateClientTermsAcceptButton();
+}
+
+function updateClientTermsAcceptButton(){
+  const checkbox = $('clientTermsCheckbox');
+  const btn = $('clientTermsAcceptBtn');
+  if(btn) btn.disabled = !(clientTermsReadComplete && checkbox && checkbox.checked);
+}
+
+function bindClientTermsModal(){
+  const content = $('clientTermsContent');
+  if(content) content.addEventListener('scroll', updateClientTermsProgress);
+  const checkbox = $('clientTermsCheckbox');
+  if(checkbox) checkbox.addEventListener('change', updateClientTermsAcceptButton);
+}
+
+async function acceptClientTerms(){
+  try{
+    if(!currentUser || currentUser.role !== 'client') return toast('Faça login como cliente.');
+    if(!clientTermsReadComplete) return toast('Leia o termo até o final para continuar.');
+    const checkbox = $('clientTermsCheckbox');
+    if(!checkbox || !checkbox.checked) return toast('Marque o aceite dos termos para continuar.');
+    const user = await api(`/api/clients/${currentUser.id}/accept-terms`, {method:'POST'});
+    currentUser = user;
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    hideClientTermsModal();
+    setLoggedUI();
+    await refreshAll();
+    showView('pet', true);
+    toast('Termos aceitos com sucesso. Bem-vindo ao AmigoPet.');
+  }catch(err){
+    toast(err.message || 'Não foi possível registrar o aceite dos termos.');
+  }
+}
+
+function enforceClientTerms(){
+  if(needsClientTerms()){
+    showView('home', true);
+    showClientTermsModal();
+    return false;
+  }
+  hideClientTermsModal();
+  return true;
+}
+
 
 function clearSessions(){
   localStorage.removeItem('amigopet_user');
@@ -122,6 +219,10 @@ function requireClient(){
 function showView(id, force=false){
   if(['pet','walk','orders','tracking'].includes(id) && !requireClient()){
     id = 'home';
+  }
+  if(!force && ['pet','walk','orders','tracking'].includes(id) && needsClientTerms()){
+    id = 'home';
+    setTimeout(showClientTermsModal, 50);
   }
 
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -358,7 +459,7 @@ async function handleGoogleLoginCallback(){
     await refreshAll();
     toast('Login com Google realizado.');
     window.history.replaceState({}, document.title, window.location.pathname);
-    showView('pet', true);
+    if(enforceClientTerms()) showView('pet', true);
   }catch(err){
     toast(err.message || 'Não foi possível concluir o login com Google.');
   }
@@ -1097,7 +1198,7 @@ function restoreClientSession(){
         setLoggedUI();
         fillClientEditForm();
         refreshAll().catch(()=>{});
-        showView('pet', true);
+        if(enforceClientTerms()) showView('pet', true);
         return;
       }
     }
@@ -1109,6 +1210,7 @@ function restoreClientSession(){
   showView('home', true);
 }
 
+bindClientTermsModal();
 restoreClientSession();
 handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
@@ -1256,3 +1358,5 @@ async function loadPricing(){
   setTimeout(bindAll, 1800);
 })();
 
+
+window.acceptClientTerms = acceptClientTerms;

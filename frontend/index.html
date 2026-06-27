@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=cliente-igual-passeador-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=client-terms-v1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -255,10 +255,71 @@
     </div>
   </div>
 
+
+  <div id="clientTermsModal" class="terms-modal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="terms-dialog">
+      <div class="terms-hero">
+        <span class="terms-pill">🛡️ Segurança AmigoPet</span>
+        <h2>Bem-vindo ao AmigoPet</h2>
+        <p>Antes de solicitar passeios, leia e aceite o Termo do Cliente. Isso protege você, o passeador, o pet e a plataforma.</p>
+        <div class="terms-progress-wrap">
+          <div class="terms-progress-label">
+            <span>📖 Leia até o final</span>
+            <strong id="clientTermsProgressText">0%</strong>
+          </div>
+          <div class="terms-progress"><div id="clientTermsProgressBar"></div></div>
+        </div>
+      </div>
+      <div id="clientTermsContent" class="terms-content">
+        <h3>Termo de Responsabilidade do Cliente</h3>
+        <p><strong>Versão 1.0 • AmigoPet</strong></p>
+        <p>O AmigoPet é uma plataforma digital de intermediação entre tutores de animais domésticos e passeadores autônomos. Ao utilizar a plataforma, o cliente declara compreender que o AmigoPet atua como intermediador tecnológico, facilitando a contratação, o pagamento, o acompanhamento e a comunicação durante o serviço.</p>
+
+        <h4>1. Veracidade das informações</h4>
+        <p>O cliente declara que todas as informações fornecidas no cadastro são verdadeiras, atuais e completas, incluindo nome, contato, endereço, dados do animal, quantidade de pets, observações de comportamento, restrições, alergias, condições de saúde e demais informações relevantes para a execução segura do passeio.</p>
+
+        <h4>2. Condições do animal</h4>
+        <p>O cliente declara que o animal está em condições adequadas para passeio, salvo informações previamente comunicadas ao passeador pela plataforma. O cliente deve informar se o animal apresenta agressividade, medo excessivo, fuga frequente, doenças, cio, limitações físicas, necessidade de medicamento ou qualquer condição que possa afetar a segurança do serviço.</p>
+
+        <h4>3. Responsabilidade sobre omissões</h4>
+        <p>O cliente reconhece que a omissão de informações importantes pode colocar em risco o animal, o passeador, terceiros e outros animais. Danos, acidentes ou prejuízos decorrentes de informações falsas, incompletas ou omitidas poderão ser de responsabilidade do cliente.</p>
+
+        <h4>4. Pagamentos e confirmação</h4>
+        <p>Os pagamentos são processados por sistema integrado à plataforma. O passeio somente será liberado para aceite do passeador após confirmação do pagamento. A plataforma poderá reter comissão de intermediação e realizar repasse ao passeador conforme política vigente.</p>
+
+        <h4>5. Cancelamentos e reembolsos</h4>
+        <p>Cancelamentos poderão obedecer às regras internas do AmigoPet, considerando horário da solicitação, deslocamento do passeador, início do serviço e demais condições operacionais. Todas as ações relevantes ficam registradas no sistema.</p>
+
+        <h4>6. Comunicação e acompanhamento</h4>
+        <p>O cliente compromete-se a utilizar os canais da plataforma para acompanhar o passeio, conversar com o passeador e receber atualizações. O uso do mapa, GPS e chat tem finalidade operacional e de segurança.</p>
+
+        <h4>7. Emergências</h4>
+        <p>Em caso de emergência, o passeador poderá interromper o passeio, buscar local seguro, comunicar o cliente e registrar o ocorrido no sistema. O cliente autoriza a adoção de medidas razoáveis para preservar o bem-estar do animal.</p>
+
+        <h4>8. Limitação de responsabilidade da plataforma</h4>
+        <p>O AmigoPet não se responsabiliza por atos individuais de usuários, informações falsas fornecidas por clientes, condutas fora da plataforma, eventos imprevisíveis, caso fortuito, força maior ou situações provocadas por omissão de informações essenciais.</p>
+
+        <h4>9. Proteção de dados e LGPD</h4>
+        <p>O cliente autoriza o tratamento dos dados necessários para funcionamento da plataforma, incluindo dados cadastrais, localização, fotos, informações do pet, mensagens e dados de pagamento, observada a Lei Geral de Proteção de Dados (Lei nº 13.709/2018).</p>
+
+        <h4>10. Aceite digital</h4>
+        <p>Ao marcar a opção de aceite e continuar, o cliente declara que leu, compreendeu e concorda com este Termo de Responsabilidade, reconhecendo que o aceite eletrônico possui validade como manifestação livre e consciente de vontade.</p>
+      </div>
+      <div class="terms-footer">
+        <label id="clientTermsCheckboxLabel" class="terms-check disabled">
+          <input id="clientTermsCheckbox" type="checkbox" disabled />
+          <span>Declaro que li integralmente e aceito o Termo de Responsabilidade do Cliente do AmigoPet.</span>
+        </label>
+        <button id="clientTermsAcceptBtn" class="full ok" type="button" onclick="acceptClientTerms()" disabled>✔ Aceitar e continuar</button>
+        <small>Termo do Cliente • Versão 1.0 • Registro digital com data, hora, versão e dados técnicos disponíveis.</small>
+      </div>
+    </div>
+  </div>
+
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=cliente-igual-passeador-v1"></script>
-  <script src="/static/pwa.js?v=cliente-igual-passeador-v1"></script>
+  <script src="/static/app.js?v=client-terms-v1"></script>
+  <script src="/static/pwa.js?v=client-terms-v1"></script>
 </body>
 </html>

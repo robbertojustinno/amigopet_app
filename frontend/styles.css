@@ -85,3 +85,11 @@ body.terms-locked{overflow:hidden}
 .terms-footer{padding:18px 28px 22px;background:#fff;display:grid;gap:12px}.terms-footer small{text-align:center;color:#64748b;font-weight:700}.terms-check{display:flex;align-items:flex-start;gap:12px;border:1px solid #86efac;background:#ecfdf5;color:#14532d;border-radius:18px;padding:14px 16px;font-weight:1000}.terms-check input{width:22px;height:22px;margin:0;flex:0 0 auto;accent-color:#16a34a}.terms-check.disabled{opacity:.64;background:#f8fafc;border-color:#cbd5e1;color:#64748b}.terms-footer button[disabled]{opacity:.55;cursor:not-allowed;filter:grayscale(.2);box-shadow:none}
 .premium-login-panel .google-button{display:block!important;width:100%!important;min-height:54px!important}.premium-login-panel .soft-note{margin-top:14px}
 @media(max-width:640px){.terms-modal{padding:0}.terms-dialog{width:100%;height:100vh;max-height:100vh;border-radius:0}.terms-hero{padding:22px 20px 16px}.terms-hero h2{font-size:30px}.terms-hero p{font-size:16px}.terms-content{padding:18px 20px}.terms-footer{padding:16px 20px 18px}.terms-check{font-size:14px}}
+
+
+/* ===== AmigoPet Termos do Cliente Premium v1 ===== */
+#clientTermsModal .terms-pill{background:#dbeafe;color:#1d4ed8}
+#clientTermsModal .terms-progress div{background:linear-gradient(90deg,#2563eb,#0f766e)}
+#clientTermsModal .terms-content h4{color:#1d4ed8}
+#clientTermsModal .terms-check{border-color:#93c5fd;background:#eff6ff;color:#1e3a8a}
+#clientTermsModal .terms-check.disabled{background:#f8fafc;border-color:#cbd5e1;color:#64748b}

@@ -48,6 +48,7 @@ SMTP_USE_TLS = str(os.getenv("SMTP_USE_TLS", "true")).lower() in ["1", "true", "
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 EMAIL_FROM = os.getenv("EMAIL_FROM", "AmigoPet <onboarding@resend.dev>").strip()
 WALKER_TERMS_VERSION = os.getenv("WALKER_TERMS_VERSION", "1.0").strip() or "1.0"
+CLIENT_TERMS_VERSION = os.getenv("CLIENT_TERMS_VERSION", "1.0").strip() or "1.0"
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -105,6 +106,11 @@ class User(Base):
     terms_version = Column(String(20), default="", nullable=False)
     accepted_terms_ip = Column(String(80), default="")
     accepted_terms_user_agent = Column(Text, default="")
+    client_terms_accepted = Column(Boolean, default=False, nullable=False)
+    client_terms_accepted_at = Column(DateTime, nullable=True)
+    client_terms_version = Column(String(20), default="", nullable=False)
+    client_terms_ip = Column(String(80), default="")
+    client_terms_user_agent = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Pet(Base):
@@ -354,6 +360,10 @@ def user_to_dict(u: User):
         "accepted_terms_at": getattr(u, "accepted_terms_at", None).isoformat() if getattr(u, "accepted_terms_at", None) else None,
         "terms_version": getattr(u, "terms_version", "") or "",
         "accepted_terms_ip": getattr(u, "accepted_terms_ip", "") or "",
+        "client_terms_accepted": bool(getattr(u, "client_terms_accepted", False)),
+        "client_terms_accepted_at": getattr(u, "client_terms_accepted_at", None).isoformat() if getattr(u, "client_terms_accepted_at", None) else None,
+        "client_terms_version": getattr(u, "client_terms_version", "") or "",
+        "client_terms_ip": getattr(u, "client_terms_ip", "") or "",
     }
 
 def pet_to_dict(p: Pet):
@@ -930,6 +940,11 @@ def run_lightweight_migrations():
             ("terms_version", "VARCHAR(20) DEFAULT ''"),
             ("accepted_terms_ip", "VARCHAR(80) DEFAULT ''"),
             ("accepted_terms_user_agent", "TEXT DEFAULT ''"),
+            ("client_terms_accepted", "BOOLEAN DEFAULT FALSE"),
+            ("client_terms_accepted_at", "TIMESTAMP NULL"),
+            ("client_terms_version", "VARCHAR(20) DEFAULT ''"),
+            ("client_terms_ip", "VARCHAR(80) DEFAULT ''"),
+            ("client_terms_user_agent", "TEXT DEFAULT ''"),
             ("created_at", "TIMESTAMP DEFAULT NOW()"),
         ]
 
@@ -947,6 +962,12 @@ def run_lightweight_migrations():
         safe("UPDATE users SET terms_version='' WHERE terms_version IS NULL", "normalize users.terms_version")
         safe("ALTER TABLE users ALTER COLUMN terms_version SET DEFAULT ''", "default users.terms_version")
         safe("ALTER TABLE users ALTER COLUMN terms_version SET NOT NULL", "not null users.terms_version")
+        safe("ALTER TABLE users ALTER COLUMN client_terms_accepted SET DEFAULT FALSE", "default users.client_terms_accepted")
+        safe("UPDATE users SET client_terms_accepted=FALSE WHERE client_terms_accepted IS NULL", "normalize users.client_terms_accepted")
+        safe("ALTER TABLE users ALTER COLUMN client_terms_accepted SET NOT NULL", "not null users.client_terms_accepted")
+        safe("UPDATE users SET client_terms_version='' WHERE client_terms_version IS NULL", "normalize users.client_terms_version")
+        safe("ALTER TABLE users ALTER COLUMN client_terms_version SET DEFAULT ''", "default users.client_terms_version")
+        safe("ALTER TABLE users ALTER COLUMN client_terms_version SET NOT NULL", "not null users.client_terms_version")
 
         safe("UPDATE users SET password_hash='sha256$legacy$invalid' WHERE password_hash IS NULL", "normalize users.password_hash")
         safe("ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL", "not null users.password_hash")
@@ -1225,6 +1246,8 @@ def google_callback(code: str = "", error: str = "", state: str = "client", db: 
                 verified_at=datetime.utcnow(),
                 accepted_terms=False,
                 terms_version="",
+                client_terms_accepted=False,
+                client_terms_version="",
             )
             db.add(user)
         else:
@@ -1364,6 +1387,24 @@ def update_user(user_id: int, data: ClientUpdateIn, db: Session = Depends(get_db
                 continue
             setattr(user, key, value)
 
+    db.commit()
+    db.refresh(user)
+    return user_to_dict(user)
+
+
+@app.post("/api/clients/{user_id}/accept-terms")
+def accept_client_terms(user_id: int, request: Request, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    if user.role != "client":
+        raise HTTPException(status_code=400, detail="Este aceite é exclusivo para clientes")
+
+    user.client_terms_accepted = True
+    user.client_terms_accepted_at = datetime.utcnow()
+    user.client_terms_version = CLIENT_TERMS_VERSION
+    user.client_terms_ip = client_ip_from_request(request)
+    user.client_terms_user_agent = (request.headers.get("user-agent") or "")[:1000]
     db.commit()
     db.refresh(user)
     return user_to_dict(user)
