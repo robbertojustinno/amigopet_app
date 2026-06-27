@@ -1,11 +1,11 @@
-const CACHE_NAME = 'amigopet-pwa-v8-termos-cliente';
+const CACHE_NAME = 'amigopet-pwa-v8-notificacoes';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
   '/static/styles.css?v=client-terms-v1',
-  '/static/app.js?v=client-terms-v1',
-  '/static/walker.js?v=walker-terms-v3',
+  '/static/app.js?v=client-terms-v2-notify',
+  '/static/walker.js?v=walker-notify-v1',
   '/static/pwa.js?v=client-terms-v1',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
@@ -57,6 +57,10 @@ self.addEventListener('message', (event) => {
       body: data.body || 'Nova atualização no AmigoPet.',
       icon: '/static/assets/amigopet-icon.svg',
       badge: '/static/assets/amigopet-icon.svg',
+      tag: data.tag || 'amigopet-update',
+      renotify: true,
+      requireInteraction: Boolean(data.requireInteraction),
+      silent: Boolean(data.silent),
       data: { url: data.url || '/' }
     });
   }

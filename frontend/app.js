@@ -175,6 +175,39 @@ function setAuthMode(mode){
   });
 }
 
+
+function updateClientNotificationStatus(){
+  const box = $('clientNotificationStatus');
+  if(!box) return;
+  const state = window.amigoPetPWA?.permissionState?.() || 'unsupported';
+  const map = {
+    granted: '🔔 Notificações ativas. Você será avisado sobre pagamento, mensagens e andamento do passeio.',
+    denied: '🔕 Notificações bloqueadas no navegador.',
+    default: '🔔 Ative as notificações para acompanhar seu passeio mesmo com o app em segundo plano.',
+    unsupported: '⚠️ Este navegador não suporta notificações PWA.'
+  };
+  box.textContent = map[state] || map.unsupported;
+}
+
+async function enableClientNotifications(){
+  const ok = await window.amigoPetPWA?.requestNotifications?.();
+  updateClientNotificationStatus();
+  toast(ok ? 'Notificações ativadas.' : 'Não foi possível ativar as notificações neste navegador.');
+}
+
+function clientNotificationText(type, walk){
+  const pet = walk?.pet || 'seu pet';
+  const messages = {
+    walk_accepted: `Passeador aceitou o passeio de ${pet}.`,
+    payment_confirmed: `Pagamento confirmado. O passeio de ${pet} foi liberado.`,
+    walk_started: `O passeio de ${pet} foi iniciado.`,
+    walk_finished: `O passeio de ${pet} foi finalizado.`,
+    location_updated: `Localização do passeador atualizada.`,
+    message: 'Você recebeu uma nova mensagem.'
+  };
+  return messages[type] || 'Atualização no seu passeio.';
+}
+
 function setLoggedUI(){
   const logged = $('loggedUser');
   const profileChip = $('profileChip');
@@ -202,6 +235,7 @@ function setLoggedUI(){
     if(profilePhoto) profilePhoto.src = clientPhotoSrc(currentUser);
     if(profilePhotoLarge) profilePhotoLarge.src = clientPhotoSrc(currentUser);
     renderClientDetails();
+  updateClientNotificationStatus();
     fillClientEditForm();
     loadPricing().catch(()=>{});
   }else{
@@ -1171,7 +1205,10 @@ function connectWS(){
       }else if(data.type) toast(labels[data.type] || 'Atualização recebida');
 
       if(data.type && data.walk && currentUser && data.walk.client_id === currentUser.id){
-        window.amigoPetPWA?.notify('AmigoPet Cliente', labels[data.type] || 'Atualização do passeio', '/');
+        const shouldNotify = window.amigoPetPWA?.shouldNotifyInBackground?.() || document.hidden;
+        if(shouldNotify){
+          window.amigoPetPWA?.notify('🐾 AmigoPet Cliente', clientNotificationText(data.type, data.walk), '/', {tag:`client-walk-${data.walk.id}-${data.type}`});
+        }
       }
 
       if(data.walk && currentUser && data.walk.client_id === currentUser.id){
@@ -1215,6 +1252,8 @@ restoreClientSession();
 handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
 connectWS();
+updateClientNotificationStatus();
+document.addEventListener('visibilitychange', updateClientNotificationStatus);
 
 async function loadPricing(){
   const box = $('homePricing');

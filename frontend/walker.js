@@ -692,6 +692,53 @@ function setOnline(value){
   toast(value ? 'Você está online para receber convites.' : 'Você está offline.');
 }
 
+
+function notificationPermissionLabel(){
+  const state = window.amigoPetPWA?.permissionState?.() || 'unsupported';
+  if(state === 'granted') return 'ativas';
+  if(state === 'denied') return 'bloqueadas no navegador';
+  if(state === 'default') return 'aguardando autorização';
+  return 'não suportadas neste dispositivo';
+}
+
+function updateWalkerNotificationStatus(){
+  const box = $('notificationStatus');
+  if(!box) return;
+  const state = window.amigoPetPWA?.permissionState?.() || 'unsupported';
+  const map = {
+    granted: '🔔 Notificações ativas. Você será avisado quando houver novo passeio.',
+    denied: '🔕 Notificações bloqueadas. Libere nas permissões do navegador para receber convites.',
+    default: '🔔 Ative as notificações para receber novos passeios em segundo plano.',
+    unsupported: '⚠️ Este navegador não suporta notificações PWA.'
+  };
+  box.textContent = map[state] || map.unsupported;
+}
+
+async function enableWalkerNotifications(){
+  const ok = await window.amigoPetPWA?.requestNotifications?.();
+  updateWalkerNotificationStatus();
+  toast(ok ? 'Notificações ativadas para novos passeios.' : 'Não foi possível ativar as notificações neste navegador.');
+}
+
+function walkNotificationBody(w){
+  const pet = w?.pet || 'Pet';
+  const client = w?.client || 'Cliente';
+  const price = Number(w?.estimated_price || 0).toFixed(2);
+  const distance = Number(w?.distance_km || 0).toFixed(1);
+  return `${client} solicitou passeio para ${pet} • ${distance} km • R$ ${price}`;
+}
+
+async function notifyWalkerAboutWalk(w){
+  if(!currentUser || currentUser.role !== 'walker') return;
+  if(!isAvailable(w)) return;
+  const title = '🐶 Novo passeio disponível';
+  const body = walkNotificationBody(w);
+  const shouldNotify = window.amigoPetPWA?.shouldNotifyInBackground?.() || document.hidden;
+  if(shouldNotify){
+    await window.amigoPetPWA?.notify?.(title, body, '/passeador', {tag:`walk-${w.id}`, requireInteraction:true});
+  }
+}
+
 function renderWalkerDetails(){
   if(!currentUser){
     $('walkerDetails').textContent = 'Offline';
@@ -963,7 +1010,6 @@ function connectWS(){
       const data = JSON.parse(ev.data);
       if(data.type === 'walk_created'){
         toast('Novo convite recebido.');
-        window.amigoPetPWA?.notify('AmigoPet Passeador', 'Novo convite de passeio recebido.', '/passeador');
       }
       if(data.walk){
         const w = data.walk;
@@ -973,6 +1019,7 @@ function connectWS(){
         if(currentUser && w.walker_id === currentUser.id) currentWalk = w;
         renderAvailableWalks();
         renderCurrentWalk();
+        if(data.type === 'walk_created') await notifyWalkerAboutWalk(w);
       }
       if(currentUser) await refreshAll();
     };
@@ -1008,6 +1055,8 @@ bindWalkerTermsModal();
 restoreSession();
 handleGoogleLoginCallback().catch(()=>{});
 connectWS();
+updateWalkerNotificationStatus();
+document.addEventListener('visibilitychange', updateWalkerNotificationStatus);
 
 window.loginWithGoogle = loginWithGoogle;
 

@@ -172,6 +172,18 @@ class Message(Base):
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class UserNotification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(160), nullable=False)
+    body = Column(Text, default="")
+    type = Column(String(60), default="system", index=True)
+    link = Column(String(240), default="")
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user = relationship("User")
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
     key = Column(String(80), primary_key=True, index=True)
@@ -810,6 +822,33 @@ def add_walk_system_message(db: Session, walk: WalkRequest, text_value: str) -> 
 def message_to_dict(msg: Message) -> dict:
     return {"id": msg.id, "request_id": msg.request_id, "sender_id": msg.sender_id, "text": msg.text, "created_at": msg.created_at.isoformat()}
 
+def notification_to_dict(item: UserNotification) -> dict:
+    return {
+        "id": item.id,
+        "user_id": item.user_id,
+        "title": item.title,
+        "body": item.body or "",
+        "type": item.type or "system",
+        "link": item.link or "",
+        "is_read": bool(item.is_read),
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+def add_user_notification(db: Session, user_id: int, title: str, body: str = "", type_value: str = "system", link: str = "") -> Optional[UserNotification]:
+    if not user_id or not title:
+        return None
+    item = UserNotification(
+        user_id=int(user_id),
+        title=str(title)[:160],
+        body=str(body or "")[:1000],
+        type=str(type_value or "system")[:60],
+        link=str(link or "")[:240],
+        is_read=False,
+    )
+    db.add(item)
+    db.flush()
+    return item
+
 
 # Aliases mantidos para compatibilidade interna com chamadas antigas do código.
 mp_headers = asaas_headers
@@ -1120,6 +1159,9 @@ def run_lightweight_migrations():
         for col, default in legacy_defaults.items():
             if col in existing_cols:
                 safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}", f"default legacy walk_requests.{col}")
+
+        safe("CREATE INDEX IF NOT EXISTS ix_notifications_user_read ON notifications (user_id, is_read)", "index notifications user/read")
+        safe("CREATE INDEX IF NOT EXISTS ix_notifications_created_at ON notifications (created_at)", "index notifications created_at")
 
 
 run_lightweight_migrations()
@@ -1627,6 +1669,28 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
             )
         raise HTTPException(status_code=500, detail="Erro ao criar convite: " + msg[:700])
 
+    notifications_created = []
+    try:
+        if walk.walker_id:
+            targets = db.query(User).filter(User.id == walk.walker_id, User.role == "walker").all()
+        else:
+            targets = db.query(User).filter(User.role == "walker", User.active == True, User.available == True).all()
+        for target in targets:
+            notif = add_user_notification(
+                db,
+                target.id,
+                "🐶 Novo passeio disponível",
+                f"{walk.client.full_name if walk.client else 'Cliente'} solicitou passeio para {walk.pet.name if walk.pet else 'pet'} • R$ {float(walk.estimated_price or 0):.2f}",
+                "walk_created",
+                "/passeador"
+            )
+            if notif:
+                notifications_created.append(notif)
+        db.commit()
+    except Exception as notify_error:
+        db.rollback()
+        print("[NOTIFICATION WARNING] walk_created", str(notify_error))
+
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_created", "walk": payload})
     return payload
@@ -1856,6 +1920,37 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "location_updated", "walk": payload})
     return payload
+
+@app.get("/api/notifications/{user_id}")
+def list_user_notifications(user_id: int, unread_only: bool = False, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    q = db.query(UserNotification).filter(UserNotification.user_id == user_id)
+    if unread_only:
+        q = q.filter(UserNotification.is_read == False)
+    items = q.order_by(UserNotification.id.desc()).limit(50).all()
+    return [notification_to_dict(item) for item in items]
+
+@app.post("/api/notifications/{notification_id}/read")
+def mark_notification_read(notification_id: int, db: Session = Depends(get_db)):
+    item = db.get(UserNotification, notification_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    item.is_read = True
+    db.commit()
+    db.refresh(item)
+    return notification_to_dict(item)
+
+@app.post("/api/notifications/read-all/{user_id}")
+def mark_all_notifications_read(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    db.query(UserNotification).filter(UserNotification.user_id == user_id, UserNotification.is_read == False).update({"is_read": True})
+    db.commit()
+    return {"ok": True}
+
 
 @app.post("/api/messages")
 async def create_message(data: MessageIn, db: Session = Depends(get_db)):

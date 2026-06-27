@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=client-terms-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=patch-005-notificacoes" />
 </head>
 <body>
   <div id="toast"></div>
@@ -79,9 +79,11 @@
           </div>
           <h3 style="margin-top:18px;">Valores dos passeios</h3>
           <div id="homePricing" class="notice">Carregando valores...</div>
+          <div id="clientNotificationStatus" class="notice notification-status">🔔 Notificações: verificando...</div>
           <div class="actions">
             <button type="button" onclick="showView('walk')">Solicitar passeio</button>
             <button class="secondary" type="button" onclick="showView('orders')">Meus pedidos</button>
+            <button class="ok" type="button" onclick="enableClientNotifications()">🔔 Ativar notificações</button>
           </div>
         </div>
       </div>
@@ -319,7 +321,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=client-terms-v1"></script>
-  <script src="/static/pwa.js?v=client-terms-v1"></script>
+  <script src="/static/app.js?v=client-terms-v2-notify"></script>
+  <script src="/static/pwa.js?v=patch-005-notificacoes"></script>
 </body>
 </html>

@@ -104,10 +104,12 @@
         <div class="card">
           <h3>Status do passeador</h3>
           <div id="walkerDetails" class="details-box">Offline</div>
+          <div id="notificationStatus" class="notice notification-status">🔔 Notificações: verificando...</div>
           <div class="actions">
             <button type="button" onclick="setOnline(true)">Ficar online</button>
             <button class="ghost" type="button" onclick="setOnline(false)">Ficar offline</button>
             <button class="secondary" type="button" onclick="refreshAll()">Atualizar</button>
+            <button class="ok" type="button" onclick="enableWalkerNotifications()">🔔 Ativar notificações</button>
           </div>
         </div>
       </div>
@@ -263,7 +265,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-terms-v3"></script>
+  <script src="/static/walker.js?v=walker-notify-v1"></script>
   <script src="/static/pwa.js?v=walker-terms-v3"></script>
 </body>
 </html>

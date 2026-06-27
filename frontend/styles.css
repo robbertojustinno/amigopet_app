@@ -93,3 +93,20 @@ body.terms-locked{overflow:hidden}
 #clientTermsModal .terms-content h4{color:#1d4ed8}
 #clientTermsModal .terms-check{border-color:#93c5fd;background:#eff6ff;color:#1e3a8a}
 #clientTermsModal .terms-check.disabled{background:#f8fafc;border-color:#cbd5e1;color:#64748b}
+
+
+/* Patch 005 - Notificações Inteligentes */
+.notification-status{
+  border-style:solid!important;
+  background:linear-gradient(135deg,#f0fdfa,#eff6ff)!important;
+  border-color:#bae6fd!important;
+  color:#0f172a!important;
+  font-weight:800;
+}
+button.ok[onclick*="Notifications"]{
+  background:linear-gradient(135deg,#16a34a,#0f766e)!important;
+  box-shadow:0 16px 30px rgba(22,163,74,.18)!important;
+}
+@media(max-width:640px){
+  .notification-status{font-size:14px;line-height:1.35}
+}
