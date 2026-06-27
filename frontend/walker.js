@@ -18,6 +18,7 @@ let registerWalkerPhotoData = "";
 let walkerCameraStream = null;
 let walkerCameraTarget = "";
 const WALKER_TERMS_VERSION = '1.0';
+let walkerTermsReadComplete = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -43,6 +44,101 @@ function toast(msg){
   setTimeout(() => el.style.display = 'none', 3300);
 }
 
+
+function walkerTermsAccepted(user){
+  return Boolean(user?.accepted_terms) && String(user?.terms_version || '') === WALKER_TERMS_VERSION;
+}
+
+function needsWalkerTerms(){
+  return Boolean(currentUser && currentUser.role === 'walker' && !walkerTermsAccepted(currentUser));
+}
+
+function showWalkerTermsModal(){
+  const modal = $('walkerTermsModal');
+  if(!modal) return;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('terms-locked');
+  walkerTermsReadComplete = false;
+  const checkbox = $('walkerTermsCheckbox');
+  const btn = $('walkerTermsAcceptBtn');
+  const label = $('walkerTermsCheckboxLabel');
+  if(checkbox){ checkbox.checked = false; checkbox.disabled = true; }
+  if(btn) btn.disabled = true;
+  if(label) label.classList.add('disabled');
+  setTimeout(updateWalkerTermsProgress, 80);
+}
+
+function hideWalkerTermsModal(){
+  const modal = $('walkerTermsModal');
+  if(!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('terms-locked');
+}
+
+function updateWalkerTermsProgress(){
+  const content = $('walkerTermsContent');
+  const bar = $('walkerTermsProgressBar');
+  const text = $('walkerTermsProgressText');
+  const checkbox = $('walkerTermsCheckbox');
+  const label = $('walkerTermsCheckboxLabel');
+  if(!content) return;
+  const maxScroll = Math.max(content.scrollHeight - content.clientHeight, 1);
+  const pct = Math.min(100, Math.round((content.scrollTop / maxScroll) * 100));
+  if(bar) bar.style.width = pct + '%';
+  if(text) text.textContent = pct + '%';
+
+  if(pct >= 98 || content.scrollHeight <= content.clientHeight + 5){
+    walkerTermsReadComplete = true;
+    if(checkbox) checkbox.disabled = false;
+    if(label) label.classList.remove('disabled');
+  }
+  updateWalkerTermsAcceptButton();
+}
+
+function updateWalkerTermsAcceptButton(){
+  const checkbox = $('walkerTermsCheckbox');
+  const btn = $('walkerTermsAcceptBtn');
+  if(btn) btn.disabled = !(walkerTermsReadComplete && checkbox && checkbox.checked);
+}
+
+function bindWalkerTermsModal(){
+  const content = $('walkerTermsContent');
+  if(content) content.addEventListener('scroll', updateWalkerTermsProgress);
+  const checkbox = $('walkerTermsCheckbox');
+  if(checkbox) checkbox.addEventListener('change', updateWalkerTermsAcceptButton);
+}
+
+async function acceptWalkerTerms(){
+  try{
+    if(!currentUser || currentUser.role !== 'walker') return toast('Faça login como passeador.');
+    if(!walkerTermsReadComplete) return toast('Leia o termo até o final para continuar.');
+    const checkbox = $('walkerTermsCheckbox');
+    if(!checkbox || !checkbox.checked) return toast('Marque o aceite dos termos para continuar.');
+    const user = await api(`/api/walkers/${currentUser.id}/accept-terms`, {method:'POST'});
+    currentUser = user;
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    hideWalkerTermsModal();
+    setLoggedUI();
+    await refreshAll();
+    showView('pedidos', true);
+    toast('Termo aceito com sucesso. Bem-vindo ao AmigoPet.');
+  }catch(err){
+    toast(err.message || 'Não foi possível registrar o aceite dos termos.');
+  }
+}
+
+function enforceWalkerTerms(){
+  if(needsWalkerTerms()){
+    showView('login', true);
+    showWalkerTermsModal();
+    return false;
+  }
+  hideWalkerTermsModal();
+  return true;
+}
+
 async function api(path, options={}){
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -63,73 +159,11 @@ async function api(path, options={}){
   return data;
 }
 
-function fillWalkerDemo(){ toast('O acesso agora é feito somente com Google.'); }
-
-
-function needsWalkerTerms(){
-  if(!currentUser || currentUser.role !== 'walker') return false;
-  return currentUser.accepted_terms !== true || String(currentUser.terms_version || '') !== WALKER_TERMS_VERSION;
+function fillWalkerDemo(){
+  $('loginEmail').value = 'passeador@amigopet.com';
+  $('loginPassword').value = '123456';
 }
 
-function showWalkerTermsIfNeeded(){
-  const modal = $('walkerTermsModal');
-  if(!modal) return;
-  if(needsWalkerTerms()){
-    modal.classList.remove('hidden');
-    document.body.classList.add('terms-open');
-    const check = $('walkerTermsCheck');
-    const btn = $('walkerTermsAcceptBtn');
-    if(check) check.checked = false;
-    if(btn) btn.disabled = true;
-  }else{
-    modal.classList.add('hidden');
-    document.body.classList.remove('terms-open');
-  }
-}
-
-function toggleWalkerTermsAcceptButton(){
-  const check = $('walkerTermsCheck');
-  const btn = $('walkerTermsAcceptBtn');
-  if(btn) btn.disabled = !(check && check.checked);
-}
-
-async function acceptWalkerTerms(){
-  try{
-    if(!currentUser || currentUser.role !== 'walker') return toast('Faça login como passeador.');
-    const check = $('walkerTermsCheck');
-    if(!check || !check.checked) return toast('Marque que leu e aceita os termos para continuar.');
-    const user = await api(`/api/walkers/${currentUser.id}/accept-terms`, {method:'POST'});
-    currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    showWalkerTermsIfNeeded();
-    setLoggedUI();
-    toast('Termo aceito com sucesso.');
-  }catch(err){
-    toast(err.message || 'Não foi possível registrar o aceite dos termos.');
-  }
-}
-
-
-async function reloadCurrentWalkerFromServer(){
-  if(!currentUser || !currentUser.id) return;
-  try{
-    const user = await api(`/api/auth/google/session/${currentUser.id}`);
-    if(user && user.role === 'walker'){
-      currentUser = user;
-      localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    }
-  }catch(err){
-    console.warn('Não foi possível atualizar sessão do passeador:', err);
-  }
-}
-
-function blockUntilTermsAccepted(){
-  if(needsWalkerTerms()){
-    showWalkerTermsIfNeeded();
-    return true;
-  }
-  return false;
-}
 
 function loginWithGoogle(){
   // O Google bloqueia login dentro de WebView/navegador interno.
@@ -162,8 +196,7 @@ async function handleGoogleLoginCallback(){
     localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
     if(needsWalkerTerms()){
-      showView('login', true);
-      showWalkerTermsIfNeeded();
+      showWalkerTermsModal();
       toast('Leia e aceite o Termo de Responsabilidade para continuar.');
     }else{
       await refreshAll();
@@ -177,7 +210,7 @@ async function handleGoogleLoginCallback(){
 }
 
 function showView(id, force=false){
-  if(!force && id !== 'login' && !requireWalker()) return;
+  if(!force && id !== 'login' && (!requireWalker() || !enforceWalkerTerms())) return;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const view = $(id);
   if(view) view.classList.add('active');
@@ -192,14 +225,7 @@ document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
 });
 
 function requireWalker(){
-  if(currentUser && currentUser.role === 'walker'){
-    if(needsWalkerTerms()){
-      showWalkerTermsIfNeeded();
-      toast('Aceite o Termo de Responsabilidade para continuar.');
-      return false;
-    }
-    return true;
-  }
+  if(currentUser && currentUser.role === 'walker') return true;
   toast('Faça login como passeador.');
   showView('login', true);
   return false;
@@ -207,24 +233,26 @@ function requireWalker(){
 
 function setLoggedUI(){
   const loggedIn = currentUser && currentUser.role === 'walker';
-  ['btnPedidos','btnAtual','btnMapa','btnPerfil','logoutBtn'].forEach(id => {
+  const termsOk = loggedIn && walkerTermsAccepted(currentUser);
+  ['btnPedidos','btnAtual','btnMapa','btnPerfil'].forEach(id => {
     const el = $(id);
-    if(el) el.classList.toggle('hidden', !loggedIn);
+    if(el) el.classList.toggle('hidden', !termsOk);
   });
+  const logoutBtn = $('logoutBtn');
+  if(logoutBtn) logoutBtn.classList.toggle('hidden', !loggedIn);
   const loginBtn = $('btnLogin');
-  if(loginBtn) loginBtn.classList.toggle('hidden', loggedIn);
+  if(loginBtn) loginBtn.classList.toggle('hidden', loggedIn && termsOk);
   const chip = $('profileChip');
   if(chip) chip.classList.toggle('hidden', !loggedIn);
   if(loggedIn){
-    $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong> conectado como <strong>Passeador</strong>`;
+    const termBadge = termsOk ? 'Termo aceito' : 'Termo pendente';
+    $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong><br><span class="muted">${termBadge}</span>`;
     $('profileName').textContent = currentUser.full_name;
     $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
     renderWalkerDetails();
-    fillProfileForm();
-    showWalkerTermsIfNeeded();
+    if(termsOk) fillProfileForm();
   }else{
     $('loggedUser').textContent = 'Nenhum passeador conectado.';
-    showWalkerTermsIfNeeded();
   }
 }
 
@@ -401,9 +429,8 @@ async function registerWalker(){
     currentUser = user;
     localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
-    await refreshAll();
-    showView('perfil', true);
-    toast('Conta de passeador criada com sucesso.');
+    showWalkerTermsModal();
+    toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
   }catch(err){
     toast(err.message || 'Não foi possível criar a conta de passeador.');
   }
@@ -541,9 +568,8 @@ async function registerWalker(){
     currentUser = user;
     localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
-    await refreshAll();
-    showView('perfil', true);
-    toast('Conta de passeador criada com sucesso.');
+    showWalkerTermsModal();
+    toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
   }catch(err){
     toast(err.message || 'Não foi possível criar a conta de passeador.');
   }
@@ -652,6 +678,7 @@ function logout(){
   currentWalk = null;
   availableWalks = [];
   localStorage.removeItem('amigopet_walker_user');
+  hideWalkerTermsModal();
   setLoggedUI();
   renderAvailableWalks();
   renderCurrentWalk();
@@ -766,6 +793,7 @@ function renderCurrentWalk(){
 
 async function refreshAll(){
   if(!currentUser) return;
+  if(needsWalkerTerms()) return;
   try{
     const walks = await api('/api/walks');
     availableWalks = walks;
@@ -952,19 +980,17 @@ function connectWS(){
   }catch(e){}
 }
 
-async function restoreSession(){
+function restoreSession(){
   try{
     const saved = localStorage.getItem('amigopet_walker_user');
     if(saved){
       currentUser = JSON.parse(saved);
-      await reloadCurrentWalkerFromServer();
       setLoggedUI();
       if(needsWalkerTerms()){
         showView('login', true);
-        showWalkerTermsIfNeeded();
-        toast('Leia e aceite o Termo de Responsabilidade para continuar.');
+        showWalkerTermsModal();
       }else{
-        await refreshAll();
+        refreshAll();
         showView('pedidos', true);
       }
     }else{
@@ -978,13 +1004,11 @@ async function restoreSession(){
 }
 
 bindProfileForm();
-restoreSession().catch(()=>{});
+bindWalkerTermsModal();
+restoreSession();
 handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 
 window.loginWithGoogle = loginWithGoogle;
 
 window.acceptWalkerTerms = acceptWalkerTerms;
-window.toggleWalkerTermsAcceptButton = toggleWalkerTermsAcceptButton;
-
-window.reloadCurrentWalkerFromServer = reloadCurrentWalkerFromServer;

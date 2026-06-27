@@ -1,0 +1,31 @@
+AmigoPet Patch 003 - Termos do Passeador Premium
+
+Arquivos modificados:
+- backend/app/main.py
+- frontend/passeador.html
+- frontend/walker.js
+- frontend/styles.css
+- frontend/sw.js
+
+O que foi feito:
+- Mantém somente login Google na tela do passeador.
+- Adiciona termo do passeador em tela premium.
+- Adiciona barra de progresso de leitura.
+- Só habilita o checkbox depois que o termo é lido até o final.
+- Só habilita o botão depois do checkbox marcado.
+- Grava no banco: accepted_terms, accepted_terms_at, terms_version, accepted_terms_ip, accepted_terms_user_agent.
+- Força usuários antigos sem aceite a aceitarem no próximo login.
+- Atualiza cache do PWA para evitar tela antiga.
+
+Comandos sugeridos:
+cd E:\amigopet_app
+git status
+git add backend/app/main.py frontend/passeador.html frontend/walker.js frontend/styles.css frontend/sw.js
+git commit -m "Melhorar aceite de termos do passeador"
+git push
+
+Depois do deploy:
+- Abra /passeador
+- Ctrl+F5 no navegador
+- Entre com Google
+- Se o usuário não aceitou a versão 1.0, o termo deve aparecer

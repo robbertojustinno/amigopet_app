@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=walker-terms-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=walker-terms-v3" />
 </head>
 <body>
   <div id="toast"></div>
@@ -54,14 +54,39 @@
           </div>
         </div>
 
-        <div class="auth-card login-google-only">
+        <div class="auth-card premium-login-panel" id="loginPanel">
+          <span class="eyebrow">Acesso seguro</span>
           <h3>Entrar como passeador</h3>
-          <p>Acesse com sua conta Google para usar o AmigoPet Passeador.</p>
+          <p>Use sua conta Google para acessar o AmigoPet Passeador com rapidez e segurança.</p>
           <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
           <div class="notice soft-note">
-            No primeiro acesso pelo Google, sua conta de passeador será criada automaticamente. Antes de usar a plataforma, será necessário aceitar o Termo de Responsabilidade.
+            Após o login, se ainda não houver aceite registrado, você deverá ler e aceitar o Termo de Responsabilidade do Passeador.
           </div>
           <div id="loggedUser" class="notice">Nenhum passeador conectado.</div>
+
+          <div class="hidden">
+            <input id="loginEmail" value="" />
+            <input id="loginPassword" type="password" value="" />
+            <input id="forgotWalkerEmail" />
+            <input id="resetWalkerCode" />
+            <input id="resetWalkerNewPassword" type="password" />
+            <div id="forgotWalkerPasswordBox"></div>
+            <div id="registerWalkerBox"></div>
+            <input id="registerWalkerPhotoFile" type="file" />
+            <div id="registerWalkerPhotoPreview"></div>
+            <input id="registerWalkerName" />
+            <input id="registerWalkerEmail" />
+            <input id="registerWalkerPassword" type="password" />
+            <input id="registerWalkerPhone" />
+            <input id="registerWalkerDocument" />
+            <select id="registerWalkerPixType"><option value=""></option></select>
+            <input id="registerWalkerPixKey" />
+            <input id="registerWalkerPixHolderName" />
+            <input id="registerWalkerPixHolderDocument" />
+            <input id="registerWalkerNeighborhood" />
+            <input id="registerWalkerCity" />
+            <textarea id="registerWalkerBio"></textarea>
+          </div>
         </div>
       </div>
     </section>
@@ -184,54 +209,61 @@
     </div>
   </div>
 
-
-  <div id="walkerTermsModal" class="terms-modal hidden" role="dialog" aria-modal="true" aria-labelledby="walkerTermsTitle">
-    <div class="terms-card">
-      <div class="terms-head">
-        <div>
-          <span class="eyebrow">Segurança AmigoPet</span>
-          <h2 id="walkerTermsTitle">Termo de Responsabilidade do Passeador</h2>
-          <p>Para usar o aplicativo como passeador, leia e aceite as condições abaixo.</p>
+  <div id="walkerTermsModal" class="terms-modal" aria-hidden="true">
+    <div class="terms-dialog" role="dialog" aria-modal="true" aria-labelledby="walkerTermsTitle">
+      <div class="terms-hero">
+        <span class="terms-pill">🛡️ Segurança e Responsabilidade</span>
+        <h2 id="walkerTermsTitle">🐶 Bem-vindo ao AmigoPet</h2>
+        <p>Antes de iniciar como passeador, leia integralmente e aceite o Termo de Responsabilidade.</p>
+        <div class="terms-progress-wrap">
+          <div class="terms-progress-label"><span>Leitura do termo</span><strong id="walkerTermsProgressText">0%</strong></div>
+          <div class="terms-progress"><div id="walkerTermsProgressBar"></div></div>
         </div>
       </div>
 
-      <div class="terms-scroll">
-        <h3>1. Responsabilidade profissional</h3>
-        <p>O passeador declara atuar de forma autônoma, comprometendo-se a prestar o serviço com zelo, respeito, atenção e cuidado com o animal durante todo o período contratado.</p>
-
-        <h3>2. Veracidade das informações</h3>
-        <p>O passeador declara que os dados informados no cadastro, incluindo nome, documento, telefone, cidade, bairro, foto e chave PIX, são verdadeiros e atualizados.</p>
-
-        <h3>3. Bem-estar e segurança animal</h3>
-        <p>O passeador compromete-se a não praticar maus-tratos, abandono, negligência, violência, uso indevido de força ou qualquer conduta que coloque o animal em risco.</p>
-
-        <h3>4. Uso do aplicativo e GPS</h3>
-        <p>Durante o passeio, o passeador deverá utilizar o aplicativo corretamente, mantendo comunicação com o tutor e permitindo o acompanhamento da localização quando solicitado pelo sistema.</p>
-
-        <h3>5. Pagamentos e repasses</h3>
-        <p>O passeador concorda que os pagamentos serão processados pela plataforma e que o repasse será realizado conforme as regras internas e os dados PIX informados no cadastro.</p>
-
-        <h3>6. Suspensão da conta</h3>
-        <p>A AmigoPet poderá suspender ou bloquear contas em caso de fraude, informações falsas, reclamações graves, descumprimento dos termos ou conduta incompatível com a segurança da plataforma.</p>
-
-        <h3>7. Aceite digital</h3>
+      <div id="walkerTermsContent" class="terms-content" tabindex="0">
+        <h3>Termo de Responsabilidade do Passeador</h3>
+        <p><strong>Versão 1.0 • Atualizado em 27/06/2026</strong></p>
+        <h4>1. Identificação e veracidade das informações</h4>
+        <p>O passeador declara que todas as informações fornecidas ao AmigoPet são verdadeiras, completas e atualizadas, incluindo nome, documentos, dados de contato, foto, cidade de atendimento e chave PIX para repasse.</p>
+        <h4>2. Atuação autônoma</h4>
+        <p>O passeador reconhece que atua como profissional autônomo e independente, sem vínculo empregatício com o AmigoPet. A plataforma atua como intermediadora entre tutores e passeadores.</p>
+        <h4>3. Cuidado, segurança e bem-estar animal</h4>
+        <p>O passeador compromete-se a tratar todos os animais com respeito, zelo, paciência e responsabilidade, evitando maus-tratos, abandono, negligência, exposição a riscos desnecessários ou qualquer conduta incompatível com o bem-estar animal.</p>
+        <h4>4. Execução do passeio</h4>
+        <p>O passeador deverá cumprir o passeio conforme solicitado no aplicativo, observando endereço, tempo contratado, comunicação com o tutor, uso adequado de guia/coleira e envio de localização quando solicitado.</p>
+        <h4>5. Comunicação pelo aplicativo</h4>
+        <p>Durante o atendimento, o passeador deverá manter comunicação clara e respeitosa com o tutor, utilizando os recursos oficiais do AmigoPet sempre que possível.</p>
+        <h4>6. Emergências</h4>
+        <p>Em caso de emergência, fuga, acidente, mal-estar do animal, risco à segurança ou qualquer situação grave, o passeador deverá interromper o passeio se necessário, comunicar imediatamente o tutor e registrar a ocorrência pelos meios disponíveis.</p>
+        <h4>7. Responsabilidade por conduta</h4>
+        <p>O passeador assume responsabilidade por danos causados por dolo, negligência, imprudência, imperícia, abandono, descumprimento das orientações do tutor ou uso inadequado da plataforma.</p>
+        <h4>8. Pagamentos e repasses</h4>
+        <p>O passeador declara ciência de que os repasses poderão ser realizados por PIX ou outro meio integrado, conforme regras operacionais da plataforma, descontos, comissões e validações financeiras aplicáveis.</p>
+        <h4>9. Suspensão ou bloqueio</h4>
+        <p>O AmigoPet poderá suspender ou bloquear o acesso do passeador em caso de fraude, informações falsas, reclamações graves, conduta inadequada, tentativa de burlar a plataforma ou descumprimento deste termo.</p>
+        <h4>10. Proteção de dados</h4>
+        <p>O passeador autoriza o tratamento de seus dados pessoais necessários ao funcionamento da plataforma, incluindo identificação, contato, foto, localização durante atendimento e informações de pagamento, conforme a Lei Geral de Proteção de Dados.</p>
+        <h4>11. Aceite digital</h4>
         <p>Ao aceitar este termo, o passeador declara que leu, compreendeu e concorda com todas as condições de uso da plataforma AmigoPet, assumindo responsabilidade pelas informações fornecidas e pelos serviços prestados.</p>
       </div>
 
-      <label class="terms-check">
-        <input id="walkerTermsCheck" type="checkbox" onchange="toggleWalkerTermsAcceptButton()" />
-        <span>Li integralmente e aceito o Termo de Responsabilidade do Passeador.</span>
-      </label>
-
-      <button id="walkerTermsAcceptBtn" class="full ok" type="button" onclick="acceptWalkerTerms()" disabled>Aceitar e continuar</button>
-      <button class="ghost full" type="button" onclick="logout()">Sair</button>
+      <div class="terms-footer">
+        <label id="walkerTermsCheckboxLabel" class="terms-check disabled">
+          <input id="walkerTermsCheckbox" type="checkbox" disabled />
+          <span>Li integralmente e aceito o Termo de Responsabilidade do Passeador.</span>
+        </label>
+        <button id="walkerTermsAcceptBtn" class="full ok" type="button" onclick="acceptWalkerTerms()" disabled>✔ Concordo e continuar</button>
+        <button class="ghost full" type="button" onclick="logout()">Sair</button>
+        <small>Termo do Passeador • Versão 1.0 • Aceite digital registrado no sistema</small>
+      </div>
     </div>
   </div>
 
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-terms-v2"></script>
-  <script src="/static/pwa.js?v=walker-terms-v2"></script>
+  <script src="/static/walker.js?v=walker-terms-v3"></script>
+  <script src="/static/pwa.js?v=walker-terms-v3"></script>
 </body>
 </html>
