@@ -128,3 +128,35 @@ body{background:radial-gradient(circle at top left,rgba(20,184,166,.14),transpar
   .terms-head h2{font-size:26px}
   .terms-scroll{max-height:50vh;border-radius:18px}
 }
+
+
+/* Patch 002 - Passeador somente Google + aceite obrigatório robusto */
+.login-google-only input,
+.login-google-only .ghost,
+.login-google-only .secondary,
+.login-google-only #forgotWalkerPasswordBox,
+.login-google-only #registerWalkerBox{
+  display:none!important;
+}
+.login-google-only .google-button{
+  display:block!important;
+  width:100%!important;
+  min-height:56px!important;
+  font-size:16px!important;
+}
+body.terms-open main,
+body.terms-open nav,
+body.terms-open .app-header,
+body.terms-open footer{
+  filter:blur(1px);
+}
+.terms-modal:not(.hidden){
+  display:flex!important;
+}
+.terms-card{
+  max-height:calc(100vh - 44px)!important;
+}
+.terms-scroll{
+  max-height:48vh!important;
+  overflow:auto!important;
+}

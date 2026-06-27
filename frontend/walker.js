@@ -63,10 +63,7 @@ async function api(path, options={}){
   return data;
 }
 
-function fillWalkerDemo(){
-  $('loginEmail').value = 'passeador@amigopet.com';
-  $('loginPassword').value = '123456';
-}
+function fillWalkerDemo(){ toast('O acesso agora é feito somente com Google.'); }
 
 
 function needsWalkerTerms(){
@@ -113,6 +110,27 @@ async function acceptWalkerTerms(){
 }
 
 
+async function reloadCurrentWalkerFromServer(){
+  if(!currentUser || !currentUser.id) return;
+  try{
+    const user = await api(`/api/auth/google/session/${currentUser.id}`);
+    if(user && user.role === 'walker'){
+      currentUser = user;
+      localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    }
+  }catch(err){
+    console.warn('Não foi possível atualizar sessão do passeador:', err);
+  }
+}
+
+function blockUntilTermsAccepted(){
+  if(needsWalkerTerms()){
+    showWalkerTermsIfNeeded();
+    return true;
+  }
+  return false;
+}
+
 function loginWithGoogle(){
   // O Google bloqueia login dentro de WebView/navegador interno.
   // Use Chrome/Edge/Safari real para testar no celular.
@@ -143,9 +161,15 @@ async function handleGoogleLoginCallback(){
     currentUser = user;
     localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
-    await refreshAll();
-    showView('pedidos', true);
-    toast('Login com Google realizado.');
+    if(needsWalkerTerms()){
+      showView('login', true);
+      showWalkerTermsIfNeeded();
+      toast('Leia e aceite o Termo de Responsabilidade para continuar.');
+    }else{
+      await refreshAll();
+      showView('pedidos', true);
+      toast('Login com Google realizado.');
+    }
     if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
   }catch(err){
     toast(err.message || 'Não foi possível concluir o login com Google.');
@@ -168,7 +192,14 @@ document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
 });
 
 function requireWalker(){
-  if(currentUser && currentUser.role === 'walker') return true;
+  if(currentUser && currentUser.role === 'walker'){
+    if(needsWalkerTerms()){
+      showWalkerTermsIfNeeded();
+      toast('Aceite o Termo de Responsabilidade para continuar.');
+      return false;
+    }
+    return true;
+  }
   toast('Faça login como passeador.');
   showView('login', true);
   return false;
@@ -921,14 +952,21 @@ function connectWS(){
   }catch(e){}
 }
 
-function restoreSession(){
+async function restoreSession(){
   try{
     const saved = localStorage.getItem('amigopet_walker_user');
     if(saved){
       currentUser = JSON.parse(saved);
+      await reloadCurrentWalkerFromServer();
       setLoggedUI();
-      refreshAll();
-      showView('pedidos', true);
+      if(needsWalkerTerms()){
+        showView('login', true);
+        showWalkerTermsIfNeeded();
+        toast('Leia e aceite o Termo de Responsabilidade para continuar.');
+      }else{
+        await refreshAll();
+        showView('pedidos', true);
+      }
     }else{
       setLoggedUI();
       showView('login', true);
@@ -940,7 +978,7 @@ function restoreSession(){
 }
 
 bindProfileForm();
-restoreSession();
+restoreSession().catch(()=>{});
 handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 
@@ -948,3 +986,5 @@ window.loginWithGoogle = loginWithGoogle;
 
 window.acceptWalkerTerms = acceptWalkerTerms;
 window.toggleWalkerTermsAcceptButton = toggleWalkerTermsAcceptButton;
+
+window.reloadCurrentWalkerFromServer = reloadCurrentWalkerFromServer;

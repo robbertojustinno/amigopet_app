@@ -54,61 +54,12 @@
           </div>
         </div>
 
-        <div class="auth-card">
+        <div class="auth-card login-google-only">
           <h3>Entrar como passeador</h3>
-          <p>Entre com sua conta Google para acessar como passeador.</p>
-          <button class="secondary full" type="button" onclick="fillWalkerDemo()">Preencher conta teste</button>
-          <input id="loginEmail" placeholder="E-mail" autocomplete="username" value="" />
-          <input id="loginPassword" placeholder="Senha" type="password" autocomplete="current-password" value="" />
-          <button class="full" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
-
-          <button class="ghost full" type="button" onclick="toggleWalkerForgotPassword()">Esqueci minha senha</button>
-
-          <div id="forgotWalkerPasswordBox" class="auth-panel hidden" style="margin-top:16px;">
-            <h3>Recuperar senha</h3>
-            <p>Informe seu e-mail para gerar um código de recuperação e criar uma nova senha.</p>
-            <input id="forgotWalkerEmail" placeholder="E-mail cadastrado" autocomplete="username" />
-            <button class="full" type="button" onclick="requestWalkerPasswordReset()">Gerar código de recuperação</button>
-            <input id="resetWalkerCode" placeholder="Código recebido" maxlength="6" />
-            <input id="resetWalkerNewPassword" placeholder="Nova senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
-            <button class="full" type="button" onclick="confirmWalkerPasswordReset()">Alterar senha</button>
-          </div>
-
-          <button class="ghost full" type="button" onclick="toggleWalkerRegister()">Criar conta de passeador</button>
-
-          <div id="registerWalkerBox" class="auth-panel hidden" style="margin-top:16px;">
-            <h3>Criar conta de passeador</h3>
-            <p>Preencha seus dados para entrar na plataforma como passeador.</p>
-
-            <label>Foto do passeador — selecione ou tire uma foto</label>
-            <input id="registerWalkerPhotoFile" type="file" accept="image/*" capture="user" onchange="handleRegisterWalkerPhoto(event)" />
-            <div id="registerWalkerPhotoPreview" class="notice">Nenhuma foto selecionada.</div>
-            <button class="ghost full" type="button" onclick="openWalkerCameraCapture('register')">📷 Tirar foto agora</button>
-
-            <input id="registerWalkerName" placeholder="Nome completo" />
-            <input id="registerWalkerEmail" placeholder="E-mail" autocomplete="username" />
-            <input id="registerWalkerPassword" placeholder="Senha com no mínimo 6 caracteres" type="password" autocomplete="new-password" />
-            <input id="registerWalkerPhone" placeholder="Telefone / WhatsApp" />
-            <input id="registerWalkerDocument" placeholder="CPF ou documento" />
-
-            <h4>Dados para recebimento automático</h4>
-            <select id="registerWalkerPixType">
-              <option value="">Tipo da chave PIX</option>
-              <option value="cpf">CPF</option>
-              <option value="cnpj">CNPJ</option>
-              <option value="email">E-mail</option>
-              <option value="phone">Telefone</option>
-              <option value="random">Chave aleatória</option>
-            </select>
-            <input id="registerWalkerPixKey" placeholder="Chave PIX do passeador" />
-            <input id="registerWalkerPixHolderName" placeholder="Nome do titular da chave PIX" />
-            <input id="registerWalkerPixHolderDocument" placeholder="CPF/CNPJ do titular da chave PIX" />
-
-            <input id="registerWalkerNeighborhood" placeholder="Bairro de atendimento" />
-            <input id="registerWalkerCity" placeholder="Cidade" />
-            <textarea id="registerWalkerBio" placeholder="Resumo profissional, experiência com pets, disponibilidade e cuidados especiais"></textarea>
-
-            <button class="full" type="button" onclick="registerWalker()">Criar minha conta de passeador</button>
+          <p>Acesse com sua conta Google para usar o AmigoPet Passeador.</p>
+          <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
+          <div class="notice soft-note">
+            No primeiro acesso pelo Google, sua conta de passeador será criada automaticamente. Antes de usar a plataforma, será necessário aceitar o Termo de Responsabilidade.
           </div>
           <div id="loggedUser" class="notice">Nenhum passeador conectado.</div>
         </div>
@@ -280,7 +231,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-terms-v1"></script>
-  <script src="/static/pwa.js?v=walker-terms-v1"></script>
+  <script src="/static/walker.js?v=walker-terms-v2"></script>
+  <script src="/static/pwa.js?v=walker-terms-v2"></script>
 </body>
 </html>
