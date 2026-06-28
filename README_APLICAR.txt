@@ -1,26 +1,46 @@
-AmigoPet Patch 002 - Passeador somente Google + Termo robusto
+AmigoPet Patch 006 - Avaliações Premium
 
-Arquivos alterados:
+O que este patch adiciona:
+- Tabela ratings no backend.
+- Endpoint para cliente avaliar passeador após passeio finalizado.
+- Endpoint para passeador avaliar cliente após passeio finalizado.
+- Recalculo automático da média de avaliação do usuário avaliado.
+- Notificação interna quando uma avaliação é recebida.
+- Card visual premium de avaliação no app Cliente.
+- Card visual premium de avaliação no app Passeador.
+- Atualização de cache/versionamento do PWA.
+
+Arquivos modificados:
 - backend/app/main.py
+- frontend/index.html
+- frontend/app.js
 - frontend/passeador.html
 - frontend/walker.js
+- frontend/pwa.js
+- frontend/sw.js
 - frontend/styles.css
 
-Correções:
-1. Tela do passeador mostra somente o botão Entrar com Google.
-2. Remove visualmente formulário antigo, preencher conta teste, esqueci senha e criar conta manual.
-3. Passeador que já tinha feito login antes agora também é obrigado a aceitar o termo.
-4. O frontend recarrega a sessão do servidor para buscar accepted_terms, accepted_terms_at e terms_version.
-5. Se não aceitar, não libera Pedidos/Perfil/Mapa.
-6. Cache bust atualizado para walker-terms-v2.
-
-Aplicar:
-1. Extraia este ZIP dentro de E:\amigopet_app substituindo os arquivos.
-2. Rode:
+Como aplicar:
+1. Extraia este ZIP dentro de E:\amigopet_app
+2. Confirme a substituição dos arquivos.
+3. Rode:
 
 cd E:\amigopet_app
-git add backend/app/main.py frontend/passeador.html frontend/walker.js frontend/styles.css
-git commit -m "Ajustar login Google e aceite de termos do passeador"
-git push
+git status
 
-Depois do deploy, teste em aba anônima ou limpe o cache do navegador.
+git add backend/app/main.py frontend/index.html frontend/app.js frontend/passeador.html frontend/walker.js frontend/pwa.js frontend/sw.js frontend/styles.css
+
+git commit -m "Patch 006 - Avaliacoes Premium"
+
+git push origin main
+
+Teste recomendado:
+1. Aguarde o deploy do Render.
+2. Abra cliente e passeador com Ctrl+F5.
+3. Crie um passeio, confirme pagamento, aceite, inicie e finalize.
+4. No app Cliente, deve aparecer o card para avaliar o passeador.
+5. No app Passeador, deve aparecer o card para avaliar o cliente.
+6. Envie avaliação e confirme se a nota média do usuário atualiza.
+
+Observação:
+A avaliação só aparece para passeio com status finalizado.

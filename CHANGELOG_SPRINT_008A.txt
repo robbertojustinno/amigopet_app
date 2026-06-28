@@ -1,0 +1,26 @@
+AmigoPet Sprint 008A - Chat Enterprise
+
+Arquivos alterados:
+- backend/app/main.py
+- frontend/index.html
+- frontend/app.js
+- frontend/passeador.html
+- frontend/walker.js
+- frontend/styles.css
+
+Implementado:
+- Chat liberado apenas após aceite do passeio.
+- Backend valida participantes do chat.
+- Backend cria notificação de nova mensagem.
+- Mensagens com sender_name, sender_role, sender_photo, message_type e read_at.
+- Endpoint para marcar mensagens como lidas.
+- WebSocket com evento typing e messages_read.
+- Layout de chat premium estilo aplicativo moderno.
+- Balões direita/esquerda, avatar, horário e ticks de leitura.
+- Indicador digitando.
+- Scroll automático.
+- Chat Enterprise no cliente e no passeador.
+
+Observação:
+- O banco recebe migração automática para message_type e read_at.
+- A Sprint 008B fica preparada para fotos, áudio e localização.
