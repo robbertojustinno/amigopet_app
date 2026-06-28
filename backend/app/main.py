@@ -2058,6 +2058,94 @@ def mark_all_notifications_read(user_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+
+@app.get("/api/wallet/{walker_id}")
+def get_walker_wallet(walker_id: int, db: Session = Depends(get_db)):
+    walker = db.get(User, walker_id)
+    if not walker or walker.role != "walker":
+        raise HTTPException(status_code=404, detail="Passeador não encontrado")
+
+    walks = db.query(WalkRequest).filter(
+        WalkRequest.walker_id == walker_id,
+        WalkRequest.status == "finalizado"
+    ).order_by(WalkRequest.finished_at.desc().nullslast(), WalkRequest.id.desc()).all()
+
+    paid_statuses = {"pago", "paid", "done", "confirmed", "received", "recebido", "finalizado"}
+    requested_statuses = {"solicitado", "requested", "processing", "processando", "pending", "pendente"}
+
+    total_gross = 0.0
+    total_platform = 0.0
+    total_paid = 0.0
+    total_pending = 0.0
+    total_error = 0.0
+
+    for walk in walks:
+        gross = float(walk.estimated_price or 0)
+        payout = float(getattr(walk, "payout_amount", 0) or 0)
+        if payout <= 0:
+            payout = calculate_walker_payout_amount(db, walk)
+        platform = max(gross - payout, 0.0)
+        status = str(getattr(walk, "payout_status", "") or "pendente").strip().lower()
+
+        total_gross += gross
+        total_platform += platform
+        if status in paid_statuses:
+            total_paid += payout
+        elif status == "erro":
+            total_error += payout
+            total_pending += payout
+        else:
+            total_pending += payout
+
+    return {
+        "walker_id": walker_id,
+        "walker_name": walker.full_name,
+        "available_balance": round(total_paid, 2),
+        "pending_balance": round(total_pending, 2),
+        "error_balance": round(total_error, 2),
+        "total_gross": round(total_gross, 2),
+        "total_platform_fee": round(total_platform, 2),
+        "total_paid": round(total_paid, 2),
+        "total_pending": round(total_pending, 2),
+        "finished_walks": len(walks),
+        "wallet_status": "ok",
+    }
+
+
+@app.get("/api/wallet/{walker_id}/history")
+def get_walker_wallet_history(walker_id: int, db: Session = Depends(get_db)):
+    walker = db.get(User, walker_id)
+    if not walker or walker.role != "walker":
+        raise HTTPException(status_code=404, detail="Passeador não encontrado")
+
+    walks = db.query(WalkRequest).filter(
+        WalkRequest.walker_id == walker_id,
+        WalkRequest.status == "finalizado"
+    ).order_by(WalkRequest.finished_at.desc().nullslast(), WalkRequest.id.desc()).limit(80).all()
+
+    items = []
+    for walk in walks:
+        gross = float(walk.estimated_price or 0)
+        payout = float(getattr(walk, "payout_amount", 0) or 0)
+        if payout <= 0:
+            payout = calculate_walker_payout_amount(db, walk)
+        platform = max(gross - payout, 0.0)
+        payout_status = str(getattr(walk, "payout_status", "") or "pendente").strip().lower()
+        items.append({
+            "walk_id": walk.id,
+            "pet": walk.pet.name if walk.pet else "Pet",
+            "client": walk.client.full_name if walk.client else "Cliente",
+            "gross_amount": round(gross, 2),
+            "walker_amount": round(payout, 2),
+            "platform_fee": round(platform, 2),
+            "payout_status": payout_status,
+            "payout_transfer_id": getattr(walk, "payout_transfer_id", "") or "",
+            "payout_error": getattr(walk, "payout_error", "") or "",
+            "finished_at": walk.finished_at.isoformat() if walk.finished_at else None,
+            "created_at": walk.created_at.isoformat() if walk.created_at else None,
+        })
+    return items
+
 @app.post("/api/messages")
 async def create_message(data: MessageIn, db: Session = Depends(get_db)):
     msg = Message(**pydantic_dump(data))

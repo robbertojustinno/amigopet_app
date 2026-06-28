@@ -218,6 +218,7 @@ function showView(id, force=false){
   const btn = document.querySelector(`[data-view="${id}"]`);
   if(btn) btn.classList.add('active');
   if(id === 'mapa' || id === 'atual') setTimeout(() => { initMap(); renderMap(); }, 250);
+  if(id === 'carteira') loadWallet().catch(()=>{});
 }
 
 document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
@@ -234,7 +235,7 @@ function requireWalker(){
 function setLoggedUI(){
   const loggedIn = currentUser && currentUser.role === 'walker';
   const termsOk = loggedIn && walkerTermsAccepted(currentUser);
-  ['btnPedidos','btnAtual','btnMapa','btnPerfil'].forEach(id => {
+  ['btnPedidos','btnAtual','btnMapa','btnPerfil','btnCarteira'].forEach(id => {
     const el = $(id);
     if(el) el.classList.toggle('hidden', !termsOk);
   });
@@ -739,6 +740,76 @@ async function notifyWalkerAboutWalk(w){
   }
 }
 
+
+function moneyBR(value){
+  return Number(value || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+}
+
+function walletStatusLabel(status){
+  const raw = String(status || 'pendente').toLowerCase();
+  if(['pago','paid','done','confirmed','received','recebido','finalizado'].includes(raw)) return {text:'Pago', cls:'pago'};
+  if(raw === 'erro') return {text:'Erro', cls:'recusado'};
+  if(['solicitado','requested','processing','processando'].includes(raw)) return {text:'Solicitado', cls:'aguardando'};
+  return {text:'Pendente', cls:'aguardando'};
+}
+
+async function loadWallet(){
+  if(!currentUser || currentUser.role !== 'walker') return;
+  try{
+    const [summary, history] = await Promise.all([
+      api(`/api/wallet/${currentUser.id}`),
+      api(`/api/wallet/${currentUser.id}/history`)
+    ]);
+    renderWallet(summary, history);
+  }catch(err){
+    const box = $('walletSummary');
+    if(box) box.innerHTML = `<div class="notice">${err.message || 'Não foi possível carregar a carteira.'}</div>`;
+  }
+}
+
+function renderWallet(summary, history){
+  if($('walletAvailable')) $('walletAvailable').textContent = moneyBR(summary.available_balance);
+  if($('walletPending')) $('walletPending').textContent = moneyBR(summary.pending_balance);
+  if($('walletGross')) $('walletGross').textContent = moneyBR(summary.total_gross);
+  if($('walletFinished')) $('walletFinished').textContent = String(summary.finished_walks || 0);
+
+  const summaryBox = $('walletSummary');
+  if(summaryBox){
+    summaryBox.innerHTML = `
+      <div class="wallet-summary-line"><span>Passeador</span><strong>${summary.walker_name || currentUser.full_name}</strong></div>
+      <div class="wallet-summary-line"><span>Disponível</span><strong>${moneyBR(summary.available_balance)}</strong></div>
+      <div class="wallet-summary-line"><span>Pendente</span><strong>${moneyBR(summary.pending_balance)}</strong></div>
+      <div class="wallet-summary-line"><span>Comissão AmigoPet</span><strong>${moneyBR(summary.total_platform_fee)}</strong></div>
+      <div class="notice" style="margin-top:12px;">Os valores são calculados sobre passeios finalizados. O status do repasse vem do PIX/Asaas quando disponível.</div>
+    `;
+  }
+
+  const historyBox = $('walletHistory');
+  if(historyBox){
+    if(!history || !history.length){
+      historyBox.innerHTML = '<div class="notice">Nenhum passeio finalizado ainda.</div>';
+      return;
+    }
+    historyBox.innerHTML = history.map(item => {
+      const st = walletStatusLabel(item.payout_status);
+      const date = item.finished_at ? new Date(item.finished_at).toLocaleString('pt-BR') : 'Data não informada';
+      const err = item.payout_error ? `<div class="wallet-error">${item.payout_error}</div>` : '';
+      return `<div class="wallet-item">
+        <div>
+          <strong>Passeio #${item.walk_id} • ${item.pet || 'Pet'}</strong><br>
+          <small>${date} • Cliente: ${item.client || '-'}</small>
+          ${err}
+        </div>
+        <div class="wallet-values">
+          <strong>+ ${moneyBR(item.walker_amount)}</strong>
+          <span class="badge ${st.cls}">${st.text}</span>
+          <small>Bruto: ${moneyBR(item.gross_amount)}</small>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
 function renderWalkerDetails(){
   if(!currentUser){
     $('walkerDetails').textContent = 'Offline';
@@ -937,6 +1008,7 @@ async function finishCurrentWalk(){
     currentWalk = await api(`/api/walks/${currentWalk.id}/finish`, {method:'POST'});
     renderCurrentWalk();
     toast('Passeio finalizado. GPS automático desligado.');
+    loadWallet().catch(()=>{});
   }catch(err){ toast(err.message); }
 }
 

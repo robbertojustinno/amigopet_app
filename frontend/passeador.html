@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=walker-rating-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=wallet-v1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -36,6 +36,7 @@
     <button class="nav-btn locked hidden" id="btnAtual" type="button" data-view="atual">Passeio atual</button>
     <button class="nav-btn locked hidden" id="btnMapa" type="button" data-view="mapa">Mapa</button>
     <button class="nav-btn locked hidden" id="btnPerfil" type="button" data-view="perfil">Perfil</button>
+    <button class="nav-btn locked hidden" id="btnCarteira" type="button" data-view="carteira">Carteira</button>
     <button class="nav-btn logout-btn hidden" id="logoutBtn" type="button" onclick="logout()">Sair</button>
   </nav>
 
@@ -184,6 +185,49 @@
       </div>
     </section>
 
+
+    <section id="carteira" class="view">
+      <div class="page-title">
+        <h2>Minha carteira</h2>
+        <p>Acompanhe seus ganhos, repasses PIX e histórico financeiro dos passeios finalizados.</p>
+      </div>
+      <div class="wallet-grid">
+        <div class="wallet-card wallet-main">
+          <span>Saldo disponível</span>
+          <strong id="walletAvailable">R$ 0,00</strong>
+          <small>Valores com repasse confirmado.</small>
+        </div>
+        <div class="wallet-card">
+          <span>Saldo pendente</span>
+          <strong id="walletPending">R$ 0,00</strong>
+          <small>Valores aguardando processamento PIX.</small>
+        </div>
+        <div class="wallet-card">
+          <span>Total bruto</span>
+          <strong id="walletGross">R$ 0,00</strong>
+          <small>Total movimentado nos passeios.</small>
+        </div>
+        <div class="wallet-card">
+          <span>Passeios finalizados</span>
+          <strong id="walletFinished">0</strong>
+          <small>Base do cálculo financeiro.</small>
+        </div>
+      </div>
+      <div class="grid two wallet-section-grid">
+        <div class="card">
+          <h3>Resumo financeiro</h3>
+          <div id="walletSummary" class="details-box">Carregando carteira...</div>
+          <div class="actions">
+            <button class="secondary" type="button" onclick="loadWallet()">Atualizar carteira</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Histórico de movimentações</h3>
+          <div id="walletHistory" class="wallet-history">Nenhum lançamento encontrado.</div>
+        </div>
+      </div>
+    </section>
+
     <section id="mapa" class="view">
       <div class="page-title">
         <h2>Mapa do passeio</h2>
@@ -265,7 +309,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=walker-rating-v1"></script>
-  <script src="/static/pwa.js?v=walker-rating-v1"></script>
+  <script src="/static/walker.js?v=wallet-v1"></script>
+  <script src="/static/pwa.js?v=wallet-v1"></script>
 </body>
 </html>
