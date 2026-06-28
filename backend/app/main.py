@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import uuid
@@ -170,7 +171,10 @@ class Message(Base):
     request_id = Column(Integer, ForeignKey("walk_requests.id"), nullable=False)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
+    message_type = Column(String(30), default="text", nullable=False)
+    read_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    sender = relationship("User")
 
 class UserNotification(Base):
     __tablename__ = "notifications"
@@ -298,6 +302,7 @@ class MessageIn(BaseModel):
     request_id: int
     sender_id: int
     text: str
+    message_type: str = "text"
 
 class LocationIn(BaseModel):
     lat: float
@@ -840,7 +845,19 @@ def add_walk_system_message(db: Session, walk: WalkRequest, text_value: str) -> 
 
 
 def message_to_dict(msg: Message) -> dict:
-    return {"id": msg.id, "request_id": msg.request_id, "sender_id": msg.sender_id, "text": msg.text, "created_at": msg.created_at.isoformat()}
+    sender = getattr(msg, "sender", None) or None
+    return {
+        "id": msg.id,
+        "request_id": msg.request_id,
+        "sender_id": msg.sender_id,
+        "sender_name": sender.full_name if sender else "Sistema",
+        "sender_role": sender.role if sender else "system",
+        "sender_photo": sender.photo if sender else "",
+        "text": msg.text,
+        "message_type": getattr(msg, "message_type", "text") or "text",
+        "read_at": msg.read_at.isoformat() if getattr(msg, "read_at", None) else None,
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }
 
 def notification_to_dict(item: UserNotification) -> dict:
     return {
@@ -1202,6 +1219,12 @@ def run_lightweight_migrations():
             if col in existing_cols:
                 safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}", f"default legacy walk_requests.{col}")
 
+        safe("ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(30) DEFAULT 'text'", "add messages.message_type")
+        safe("ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP NULL", "add messages.read_at")
+        safe("UPDATE messages SET message_type='text' WHERE message_type IS NULL", "normalize messages.message_type")
+        safe("ALTER TABLE messages ALTER COLUMN message_type SET DEFAULT 'text'", "default messages.message_type")
+        safe("CREATE INDEX IF NOT EXISTS ix_messages_request_created ON messages (request_id, created_at)", "index messages request/created")
+
         safe("CREATE INDEX IF NOT EXISTS ix_notifications_user_read ON notifications (user_id, is_read)", "index notifications user/read")
         safe("CREATE INDEX IF NOT EXISTS ix_notifications_created_at ON notifications (created_at)", "index notifications created_at")
         safe("CREATE INDEX IF NOT EXISTS ix_ratings_walk_rater ON ratings (walk_id, rater_id)", "index ratings walk/rater")
@@ -1219,7 +1242,19 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                payload = {"type": "ping"}
+            if isinstance(payload, dict) and payload.get("type") == "typing":
+                await manager.broadcast({
+                    "type": "typing",
+                    "request_id": payload.get("request_id"),
+                    "sender_id": payload.get("sender_id"),
+                    "sender_role": payload.get("sender_role", ""),
+                    "is_typing": bool(payload.get("is_typing", True)),
+                })
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -2148,18 +2183,73 @@ def get_walker_wallet_history(walker_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/messages")
 async def create_message(data: MessageIn, db: Session = Depends(get_db)):
-    msg = Message(**pydantic_dump(data))
+    walk = db.get(WalkRequest, data.request_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Passeio não encontrado para o chat")
+
+    sender = db.get(User, data.sender_id)
+    if not sender:
+        raise HTTPException(status_code=404, detail="Usuário da mensagem não encontrado")
+
+    if sender.id not in [walk.client_id, walk.walker_id]:
+        raise HTTPException(status_code=403, detail="Você não participa deste chat")
+
+    if walk.status not in ["aceito", "em_andamento", "finalizado"]:
+        raise HTTPException(status_code=403, detail="Chat liberado somente após o aceite do passeio")
+
+    clean_text = str(data.text or "").strip()
+    if not clean_text:
+        raise HTTPException(status_code=400, detail="Digite uma mensagem")
+    if len(clean_text) > 2000:
+        raise HTTPException(status_code=400, detail="Mensagem muito longa")
+
+    msg = Message(
+        request_id=data.request_id,
+        sender_id=data.sender_id,
+        text=clean_text[:2000],
+        message_type=(data.message_type or "text")[:30],
+    )
     db.add(msg)
+    db.flush()
+
+    target_id = walk.walker_id if sender.id == walk.client_id else walk.client_id
+    if target_id:
+        add_user_notification(
+            db,
+            target_id,
+            "💬 Nova mensagem no chat",
+            f"{sender.full_name}: {clean_text[:120]}",
+            "message",
+            "/passeador" if sender.id == walk.client_id else "/",
+        )
+
     db.commit()
     db.refresh(msg)
-    payload = {"id": msg.id, "request_id": msg.request_id, "sender_id": msg.sender_id, "text": msg.text, "created_at": msg.created_at.isoformat()}
-    await manager.broadcast({"type": "message", "message": payload})
+    payload = message_to_dict(msg)
+    await manager.broadcast({"type": "message", "message": payload, "request_id": msg.request_id})
     return payload
 
 @app.get("/api/messages/{request_id}")
 def list_messages(request_id: int, db: Session = Depends(get_db)):
     msgs = db.query(Message).filter(Message.request_id == request_id).order_by(Message.id.asc()).all()
-    return [{"id": m.id, "request_id": m.request_id, "sender_id": m.sender_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in msgs]
+    return [message_to_dict(m) for m in msgs]
+
+@app.post("/api/messages/{request_id}/read/{user_id}")
+async def mark_messages_read(request_id: int, user_id: int, db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, request_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Passeio não encontrado")
+    if user_id not in [walk.client_id, walk.walker_id]:
+        raise HTTPException(status_code=403, detail="Usuário não participa deste chat")
+    now = datetime.utcnow()
+    db.query(Message).filter(
+        Message.request_id == request_id,
+        Message.sender_id != user_id,
+        Message.read_at == None,
+    ).update({"read_at": now}, synchronize_session=False)
+    db.commit()
+    await manager.broadcast({"type": "messages_read", "request_id": request_id, "reader_id": user_id})
+    return {"ok": True, "read_at": now.isoformat()}
 
 
 

@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=wallet-v1" />
+  <link rel="stylesheet" href="/static/styles.css?v=chat-enterprise-v1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -242,6 +242,22 @@
   </main>
 
 
+  <aside id="walkerChatBox" class="chat-box chat-enterprise">
+    <div class="chat-head">
+      <div>
+        <strong id="walkerChatTitle">Chat interno</strong>
+        <small id="walkerChatSubtitle">Selecione um passeio</small>
+        <em id="walkerChatTyping"></em>
+      </div>
+      <button type="button" onclick="toggleWalkerChat()">×</button>
+    </div>
+    <div id="walkerChatMessages" class="chat-messages"></div>
+    <div class="chat-send">
+      <input id="walkerChatText" placeholder="Digite sua mensagem..." autocomplete="off" />
+      <button type="button" onclick="sendWalkerMessage()">Enviar</button>
+    </div>
+  </aside>
+
   <div id="walkerCameraModal" class="chat-box" style="max-width:420px;">
     <div class="chat-head">
       <strong id="walkerCameraTitle">Tirar foto</strong>
@@ -309,7 +325,7 @@
   <footer>Powered by ROVIX • App Passeador AmigoPet</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/walker.js?v=wallet-v1"></script>
-  <script src="/static/pwa.js?v=wallet-v1"></script>
+  <script src="/static/walker.js?v=chat-enterprise-v1"></script>
+  <script src="/static/pwa.js?v=chat-enterprise-v1"></script>
 </body>
 </html>

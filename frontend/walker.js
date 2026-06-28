@@ -4,6 +4,10 @@ const WS_URL = 'wss://amigopet-6td8.onrender.com/ws';
 let currentUser = null;
 let availableWalks = [];
 let currentWalk = null;
+let currentChatRequestId = null;
+let chatSocket = null;
+let walkerChatTypingTimer = null;
+let walkerChatTypingClearTimer = null;
 let map = null;
 let pickupMarker = null;
 let walkerMarker = null;
@@ -42,6 +46,10 @@ function toast(msg){
   el.textContent = msg;
   el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 3300);
+}
+
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
 
@@ -810,6 +818,107 @@ function renderWallet(summary, history){
   }
 }
 
+function canUseWalkerChat(walk){
+  return walk && ['aceito','em_andamento','finalizado'].includes(String(walk.status || ''));
+}
+
+function updateWalkerChatHeader(walk){
+  const title = $('walkerChatTitle');
+  const sub = $('walkerChatSubtitle');
+  if(title) title.textContent = walk ? `Passeio #${walk.id}` : 'Chat interno';
+  if(sub){
+    if(!walk) sub.textContent = 'Selecione um passeio';
+    else if(!canUseWalkerChat(walk)) sub.textContent = '🔒 Chat liberado após o aceite';
+    else sub.textContent = `Cliente: ${walk.client || '-'} • ${walk.pet || 'pet'}`;
+  }
+}
+
+function renderWalkerChatMessage(m){
+  const mine = currentUser && Number(m.sender_id) === Number(currentUser.id);
+  const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '';
+  const read = m.read_at ? '✓✓' : '✓';
+  const readClass = m.read_at ? 'read' : '';
+  const avatarSeed = encodeURIComponent(m.sender_name || (mine ? currentUser.full_name : 'Cliente'));
+  const avatar = m.sender_photo || `https://api.dicebear.com/8.x/initials/svg?seed=${avatarSeed}&backgroundColor=ccfbf1,dbeafe,fef3c7`;
+  return `<div class="chat-row ${mine ? 'mine' : 'theirs'}">
+    ${mine ? '' : `<img class="chat-avatar" src="${escapeHtml(avatar)}" alt="${escapeHtml(m.sender_name || 'Usuário')}">`}
+    <div class="chat-bubble-pro">
+      <div class="chat-sender">${mine ? 'Você' : escapeHtml(m.sender_name || 'Cliente')}</div>
+      <div class="chat-text">${escapeHtml(m.text)}</div>
+      <div class="chat-meta"><span>${time}</span>${mine ? `<span class="ticks ${readClass}">${read}</span>` : ''}</div>
+    </div>
+  </div>`;
+}
+
+function scrollWalkerChatToBottom(){
+  const box = $('walkerChatMessages');
+  if(box) setTimeout(() => { box.scrollTop = box.scrollHeight; }, 30);
+}
+
+function toggleWalkerChat(){
+  const box = $('walkerChatBox');
+  if(!box) return;
+  box.classList.toggle('open');
+  if(box.classList.contains('open')) loadWalkerChatMessages();
+}
+
+async function openWalkerChat(requestId){
+  currentChatRequestId = requestId;
+  const selected = availableWalks.find(w => Number(w.id) === Number(requestId)) || currentWalk;
+  if(selected) currentWalk = selected;
+  const box = $('walkerChatBox');
+  if(box) box.classList.add('open');
+  await loadWalkerChatMessages();
+}
+
+async function loadWalkerChatMessages(){
+  const chatBody = $('walkerChatMessages');
+  if(!chatBody) return;
+  const walk = currentWalk && Number(currentWalk.id) === Number(currentChatRequestId) ? currentWalk : availableWalks.find(w => Number(w.id) === Number(currentChatRequestId));
+  updateWalkerChatHeader(walk);
+  if(!currentChatRequestId || !walk){
+    chatBody.innerHTML = '<div class="chat-locked">Selecione um passeio para conversar.</div>';
+    return;
+  }
+  if(!canUseWalkerChat(walk)){
+    chatBody.innerHTML = `<div class="chat-locked">🔒 Chat será liberado após o aceite do passeio.<br><small>Status atual: ${escapeHtml(walk.status || '-')}</small></div>`;
+    return;
+  }
+  const msgs = await api(`/api/messages/${currentChatRequestId}`);
+  chatBody.innerHTML = msgs.length ? msgs.map(renderWalkerChatMessage).join('') : '<div class="chat-locked">Nenhuma mensagem ainda. Envie a primeira mensagem.</div>';
+  await api(`/api/messages/${currentChatRequestId}/read/${currentUser.id}`, {method:'POST'}).catch(()=>{});
+  scrollWalkerChatToBottom();
+}
+
+function sendWalkerTypingSignal(isTyping=true){
+  try{
+    if(!chatSocket || chatSocket.readyState !== WebSocket.OPEN || !currentChatRequestId || !currentUser) return;
+    chatSocket.send(JSON.stringify({type:'typing', request_id: currentChatRequestId, sender_id: currentUser.id, sender_role: currentUser.role, is_typing: Boolean(isTyping)}));
+  }catch(e){}
+}
+
+function handleWalkerChatTyping(){
+  clearTimeout(walkerChatTypingTimer);
+  sendWalkerTypingSignal(true);
+  walkerChatTypingTimer = setTimeout(() => sendWalkerTypingSignal(false), 1200);
+}
+
+async function sendWalkerMessage(){
+  try{
+    if(!requireWalker()) return;
+    if(!currentChatRequestId) return toast('Abra um passeio para conversar.');
+    const text = $('walkerChatText').value.trim();
+    if(!text) return;
+    await api('/api/messages', {
+      method:'POST',
+      body: JSON.stringify({request_id: currentChatRequestId, sender_id: currentUser.id, text, message_type:'text'})
+    });
+    $('walkerChatText').value = '';
+    sendWalkerTypingSignal(false);
+    await loadWalkerChatMessages();
+  }catch(err){ toast(err.message); }
+}
+
 function renderWalkerDetails(){
   if(!currentUser){
     $('walkerDetails').textContent = 'Offline';
@@ -894,6 +1003,7 @@ function walkCard(w, mode='available'){
       <div class="actions">
         ${canAccept ? `<button type="button" onclick="acceptWalk(${w.id})">Aceitar</button>` : ''}
         ${canReject ? `<button class="ghost" type="button" onclick="rejectWalk(${w.id})">Recusar</button>` : ''}
+        <button class="secondary" type="button" onclick="openWalkerChat(${w.id})">Chat</button>
         <button class="secondary" type="button" onclick="selectWalk(${w.id})">Ver detalhes</button>
       </div>
     </div>
@@ -1114,9 +1224,26 @@ function renderMap(){
 function connectWS(){
   try{
     const ws = new WebSocket(WS_URL);
+    chatSocket = ws;
     ws.onopen = () => toast('Tempo real conectado.');
     ws.onmessage = async (ev) => {
       const data = JSON.parse(ev.data);
+      if(data.type === 'typing' && Number(data.request_id) === Number(currentChatRequestId) && currentUser && Number(data.sender_id) !== Number(currentUser.id)){
+        const t = $('walkerChatTyping');
+        if(t){
+          t.textContent = data.is_typing ? 'Digitando...' : '';
+          clearTimeout(walkerChatTypingClearTimer);
+          if(data.is_typing) walkerChatTypingClearTimer = setTimeout(() => t.textContent = '', 1800);
+        }
+        return;
+      }
+      if(data.type === 'messages_read' && Number(data.request_id) === Number(currentChatRequestId)){
+        loadWalkerChatMessages().catch(()=>{});
+        return;
+      }
+      if(data.type === 'message' && Number(data.request_id || data.message?.request_id) === Number(currentChatRequestId)){
+        loadWalkerChatMessages().catch(()=>{});
+      }
       if(data.type === 'walk_created'){
         toast('Novo convite recebido.');
       }
@@ -1166,7 +1293,13 @@ handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 updateWalkerNotificationStatus();
 document.addEventListener('visibilitychange', updateWalkerNotificationStatus);
+const walkerChatInput = $('walkerChatText');
+if(walkerChatInput) walkerChatInput.addEventListener('input', handleWalkerChatTyping);
 
 window.loginWithGoogle = loginWithGoogle;
 
 window.acceptWalkerTerms = acceptWalkerTerms;
+
+window.toggleWalkerChat = toggleWalkerChat;
+window.openWalkerChat = openWalkerChat;
+window.sendWalkerMessage = sendWalkerMessage;

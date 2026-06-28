@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=patch-006-avaliacoes" />
+  <link rel="stylesheet" href="/static/styles.css?v=chat-enterprise-v1" />
 </head>
 <body>
   <div id="toast"></div>
@@ -231,14 +231,18 @@
     </section>
   </main>
 
-  <aside id="chatBox" class="chat-box">
+  <aside id="chatBox" class="chat-box chat-enterprise">
     <div class="chat-head">
-      <strong>Chat interno</strong>
+      <div>
+        <strong id="chatTitle">Chat interno</strong>
+        <small id="chatSubtitle">Selecione um pedido</small>
+        <em id="chatTyping"></em>
+      </div>
       <button type="button" onclick="toggleChat()">×</button>
     </div>
     <div id="chatMessages" class="chat-messages"></div>
     <div class="chat-send">
-      <input id="chatText" placeholder="Digite sua mensagem..." />
+      <input id="chatText" placeholder="Digite sua mensagem..." autocomplete="off" />
       <button type="button" onclick="sendMessage()">Enviar</button>
     </div>
   </aside>
@@ -321,7 +325,7 @@
   <footer>Powered by ROVIX • AmigoPet Pro Cliente</footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=client-rating-v1"></script>
-  <script src="/static/pwa.js?v=patch-006-avaliacoes"></script>
+  <script src="/static/app.js?v=chat-enterprise-v1"></script>
+  <script src="/static/pwa.js?v=chat-enterprise-v1"></script>
 </body>
 </html>

@@ -14,6 +14,9 @@ let clientPhotoData = '';
 let petPhotoData = '';
 let editClientPhotoData = '';
 let pricingConfig = null;
+let chatSocket = null;
+let chatTypingTimer = null;
+let chatTypingClearTimer = null;
 const CLIENT_TERMS_VERSION = '1.0';
 let clientTermsReadComplete = false;
 
@@ -1175,6 +1178,45 @@ async function refreshAll(){
   }
 }
 
+function canUseChat(walk){
+  return walk && ['aceito','em_andamento','finalizado'].includes(String(walk.status || ''));
+}
+
+function chatStatusText(walk){
+  if(!walk) return 'Selecione um pedido para conversar.';
+  if(!canUseChat(walk)) return '🔒 Chat liberado após o aceite do passeio.';
+  return `Chat com ${escapeHtml(walk.walker || 'passeador')} • ${escapeHtml(walk.pet || 'pet')}`;
+}
+
+function updateChatHeader(walk){
+  const title = $('chatTitle');
+  const sub = $('chatSubtitle');
+  if(title) title.textContent = walk ? `Passeio #${walk.id}` : 'Chat interno';
+  if(sub) sub.textContent = walk ? chatStatusText(walk).replace(/<[^>]*>/g, '') : 'Selecione um pedido';
+}
+
+function renderChatMessage(m){
+  const mine = currentUser && Number(m.sender_id) === Number(currentUser.id);
+  const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '';
+  const read = m.read_at ? '✓✓' : '✓';
+  const readClass = m.read_at ? 'read' : '';
+  const avatarSeed = encodeURIComponent(m.sender_name || (mine ? currentUser.full_name : 'Passeador'));
+  const avatar = m.sender_photo || `https://api.dicebear.com/8.x/initials/svg?seed=${avatarSeed}&backgroundColor=ccfbf1,dbeafe,fef3c7`;
+  return `<div class="chat-row ${mine ? 'mine' : 'theirs'}">
+    ${mine ? '' : `<img class="chat-avatar" src="${escapeHtml(avatar)}" alt="${escapeHtml(m.sender_name || 'Usuário')}">`}
+    <div class="chat-bubble-pro">
+      <div class="chat-sender">${mine ? 'Você' : escapeHtml(m.sender_name || 'Passeador')}</div>
+      <div class="chat-text">${escapeHtml(m.text)}</div>
+      <div class="chat-meta"><span>${time}</span>${mine ? `<span class="ticks ${readClass}">${read}</span>` : ''}</div>
+    </div>
+  </div>`;
+}
+
+function scrollChatToBottom(){
+  const box = $('chatMessages');
+  if(box) setTimeout(() => { box.scrollTop = box.scrollHeight; }, 30);
+}
+
 function toggleChat(){
   const box = $('chatBox');
   if(!box) return;
@@ -1184,20 +1226,47 @@ function toggleChat(){
 
 async function openChat(requestId){
   currentRequestId = requestId;
-  $('chatBox').classList.add('open');
+  await loadWalk(requestId).catch(()=>{});
+  const box = $('chatBox');
+  if(box) box.classList.add('open');
   await loadMessages();
 }
 
 async function loadMessages(){
+  const chatBody = $('chatMessages');
+  if(!chatBody) return;
   if(!currentRequestId){
-    $('chatMessages').innerHTML = '<div class="notice">Abra uma solicitação primeiro.</div>';
+    updateChatHeader(null);
+    chatBody.innerHTML = '<div class="chat-locked">Abra uma solicitação primeiro.</div>';
+    return;
+  }
+
+  const walk = lastWalk && Number(lastWalk.id) === Number(currentRequestId) ? lastWalk : await api(`/api/walks/${currentRequestId}`);
+  lastWalk = walk;
+  updateChatHeader(walk);
+
+  if(!canUseChat(walk)){
+    chatBody.innerHTML = `<div class="chat-locked">🔒 Chat será liberado após o pagamento confirmado e aceite do passeador.<br><small>Status atual: ${escapeHtml(walk.status || '-')}</small></div>`;
     return;
   }
 
   const msgs = await api(`/api/messages/${currentRequestId}`);
-  $('chatMessages').innerHTML = msgs.length
-    ? msgs.map(m => `<div class="bubble">${m.text}<br><small>${new Date(m.created_at).toLocaleString('pt-BR')}</small></div>`).join('')
-    : '<div class="notice">Nenhuma mensagem ainda.</div>';
+  chatBody.innerHTML = msgs.length ? msgs.map(renderChatMessage).join('') : '<div class="chat-locked">Nenhuma mensagem ainda. Envie a primeira mensagem.</div>';
+  await api(`/api/messages/${currentRequestId}/read/${currentUser.id}`, {method:'POST'}).catch(()=>{});
+  scrollChatToBottom();
+}
+
+function sendTypingSignal(isTyping=true){
+  try{
+    if(!chatSocket || chatSocket.readyState !== WebSocket.OPEN || !currentRequestId || !currentUser) return;
+    chatSocket.send(JSON.stringify({type:'typing', request_id: currentRequestId, sender_id: currentUser.id, sender_role: currentUser.role, is_typing: Boolean(isTyping)}));
+  }catch(e){}
+}
+
+function handleChatTyping(){
+  clearTimeout(chatTypingTimer);
+  sendTypingSignal(true);
+  chatTypingTimer = setTimeout(() => sendTypingSignal(false), 1200);
 }
 
 async function sendMessage(){
@@ -1210,10 +1279,11 @@ async function sendMessage(){
 
     await api('/api/messages', {
       method:'POST',
-      body: JSON.stringify({request_id: currentRequestId, sender_id: currentUser.id, text})
+      body: JSON.stringify({request_id: currentRequestId, sender_id: currentUser.id, text, message_type:'text'})
     });
 
     $('chatText').value = '';
+    sendTypingSignal(false);
     await loadMessages();
   }catch(err){
     toast(err.message);
@@ -1223,6 +1293,7 @@ async function sendMessage(){
 function connectWS(){
   try{
     const ws = new WebSocket(WS_URL);
+    chatSocket = ws;
     ws.onmessage = async (ev) => {
       const data = JSON.parse(ev.data);
       const labels = {
@@ -1238,6 +1309,19 @@ function connectWS(){
         rating_created:'Avaliação recebida'
       };
 
+      if(data.type === 'typing' && Number(data.request_id) === Number(currentRequestId) && currentUser && Number(data.sender_id) !== Number(currentUser.id)){
+        const t = $('chatTyping');
+        if(t){
+          t.textContent = data.is_typing ? 'Digitando...' : '';
+          clearTimeout(chatTypingClearTimer);
+          if(data.is_typing) chatTypingClearTimer = setTimeout(() => t.textContent = '', 1800);
+        }
+        return;
+      }
+      if(data.type === 'messages_read' && Number(data.request_id) === Number(currentRequestId)){
+        loadMessages().catch(()=>{});
+        return;
+      }
       if(data.type === 'walker_availability_changed'){
         const status = data.walker?.available === false ? 'ficou offline' : 'está online';
         toast(`Passeador ${status}.`);
@@ -1258,7 +1342,7 @@ function connectWS(){
       }
 
       if(currentUser) await refreshAll();
-      if(currentRequestId) loadMessages();
+      if(data.type === 'message' && Number(data.request_id || data.message?.request_id) === Number(currentRequestId)) loadMessages();
     };
     ws.onclose = () => setTimeout(connectWS, 2500);
   }catch(e){}
@@ -1293,6 +1377,8 @@ loadPricing().catch(()=>{});
 connectWS();
 updateClientNotificationStatus();
 document.addEventListener('visibilitychange', updateClientNotificationStatus);
+const chatInput = $('chatText');
+if(chatInput) chatInput.addEventListener('input', handleChatTyping);
 
 async function loadPricing(){
   const box = $('homePricing');
