@@ -184,6 +184,20 @@ class UserNotification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User")
 
+class UserRating(Base):
+    __tablename__ = "ratings"
+    id = Column(Integer, primary_key=True, index=True)
+    walk_id = Column(Integer, ForeignKey("walk_requests.id"), nullable=False, index=True)
+    rater_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    target_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text, default="")
+    role = Column(String(30), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    walk = relationship("WalkRequest")
+    rater = relationship("User", foreign_keys=[rater_id])
+    target = relationship("User", foreign_keys=[target_id])
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
     key = Column(String(80), primary_key=True, index=True)
@@ -291,6 +305,12 @@ class LocationIn(BaseModel):
 
 class AvailabilityIn(BaseModel):
     available: bool = True
+
+class RatingIn(BaseModel):
+    rater_id: int
+    target_id: int
+    rating: int
+    comment: str = ""
 
 class ConnectionManager:
     def __init__(self):
@@ -849,6 +869,28 @@ def add_user_notification(db: Session, user_id: int, title: str, body: str = "",
     db.flush()
     return item
 
+def rating_to_dict(item: UserRating) -> dict:
+    return {
+        "id": item.id,
+        "walk_id": item.walk_id,
+        "rater_id": item.rater_id,
+        "target_id": item.target_id,
+        "rating": item.rating,
+        "comment": item.comment or "",
+        "role": item.role or "",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "rater": item.rater.full_name if item.rater else "",
+        "target": item.target.full_name if item.target else "",
+    }
+
+def recalculate_user_rating(db: Session, user_id: int) -> None:
+    items = db.query(UserRating).filter(UserRating.target_id == user_id).all()
+    user = db.get(User, user_id)
+    if not user or not items:
+        return
+    avg = sum(max(1, min(5, int(item.rating or 5))) for item in items) / len(items)
+    user.rating = round(avg, 2)
+
 
 # Aliases mantidos para compatibilidade interna com chamadas antigas do código.
 mp_headers = asaas_headers
@@ -1162,6 +1204,8 @@ def run_lightweight_migrations():
 
         safe("CREATE INDEX IF NOT EXISTS ix_notifications_user_read ON notifications (user_id, is_read)", "index notifications user/read")
         safe("CREATE INDEX IF NOT EXISTS ix_notifications_created_at ON notifications (created_at)", "index notifications created_at")
+        safe("CREATE INDEX IF NOT EXISTS ix_ratings_walk_rater ON ratings (walk_id, rater_id)", "index ratings walk/rater")
+        safe("CREATE INDEX IF NOT EXISTS ix_ratings_target ON ratings (target_id)", "index ratings target")
 
 
 run_lightweight_migrations()
@@ -1920,6 +1964,68 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "location_updated", "walk": payload})
     return payload
+
+@app.post("/api/walks/{walk_id}/ratings")
+async def rate_walk_user(walk_id: int, data: RatingIn, db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, walk_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Passeio não encontrado")
+    if walk.status != "finalizado":
+        raise HTTPException(status_code=400, detail="A avaliação só pode ser feita após o passeio ser finalizado")
+
+    rater = db.get(User, data.rater_id)
+    target = db.get(User, data.target_id)
+    if not rater or not target:
+        raise HTTPException(status_code=404, detail="Usuário da avaliação não encontrado")
+    if data.rating < 1 or data.rating > 5:
+        raise HTTPException(status_code=400, detail="A nota deve ser entre 1 e 5 estrelas")
+
+    valid_pair = False
+    role_value = ""
+    if rater.id == walk.client_id and target.id == walk.walker_id:
+        valid_pair = True
+        role_value = "client_to_walker"
+    if rater.id == walk.walker_id and target.id == walk.client_id:
+        valid_pair = True
+        role_value = "walker_to_client"
+    if not valid_pair:
+        raise HTTPException(status_code=403, detail="Esta avaliação não pertence a este passeio")
+
+    existing = db.query(UserRating).filter(UserRating.walk_id == walk_id, UserRating.rater_id == rater.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Você já avaliou este passeio")
+
+    item = UserRating(
+        walk_id=walk_id,
+        rater_id=rater.id,
+        target_id=target.id,
+        rating=int(data.rating),
+        comment=str(data.comment or "")[:1000],
+        role=role_value,
+    )
+    db.add(item)
+    db.flush()
+    recalculate_user_rating(db, target.id)
+
+    add_user_notification(
+        db,
+        target.id,
+        "⭐ Nova avaliação recebida",
+        f"{rater.full_name} avaliou você com {int(data.rating)} estrela(s).",
+        "rating_received",
+        "/passeador" if target.role == "walker" else "/"
+    )
+
+    db.commit()
+    db.refresh(item)
+    payload = rating_to_dict(item)
+    await manager.broadcast({"type": "rating_created", "rating": payload})
+    return payload
+
+@app.get("/api/walks/{walk_id}/ratings")
+def list_walk_ratings(walk_id: int, db: Session = Depends(get_db)):
+    items = db.query(UserRating).filter(UserRating.walk_id == walk_id).order_by(UserRating.id.desc()).all()
+    return [rating_to_dict(item) for item in items]
 
 @app.get("/api/notifications/{user_id}")
 def list_user_notifications(user_id: int, unread_only: bool = False, db: Session = Depends(get_db)):

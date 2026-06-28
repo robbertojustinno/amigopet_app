@@ -1011,7 +1011,8 @@ function renderCurrentWalk(w){
     Distância do pedido: ${w.distance_km} km • ${w.duration_minutes} min • R$ ${Number(w.estimated_price).toFixed(2)}<br>
     Distância ao cliente: <strong>${kmLive.toFixed(2)} km</strong><br>
     Previsão de chegada: <strong>${eta} min</strong><br>
-    Localização passeador: ${Number(w.walker_lat || -22.5900).toFixed(5)}, ${Number(w.walker_lng || -43.1810).toFixed(5)}`;
+    Localização passeador: ${Number(w.walker_lat || -22.5900).toFixed(5)}, ${Number(w.walker_lng || -43.1810).toFixed(5)}
+    ${clientRatingBox(w)}`;
   }
 
   const pixBox = $('pixBox');
@@ -1036,6 +1037,43 @@ function renderCurrentWalk(w){
     pixBox.innerHTML = `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${payButton}${ticket}${errorText}`;
   }
   renderMap(w);
+}
+
+function ratingStarsSelect(idPrefix){
+  return `<select id="${idPrefix}Rating" aria-label="Nota da avaliação">
+    <option value="5">⭐⭐⭐⭐⭐ Excelente</option>
+    <option value="4">⭐⭐⭐⭐ Muito bom</option>
+    <option value="3">⭐⭐⭐ Regular</option>
+    <option value="2">⭐⭐ Ruim</option>
+    <option value="1">⭐ Muito ruim</option>
+  </select>`;
+}
+
+function clientRatingBox(w){
+  if(!w || w.status !== 'finalizado' || !w.walker_id || !currentUser) return '';
+  return `<div class="rating-box">
+    <h3>⭐ Avaliar passeador</h3>
+    <p class="muted">Como foi o passeio com ${escapeHtml(w.walker || 'o passeador')}?</p>
+    ${ratingStarsSelect('clientWalk')}
+    <textarea id="clientWalkRatingComment" placeholder="Comentário opcional sobre o passeio"></textarea>
+    <button class="full ok" type="button" onclick="sendClientRating(${w.id}, ${w.walker_id})">Enviar avaliação</button>
+  </div>`;
+}
+
+async function sendClientRating(walkId, targetId){
+  try{
+    if(!requireClient()) return;
+    const rating = Number($('clientWalkRatingRating')?.value || 5);
+    const comment = $('clientWalkRatingComment')?.value?.trim() || '';
+    await api(`/api/walks/${walkId}/ratings`, {
+      method:'POST',
+      body: JSON.stringify({rater_id: currentUser.id, target_id: targetId, rating, comment})
+    });
+    toast('Avaliação enviada com sucesso. Obrigado!');
+    await refreshAll();
+  }catch(err){
+    toast(err.message || 'Não foi possível enviar a avaliação.');
+  }
 }
 
 function walkItem(w){
@@ -1196,7 +1234,8 @@ function connectWS(){
         walk_started:'Passeio iniciado',
         walk_finished:'Passeio finalizado',
         location_updated:'Localização do passeador atualizada',
-        message:'Nova mensagem'
+        message:'Nova mensagem',
+        rating_created:'Avaliação recebida'
       };
 
       if(data.type === 'walker_availability_changed'){

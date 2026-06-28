@@ -110,3 +110,7 @@ button.ok[onclick*="Notifications"]{
 @media(max-width:640px){
   .notification-status{font-size:14px;line-height:1.35}
 }
+
+/* ===== AmigoPet Patch 006 - Avaliações Premium ===== */
+.rating-box{margin-top:16px;padding:16px;border-radius:22px;background:linear-gradient(180deg,#fff7ed 0%,#ffffff 100%);border:1px solid #fed7aa;box-shadow:0 14px 30px rgba(15,23,42,.06)}
+.rating-box h3{margin:0 0 6px;color:#92400e;font-size:22px}.rating-box p{margin:0 0 10px}.rating-box select{background:#fff;border-color:#fdba74;font-weight:900}.rating-box textarea{min-height:84px;background:#fff}.rating-box button{margin-top:8px}

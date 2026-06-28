@@ -1,6 +1,6 @@
 (function(){
   const APP_NAME = 'AmigoPet';
-  const SW_VERSION = 'patch-005-notificacoes';
+  const SW_VERSION = 'patch-006-avaliacoes';
 
   async function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return null;

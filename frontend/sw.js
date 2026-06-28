@@ -1,12 +1,12 @@
-const CACHE_NAME = 'amigopet-pwa-v8-notificacoes';
+const CACHE_NAME = 'amigopet-pwa-v9-avaliacoes';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
-  '/static/styles.css?v=client-terms-v1',
-  '/static/app.js?v=client-terms-v2-notify',
-  '/static/walker.js?v=walker-notify-v1',
-  '/static/pwa.js?v=client-terms-v1',
+  '/static/styles.css?v=client-rating-v1',
+  '/static/app.js?v=client-rating-v1',
+  '/static/walker.js?v=walker-rating-v1',
+  '/static/pwa.js?v=client-rating-v1',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];

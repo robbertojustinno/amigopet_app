@@ -763,6 +763,43 @@ function canAcceptPaid(w){
   return isAvailable(w) && String(w.payment_status || '').toLowerCase() === 'pago';
 }
 
+function walkerRatingStarsSelect(idPrefix){
+  return `<select id="${idPrefix}Rating" aria-label="Nota da avaliação">
+    <option value="5">⭐⭐⭐⭐⭐ Excelente</option>
+    <option value="4">⭐⭐⭐⭐ Muito bom</option>
+    <option value="3">⭐⭐⭐ Regular</option>
+    <option value="2">⭐⭐ Ruim</option>
+    <option value="1">⭐ Muito ruim</option>
+  </select>`;
+}
+
+function walkerRatingBox(w){
+  if(!w || w.status !== 'finalizado' || !w.client_id || !currentUser) return '';
+  return `<div class="rating-box">
+    <h3>⭐ Avaliar cliente</h3>
+    <p class="muted">Como foi o atendimento com ${w.client || 'o cliente'}?</p>
+    ${walkerRatingStarsSelect('walkerClient')}
+    <textarea id="walkerClientRatingComment" placeholder="Comentário opcional sobre o cliente"></textarea>
+    <button class="full ok" type="button" onclick="sendWalkerRating(${w.id}, ${w.client_id})">Enviar avaliação</button>
+  </div>`;
+}
+
+async function sendWalkerRating(walkId, targetId){
+  try{
+    if(!requireWalker()) return;
+    const rating = Number($('walkerClientRatingRating')?.value || 5);
+    const comment = $('walkerClientRatingComment')?.value?.trim() || '';
+    await api(`/api/walks/${walkId}/ratings`, {
+      method:'POST',
+      body: JSON.stringify({rater_id: currentUser.id, target_id: targetId, rating, comment})
+    });
+    toast('Avaliação enviada com sucesso. Obrigado!');
+    await refreshAll();
+  }catch(err){
+    toast(err.message || 'Não foi possível enviar a avaliação.');
+  }
+}
+
 function walkCard(w, mode='available'){
   const canAccept = mode === 'available' && canAcceptPaid(w);
   const canReject = mode === 'available' && ['convite_enviado','pendente','pagamento_confirmado'].includes(w.status) && String(w.payment_status || '').toLowerCase() !== 'pago';
@@ -809,7 +846,7 @@ function renderCurrentWalk(){
     box.innerHTML = 'Nenhum passeio aceito ainda.';
   }else{
     box.className = '';
-    box.innerHTML = walkCard(currentWalk, 'current');
+    box.innerHTML = walkCard(currentWalk, 'current') + walkerRatingBox(currentWalk);
   }
   const summary = $('mapSummary');
   if(summary){
