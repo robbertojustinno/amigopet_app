@@ -150,6 +150,8 @@ function enforceWalkerTerms(){
 async function api(path, options={}){
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    credentials: 'include',
+    cache: 'no-store',
     ...options
   });
 
@@ -682,6 +684,7 @@ async function login(){
 }
 
 function logout(){
+  api('/api/auth/logout', {method:'POST'}).catch(()=>{});
   stopGpsTracking(false);
   currentUser = null;
   currentWalk = null;
@@ -1290,38 +1293,79 @@ function connectWS(){
   }catch(e){}
 }
 
-function restoreSession(){
+async function restoreSession(){
+  let savedUser = null;
+
   try{
     const saved = localStorage.getItem('amigopet_walker_user');
     if(saved){
-      currentUser = JSON.parse(saved);
+      savedUser = JSON.parse(saved);
+      if(savedUser && savedUser.role === 'walker'){
+        currentUser = savedUser;
+        setLoggedUI();
+        if(needsWalkerTerms()){
+          showView('login', true);
+          showWalkerTermsModal();
+        }else{
+          showView('pedidos', true);
+        }
+      }
+    }
+  }catch(e){
+    localStorage.removeItem('amigopet_walker_user');
+    savedUser = null;
+  }
+
+  try{
+    let freshUser = null;
+    if(savedUser && savedUser.id){
+      freshUser = await api(`/api/auth/google/session/${savedUser.id}`);
+    }else{
+      freshUser = await api('/api/auth/session/current');
+    }
+
+    if(freshUser && freshUser.role === 'walker'){
+      currentUser = freshUser;
+      localStorage.setItem('amigopet_walker_user', JSON.stringify(freshUser));
       setLoggedUI();
       if(needsWalkerTerms()){
         showView('login', true);
         showWalkerTermsModal();
       }else{
-        refreshAll();
+        await refreshAll().catch(()=>{});
         showView('pedidos', true);
       }
-    }else{
-      setLoggedUI();
-      showView('login', true);
+      return true;
     }
   }catch(e){
-    localStorage.removeItem('amigopet_walker_user');
-    setLoggedUI();
+    if(!savedUser){
+      localStorage.removeItem('amigopet_walker_user');
+    }
   }
+
+  if(!currentUser || currentUser.role !== 'walker'){
+    setLoggedUI();
+    showView('login', true);
+    return false;
+  }
+
+  refreshAll().catch(()=>{});
+  return true;
 }
 
-bindProfileForm();
-bindWalkerTermsModal();
-restoreSession();
-handleGoogleLoginCallback().catch(()=>{});
-connectWS();
-updateWalkerNotificationStatus();
-document.addEventListener('visibilitychange', updateWalkerNotificationStatus);
-const walkerChatInput = $('walkerChatText');
-if(walkerChatInput) walkerChatInput.addEventListener('input', handleWalkerChatTyping);
+async function bootstrapWalkerApp(){
+  bindProfileForm();
+  bindWalkerTermsModal();
+  await handleGoogleLoginCallback().catch(()=>{});
+  await restoreSession().catch(()=>{});
+  connectWS();
+  updateWalkerNotificationStatus();
+  document.addEventListener('visibilitychange', updateWalkerNotificationStatus);
+  const walkerChatInput = $('walkerChatText');
+  if(walkerChatInput) walkerChatInput.addEventListener('input', handleWalkerChatTyping);
+}
+
+bootstrapWalkerApp();
 
 window.loginWithGoogle = loginWithGoogle;
 

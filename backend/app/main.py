@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import base64
 import os
 import secrets
 import uuid
@@ -12,7 +13,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
@@ -50,6 +51,14 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 EMAIL_FROM = os.getenv("EMAIL_FROM", "AmigoPet <onboarding@resend.dev>").strip()
 WALKER_TERMS_VERSION = os.getenv("WALKER_TERMS_VERSION", "1.0").strip() or "1.0"
 CLIENT_TERMS_VERSION = os.getenv("CLIENT_TERMS_VERSION", "1.0").strip() or "1.0"
+SESSION_COOKIE_NAME = "amigopet_session"
+SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180
+SESSION_SECRET = (
+    os.getenv("SESSION_SECRET", "").strip()
+    or GOOGLE_CLIENT_SECRET
+    or ASAAS_API_KEY
+    or "amigopet-dev-session-secret"
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -393,6 +402,59 @@ def verify_password(password: str, password_hash: str) -> bool:
         except Exception:
             return False
     return False
+
+def make_session_token(user_id: int) -> str:
+    issued = str(int(datetime.utcnow().timestamp()))
+    payload = f"{int(user_id)}:{issued}"
+    signature = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw = f"{payload}:{signature}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("utf-8")
+
+
+def read_session_user_id(token: str) -> Optional[int]:
+    if not token:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        user_id, issued, signature = raw.split(":", 2)
+        payload = f"{int(user_id)}:{int(issued)}"
+        expected = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not secrets.compare_digest(signature, expected):
+            return None
+        if int(datetime.utcnow().timestamp()) - int(issued) > SESSION_MAX_AGE_SECONDS:
+            return None
+        return int(user_id)
+    except Exception:
+        return None
+
+
+def attach_session_cookie(response: Response, user_id: int) -> Response:
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=make_session_token(user_id),
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+def clear_session_cookie(response: Response) -> Response:
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return response
+
+
+def session_user_from_request(request: Request, db: Session) -> Optional[User]:
+    user_id = read_session_user_id(request.cookies.get(SESSION_COOKIE_NAME, ""))
+    if not user_id:
+        return None
+    user = db.get(User, user_id)
+    if not user or not getattr(user, "active", True):
+        return None
+    return user
+
 
 def user_to_dict(u: User):
     return {
@@ -1346,14 +1408,18 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user_to_dict(user)
+    response = JSONResponse(user_to_dict(user))
+    attach_session_cookie(response, user.id)
+    return response
 
 @app.post("/api/auth/login")
 def login(data: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
-    return user_to_dict(user)
+    response = JSONResponse(user_to_dict(user))
+    attach_session_cookie(response, user.id)
+    return response
 
 
 
@@ -1461,7 +1527,9 @@ def google_callback(code: str = "", error: str = "", state: str = "client", db: 
         db.refresh(user)
 
         redirect_base = "/passeador" if user.role == "walker" else "/"
-        return RedirectResponse(f"{redirect_base}?google_user_id={user.id}")
+        response = RedirectResponse(f"{redirect_base}?google_user_id={user.id}")
+        attach_session_cookie(response, user.id)
+        return response
     except Exception as e:
         print("[GOOGLE LOGIN ERROR]", str(e))
         return RedirectResponse(f"{redirect_base}?google_error=server_error")
@@ -1472,7 +1540,24 @@ def google_session(user_id: int, db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuário Google não encontrado")
+    response = JSONResponse(user_to_dict(user))
+    attach_session_cookie(response, user.id)
+    return response
+
+
+@app.get("/api/auth/session/current")
+def current_session(request: Request, db: Session = Depends(get_db)):
+    user = session_user_from_request(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sessão expirada ou não encontrada")
     return user_to_dict(user)
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    response = JSONResponse({"ok": True})
+    clear_session_cookie(response)
+    return response
 
 
 @app.post("/api/auth/request-password-reset")

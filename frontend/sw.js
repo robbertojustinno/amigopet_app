@@ -1,12 +1,12 @@
-const CACHE_NAME = 'amigopet-pwa-v11-timeline';
+const CACHE_NAME = 'amigopet-pwa-v12-login-persistente';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
-  '/static/styles.css?v=timeline-v1',
-  '/static/app.js?v=timeline-v1',
-  '/static/walker.js?v=timeline-v1',
-  '/static/pwa.js?v=timeline-v1',
+  '/static/styles.css?v=login-persistente-v3',
+  '/static/app.js?v=login-persistente-v3',
+  '/static/walker.js?v=login-persistente-v3',
+  '/static/pwa.js?v=login-persistente-v3',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];

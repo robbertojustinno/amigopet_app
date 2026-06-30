@@ -308,6 +308,8 @@ document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
 async function api(path, options={}){
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    credentials: 'include',
+    cache: 'no-store',
     ...options
   });
 
@@ -727,6 +729,7 @@ async function login(){
 }
 
 function logout(){
+  api('/api/auth/logout', {method:'POST'}).catch(()=>{});
   currentUser = null;
   currentRequestId = null;
   selectedWalkerId = null;
@@ -1377,36 +1380,74 @@ function connectWS(){
 }
 
 
-function restoreClientSession(){
+async function restoreClientSession(){
+  let savedUser = null;
+
   try{
     const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
     if(saved){
-      currentUser = JSON.parse(saved);
-      if(currentUser && currentUser.role === 'client'){
+      savedUser = JSON.parse(saved);
+      if(savedUser && savedUser.role === 'client'){
+        currentUser = savedUser;
         setLoggedUI();
         fillClientEditForm();
-        refreshAll().catch(()=>{});
         if(enforceClientTerms()) showView('pet', true);
-        return;
       }
     }
   }catch(e){
     localStorage.removeItem('amigopet_cliente_user');
     localStorage.removeItem('amigopet_user');
+    savedUser = null;
   }
-  setLoggedUI();
-  showView('home', true);
+
+  try{
+    let freshUser = null;
+    if(savedUser && savedUser.id){
+      freshUser = await api(`/api/auth/google/session/${savedUser.id}`);
+    }else{
+      freshUser = await api('/api/auth/session/current');
+    }
+
+    if(freshUser && freshUser.role === 'client'){
+      currentUser = freshUser;
+      localStorage.setItem('amigopet_cliente_user', JSON.stringify(freshUser));
+      localStorage.removeItem('amigopet_user');
+      setLoggedUI();
+      fillClientEditForm();
+      await refreshAll().catch(()=>{});
+      if(enforceClientTerms()) showView('pet', true);
+      return true;
+    }
+  }catch(e){
+    if(!savedUser){
+      localStorage.removeItem('amigopet_cliente_user');
+      localStorage.removeItem('amigopet_user');
+    }
+  }
+
+  if(!currentUser || currentUser.role !== 'client'){
+    setLoggedUI();
+    showView('home', true);
+    return false;
+  }
+
+  refreshAll().catch(()=>{});
+  return true;
 }
 
-bindClientTermsModal();
-restoreClientSession();
-handleGoogleLoginCallback().catch(()=>{});
-loadPricing().catch(()=>{});
-connectWS();
-updateClientNotificationStatus();
-document.addEventListener('visibilitychange', updateClientNotificationStatus);
-const chatInput = $('chatText');
-if(chatInput) chatInput.addEventListener('input', handleChatTyping);
+async function bootstrapClientApp(){
+  bindClientTermsModal();
+  await handleGoogleLoginCallback().catch(()=>{});
+  await restoreClientSession().catch(()=>{});
+  loadPricing().catch(()=>{});
+  connectWS();
+  updateClientNotificationStatus();
+  document.addEventListener('visibilitychange', updateClientNotificationStatus);
+  const chatInput = $('chatText');
+  if(chatInput) chatInput.addEventListener('input', handleChatTyping);
+}
+
+bootstrapClientApp();
 
 async function loadPricing(){
   const box = $('homePricing');
