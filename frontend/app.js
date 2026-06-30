@@ -18,6 +18,8 @@ let chatSocket = null;
 let chatTypingTimer = null;
 let chatTypingClearTimer = null;
 const CLIENT_TERMS_VERSION = '1.0';
+const CLIENT_SESSION_KEY = 'amigopet_cliente_user';
+const CLIENT_LEGACY_SESSION_KEY = 'amigopet_user';
 let clientTermsReadComplete = false;
 
 const $ = (id) => document.getElementById(id);
@@ -142,7 +144,7 @@ async function acceptClientTerms(){
     if(!checkbox || !checkbox.checked) return toast('Marque o aceite dos termos para continuar.');
     const user = await api(`/api/clients/${currentUser.id}/accept-terms`, {method:'POST'});
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    saveClientSession(user);
     hideClientTermsModal();
     setLoggedUI();
     await refreshAll();
@@ -165,8 +167,27 @@ function enforceClientTerms(){
 
 
 function clearSessions(){
-  localStorage.removeItem('amigopet_user');
-  localStorage.removeItem('amigopet_cliente_user');
+  localStorage.removeItem(CLIENT_SESSION_KEY);
+  localStorage.removeItem(CLIENT_LEGACY_SESSION_KEY);
+}
+
+function saveClientSession(user){
+  if(!user || user.role !== 'client') return;
+  localStorage.setItem(CLIENT_SESSION_KEY, JSON.stringify(user));
+  localStorage.setItem(CLIENT_LEGACY_SESSION_KEY, JSON.stringify(user));
+}
+
+async function validateClientSession(user){
+  if(!user || !user.id || user.role !== 'client') throw new Error('Sessão inválida');
+  try{
+    const fresh = await api(`/api/auth/session/${user.id}`);
+    if(!fresh || fresh.role !== 'client') throw new Error('Sessão inválida');
+    saveClientSession(fresh);
+    return fresh;
+  }catch(err){
+    clearSessions();
+    throw err;
+  }
 }
 
 function setAuthMode(mode){
@@ -490,7 +511,7 @@ async function handleGoogleLoginCallback(){
   try{
     const user = await api(`/api/auth/google/session/${googleUserId}`);
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    saveClientSession(user);
     setLoggedUI();
     fillClientEditForm();
     await refreshAll();
@@ -558,7 +579,7 @@ async function registerClient(){
     });
 
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    saveClientSession(user);
     setLoggedUI();
     await refreshAll();
 
@@ -585,7 +606,7 @@ async function verifyCode(){
     });
 
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    saveClientSession(user);
     setLoggedUI();
     await refreshAll();
     toast('Conta confirmada com sucesso.');
@@ -685,7 +706,7 @@ async function login(){
     }
 
     currentUser = user;
-    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    saveClientSession(user);
     setLoggedUI();
     await refreshAll();
     toast('Login realizado.');
@@ -1349,29 +1370,40 @@ function connectWS(){
 }
 
 
-function restoreClientSession(){
-  try{
-    const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
-    if(saved){
-      currentUser = JSON.parse(saved);
-      if(currentUser && currentUser.role === 'client'){
-        setLoggedUI();
-        fillClientEditForm();
-        refreshAll().catch(()=>{});
-        if(enforceClientTerms()) showView('pet', true);
-        return;
-      }
-    }
-  }catch(e){
-    localStorage.removeItem('amigopet_cliente_user');
-    localStorage.removeItem('amigopet_user');
+async function restoreClientSession(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('google_user_id') || params.get('google_error')){
+    setLoggedUI();
+    return;
   }
-  setLoggedUI();
-  showView('home', true);
+
+  try{
+    const saved = localStorage.getItem(CLIENT_SESSION_KEY) || localStorage.getItem(CLIENT_LEGACY_SESSION_KEY);
+    if(!saved) throw new Error('Sem sessão salva');
+
+    const cached = JSON.parse(saved);
+    if(!cached || cached.role !== 'client' || !cached.id) throw new Error('Sessão local inválida');
+
+    currentUser = cached;
+    setLoggedUI();
+
+    const fresh = await validateClientSession(cached);
+    currentUser = fresh;
+    setLoggedUI();
+    fillClientEditForm();
+    await refreshAll();
+
+    if(enforceClientTerms()) showView('pet', true);
+  }catch(e){
+    currentUser = null;
+    clearSessions();
+    setLoggedUI();
+    showView('home', true);
+  }
 }
 
 bindClientTermsModal();
-restoreClientSession();
+restoreClientSession().catch(()=>{});
 handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
 connectWS();

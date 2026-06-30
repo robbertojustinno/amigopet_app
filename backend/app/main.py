@@ -1399,6 +1399,14 @@ def google_session(user_id: int, db: Session = Depends(get_db)):
     return user_to_dict(user)
 
 
+@app.get("/api/auth/session/{user_id}")
+def restore_saved_session(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user or not getattr(user, "active", True):
+        raise HTTPException(status_code=404, detail="Sessão inválida ou usuário removido")
+    return user_to_dict(user)
+
+
 @app.post("/api/auth/request-password-reset")
 def request_password_reset(data: PasswordResetRequestIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()

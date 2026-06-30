@@ -22,6 +22,7 @@ let registerWalkerPhotoData = "";
 let walkerCameraStream = null;
 let walkerCameraTarget = "";
 const WALKER_TERMS_VERSION = '1.0';
+const WALKER_SESSION_KEY = 'amigopet_walker_user';
 let walkerTermsReadComplete = false;
 
 const $ = (id) => document.getElementById(id);
@@ -126,7 +127,7 @@ async function acceptWalkerTerms(){
     if(!checkbox || !checkbox.checked) return toast('Marque o aceite dos termos para continuar.');
     const user = await api(`/api/walkers/${currentUser.id}/accept-terms`, {method:'POST'});
     currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    saveWalkerSession(user);
     hideWalkerTermsModal();
     setLoggedUI();
     await refreshAll();
@@ -145,6 +146,28 @@ function enforceWalkerTerms(){
   }
   hideWalkerTermsModal();
   return true;
+}
+
+function saveWalkerSession(user){
+  if(!user || user.role !== 'walker') return;
+  localStorage.setItem(WALKER_SESSION_KEY, JSON.stringify(user));
+}
+
+function clearWalkerSession(){
+  localStorage.removeItem(WALKER_SESSION_KEY);
+}
+
+async function validateWalkerSession(user){
+  if(!user || !user.id || user.role !== 'walker') throw new Error('Sessão inválida');
+  try{
+    const fresh = await api(`/api/auth/session/${user.id}`);
+    if(!fresh || fresh.role !== 'walker') throw new Error('Sessão inválida');
+    saveWalkerSession(fresh);
+    return fresh;
+  }catch(err){
+    clearWalkerSession();
+    throw err;
+  }
 }
 
 async function api(path, options={}){
@@ -201,7 +224,7 @@ async function handleGoogleLoginCallback(){
     }
 
     currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    saveWalkerSession(user);
     setLoggedUI();
     if(needsWalkerTerms()){
       showWalkerTermsModal();
@@ -436,7 +459,7 @@ async function registerWalker(){
     });
 
     currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    saveWalkerSession(user);
     setLoggedUI();
     showWalkerTermsModal();
     toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
@@ -575,7 +598,7 @@ async function registerWalker(){
     });
 
     currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    saveWalkerSession(user);
     setLoggedUI();
     showWalkerTermsModal();
     toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
@@ -671,7 +694,7 @@ async function login(){
     if(user.role !== 'walker') throw new Error('Esta área é exclusiva para passeadores.');
 
     currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+    saveWalkerSession(user);
     setLoggedUI();
     await refreshAll();
     showView('pedidos', true);
@@ -686,7 +709,7 @@ function logout(){
   currentUser = null;
   currentWalk = null;
   availableWalks = [];
-  localStorage.removeItem('amigopet_walker_user');
+  clearWalkerSession();
   hideWalkerTermsModal();
   setLoggedUI();
   renderAvailableWalks();
@@ -1263,32 +1286,45 @@ function connectWS(){
   }catch(e){}
 }
 
-function restoreSession(){
+async function restoreSession(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('google_user_id') || params.get('google_error')){
+    setLoggedUI();
+    return;
+  }
+
   try{
-    const saved = localStorage.getItem('amigopet_walker_user');
-    if(saved){
-      currentUser = JSON.parse(saved);
-      setLoggedUI();
-      if(needsWalkerTerms()){
-        showView('login', true);
-        showWalkerTermsModal();
-      }else{
-        refreshAll();
-        showView('pedidos', true);
-      }
-    }else{
-      setLoggedUI();
+    const saved = localStorage.getItem(WALKER_SESSION_KEY);
+    if(!saved) throw new Error('Sem sessão salva');
+
+    const cached = JSON.parse(saved);
+    if(!cached || cached.role !== 'walker' || !cached.id) throw new Error('Sessão local inválida');
+
+    currentUser = cached;
+    setLoggedUI();
+
+    const fresh = await validateWalkerSession(cached);
+    currentUser = fresh;
+    setLoggedUI();
+
+    if(needsWalkerTerms()){
       showView('login', true);
+      showWalkerTermsModal();
+    }else{
+      await refreshAll();
+      showView('pedidos', true);
     }
   }catch(e){
-    localStorage.removeItem('amigopet_walker_user');
+    currentUser = null;
+    clearWalkerSession();
     setLoggedUI();
+    showView('login', true);
   }
 }
 
 bindProfileForm();
 bindWalkerTermsModal();
-restoreSession();
+restoreSession().catch(()=>{});
 handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 updateWalkerNotificationStatus();

@@ -1,12 +1,12 @@
-const CACHE_NAME = 'amigopet-pwa-v9-avaliacoes';
+const CACHE_NAME = 'amigopet-pwa-v10-login-persistente';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
-  '/static/styles.css?v=client-rating-v1',
-  '/static/app.js?v=client-rating-v1',
-  '/static/walker.js?v=walker-rating-v1',
-  '/static/pwa.js?v=client-rating-v1',
+  '/static/styles.css?v=sprint010-login-v1',
+  '/static/app.js?v=sprint010-login-v1',
+  '/static/walker.js?v=sprint010-login-v1',
+  '/static/pwa.js?v=sprint010-login-v1',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];
