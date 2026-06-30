@@ -18,8 +18,6 @@ let chatSocket = null;
 let chatTypingTimer = null;
 let chatTypingClearTimer = null;
 const CLIENT_TERMS_VERSION = '1.0';
-const CLIENT_SESSION_KEY = 'amigopet_cliente_user';
-const CLIENT_LEGACY_SESSION_KEY = 'amigopet_user';
 let clientTermsReadComplete = false;
 
 const $ = (id) => document.getElementById(id);
@@ -144,7 +142,7 @@ async function acceptClientTerms(){
     if(!checkbox || !checkbox.checked) return toast('Marque o aceite dos termos para continuar.');
     const user = await api(`/api/clients/${currentUser.id}/accept-terms`, {method:'POST'});
     currentUser = user;
-    saveClientSession(user);
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     hideClientTermsModal();
     setLoggedUI();
     await refreshAll();
@@ -167,27 +165,8 @@ function enforceClientTerms(){
 
 
 function clearSessions(){
-  localStorage.removeItem(CLIENT_SESSION_KEY);
-  localStorage.removeItem(CLIENT_LEGACY_SESSION_KEY);
-}
-
-function saveClientSession(user){
-  if(!user || user.role !== 'client') return;
-  localStorage.setItem(CLIENT_SESSION_KEY, JSON.stringify(user));
-  localStorage.setItem(CLIENT_LEGACY_SESSION_KEY, JSON.stringify(user));
-}
-
-async function validateClientSession(user){
-  if(!user || !user.id || user.role !== 'client') throw new Error('Sessão inválida');
-  try{
-    const fresh = await api(`/api/auth/session/${user.id}`);
-    if(!fresh || fresh.role !== 'client') throw new Error('Sessão inválida');
-    saveClientSession(fresh);
-    return fresh;
-  }catch(err){
-    clearSessions();
-    throw err;
-  }
+  localStorage.removeItem('amigopet_user');
+  localStorage.removeItem('amigopet_cliente_user');
 }
 
 function setAuthMode(mode){
@@ -230,6 +209,32 @@ function clientNotificationText(type, walk){
     message: 'Você recebeu uma nova mensagem.'
   };
   return messages[type] || 'Atualização no seu passeio.';
+}
+
+function renderTimelineEvents(items){
+  if(!items || !items.length) return '<div class="timeline-empty">Nenhum evento registrado ainda.</div>';
+  return items.map(item => {
+    const dt = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '';
+    return `<div class="timeline-event">
+      <div class="timeline-dot"></div>
+      <div class="timeline-content">
+        <strong>${escapeHtml(item.title || 'Evento')}</strong>
+        <small>${escapeHtml(dt)}${item.details ? ' • ' + escapeHtml(item.details) : ''}</small>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadWalkTimeline(walkId, targetId){
+  const box = $(targetId);
+  if(!box || !walkId) return;
+  box.innerHTML = '<div class="timeline-empty">Carregando timeline...</div>';
+  try{
+    const items = await api(`/api/walks/${walkId}/timeline`);
+    box.innerHTML = renderTimelineEvents(items);
+  }catch(err){
+    box.innerHTML = '<div class="timeline-empty">Timeline indisponível no momento.</div>';
+  }
 }
 
 function setLoggedUI(){
@@ -511,7 +516,7 @@ async function handleGoogleLoginCallback(){
   try{
     const user = await api(`/api/auth/google/session/${googleUserId}`);
     currentUser = user;
-    saveClientSession(user);
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     fillClientEditForm();
     await refreshAll();
@@ -579,7 +584,7 @@ async function registerClient(){
     });
 
     currentUser = user;
-    saveClientSession(user);
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
 
@@ -606,7 +611,7 @@ async function verifyCode(){
     });
 
     currentUser = user;
-    saveClientSession(user);
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
     toast('Conta confirmada com sucesso.');
@@ -706,7 +711,7 @@ async function login(){
     }
 
     currentUser = user;
-    saveClientSession(user);
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
     toast('Login realizado.');
@@ -1036,7 +1041,9 @@ function renderCurrentWalk(w){
     Distância ao cliente: <strong>${kmLive.toFixed(2)} km</strong><br>
     Previsão de chegada: <strong>${eta} min</strong><br>
     Localização passeador: ${Number(w.walker_lat || -22.5900).toFixed(5)}, ${Number(w.walker_lng || -43.1810).toFixed(5)}
-    ${clientRatingBox(w)}`;
+    ${clientRatingBox(w)}
+    <div class="walk-timeline"><h3>📋 Timeline do passeio</h3><div id="walkTimelineBox"></div></div>`;
+    loadWalkTimeline(w.id, 'walkTimelineBox').catch(()=>{});
   }
 
   const pixBox = $('pixBox');
@@ -1370,52 +1377,29 @@ function connectWS(){
 }
 
 
-async function restoreClientSession(){
-  const params = new URLSearchParams(window.location.search);
-  if(params.get('google_user_id') || params.get('google_error')){
-    setLoggedUI();
-    return;
-  }
-
-  const saved = localStorage.getItem(CLIENT_SESSION_KEY) || localStorage.getItem(CLIENT_LEGACY_SESSION_KEY);
-  if(!saved){
-    currentUser = null;
-    setLoggedUI();
-    showView('home', true);
-    return;
-  }
-
+function restoreClientSession(){
   try{
-    const cached = JSON.parse(saved);
-    if(!cached || cached.role !== 'client' || !cached.id) throw new Error('Sessão local inválida');
-
-    // Login persistente real: restaura primeiro pelo localStorage para não pedir Google novamente.
-    currentUser = cached;
-    saveClientSession(cached);
-    setLoggedUI();
-    fillClientEditForm();
-    await refreshAll().catch(()=>{});
-    if(enforceClientTerms()) showView('pet', true);
-
-    // Atualiza os dados em segundo plano. Se o Render/API falhar, NÃO derruba a sessão local.
-    validateClientSession(cached).then((fresh) => {
-      currentUser = fresh;
-      setLoggedUI();
-      fillClientEditForm();
-      refreshAll().catch(()=>{});
-    }).catch((err) => {
-      console.warn('Sessão local mantida; validação remota falhou:', err?.message || err);
-    });
+    const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
+    if(saved){
+      currentUser = JSON.parse(saved);
+      if(currentUser && currentUser.role === 'client'){
+        setLoggedUI();
+        fillClientEditForm();
+        refreshAll().catch(()=>{});
+        if(enforceClientTerms()) showView('pet', true);
+        return;
+      }
+    }
   }catch(e){
-    currentUser = null;
-    clearSessions();
-    setLoggedUI();
-    showView('home', true);
+    localStorage.removeItem('amigopet_cliente_user');
+    localStorage.removeItem('amigopet_user');
   }
+  setLoggedUI();
+  showView('home', true);
 }
 
 bindClientTermsModal();
-restoreClientSession().catch(()=>{});
+restoreClientSession();
 handleGoogleLoginCallback().catch(()=>{});
 loadPricing().catch(()=>{});
 connectWS();

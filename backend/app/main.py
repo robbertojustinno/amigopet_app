@@ -202,6 +202,19 @@ class UserRating(Base):
     rater = relationship("User", foreign_keys=[rater_id])
     target = relationship("User", foreign_keys=[target_id])
 
+class EventLog(Base):
+    __tablename__ = "event_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    walk_id = Column(Integer, ForeignKey("walk_requests.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    event_type = Column(String(80), default="system", index=True)
+    title = Column(String(180), nullable=False)
+    details = Column(Text, default="")
+    actor_role = Column(String(40), default="system")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    walk = relationship("WalkRequest")
+    user = relationship("User")
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
     key = Column(String(80), primary_key=True, index=True)
@@ -886,6 +899,67 @@ def add_user_notification(db: Session, user_id: int, title: str, body: str = "",
     db.flush()
     return item
 
+def event_log_to_dict(item: EventLog) -> dict:
+    return {
+        "id": item.id,
+        "walk_id": item.walk_id,
+        "user_id": item.user_id,
+        "event_type": item.event_type or "system",
+        "title": item.title,
+        "details": item.details or "",
+        "actor_role": item.actor_role or "system",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+def add_event_log(db: Session, title: str, event_type: str = "system", walk: Optional[WalkRequest] = None, user_id: Optional[int] = None, details: str = "", actor_role: str = "system") -> Optional[EventLog]:
+    try:
+        item = EventLog(
+            walk_id=walk.id if walk else None,
+            user_id=user_id,
+            event_type=str(event_type or "system")[:80],
+            title=str(title or "Evento")[:180],
+            details=str(details or "")[:1200],
+            actor_role=str(actor_role or "system")[:40],
+        )
+        db.add(item)
+        db.flush()
+        return item
+    except Exception as e:
+        print("[EVENT LOG WARNING]", str(e))
+        return None
+
+def build_walk_timeline(db: Session, walk: WalkRequest) -> list[dict]:
+    events = db.query(EventLog).filter(EventLog.walk_id == walk.id).order_by(EventLog.created_at.asc(), EventLog.id.asc()).all()
+    if events:
+        return [event_log_to_dict(item) for item in events]
+
+    fallback = []
+    def add(title, event_type, created_at, details=""):
+        if created_at:
+            fallback.append({
+                "id": 0,
+                "walk_id": walk.id,
+                "user_id": None,
+                "event_type": event_type,
+                "title": title,
+                "details": details,
+                "actor_role": "system",
+                "created_at": created_at.isoformat(),
+            })
+
+    add("📨 Convite criado", "walk_created", walk.created_at, "Pedido criado no AmigoPet.")
+    if getattr(walk, "mp_payment_id", ""):
+        add("💳 PIX Asaas gerado", "pix_created", walk.created_at, f"Pagamento: {walk.mp_payment_id}")
+    if walk.payment_status == "pago":
+        add("✅ Pagamento confirmado", "payment_confirmed", walk.created_at, "PIX confirmado pelo Asaas.")
+    if walk.status in ["aceito", "em_andamento", "finalizado"]:
+        add("✅ Passeador aceitou", "walk_accepted", walk.started_at or walk.created_at, "Passeio aceito pelo passeador.")
+    add("🚶 Passeio iniciado", "walk_started", walk.started_at, "GPS e acompanhamento liberados.")
+    add("🏁 Passeio finalizado", "walk_finished", walk.finished_at, "Atendimento encerrado.")
+    if getattr(walk, "payout_status", "") and walk.payout_status not in ["aguardando", "pendente", ""]:
+        add("💵 Repasse processado", "payout_updated", walk.finished_at or walk.created_at, f"Status do repasse: {walk.payout_status}")
+    return fallback
+
 def rating_to_dict(item: UserRating) -> dict:
     return {
         "id": item.id,
@@ -1229,6 +1303,8 @@ def run_lightweight_migrations():
         safe("CREATE INDEX IF NOT EXISTS ix_notifications_created_at ON notifications (created_at)", "index notifications created_at")
         safe("CREATE INDEX IF NOT EXISTS ix_ratings_walk_rater ON ratings (walk_id, rater_id)", "index ratings walk/rater")
         safe("CREATE INDEX IF NOT EXISTS ix_ratings_target ON ratings (target_id)", "index ratings target")
+        safe("CREATE INDEX IF NOT EXISTS ix_event_logs_walk_created ON event_logs (walk_id, created_at)", "index event_logs walk/created")
+        safe("CREATE INDEX IF NOT EXISTS ix_event_logs_type ON event_logs (event_type)", "index event_logs type")
 
 
 run_lightweight_migrations()
@@ -1396,14 +1472,6 @@ def google_session(user_id: int, db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuário Google não encontrado")
-    return user_to_dict(user)
-
-
-@app.get("/api/auth/session/{user_id}")
-def restore_saved_session(user_id: int, db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user or not getattr(user, "active", True):
-        raise HTTPException(status_code=404, detail="Sessão inválida ou usuário removido")
     return user_to_dict(user)
 
 
@@ -1683,6 +1751,13 @@ def get_walk(walk_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     return walk_to_dict(walk)
 
+@app.get("/api/walks/{walk_id}/timeline")
+def get_walk_timeline(walk_id: int, db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, walk_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    return build_walk_timeline(db, walk)
+
 @app.post("/api/walks")
 async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
     if not data.client_id:
@@ -1724,11 +1799,14 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
         walk.pix_code = make_pix_code(walk.id, walk.estimated_price)
         db.commit()
         db.refresh(walk)
+        add_event_log(db, "📨 Convite criado", "walk_created", walk=walk, user_id=walk.client_id, actor_role="client", details="Cliente criou um novo pedido de passeio.")
+        db.commit()
 
         # Asaas real: cria cobrança PIX e salva QR Code/copia-e-cola no pedido.
         try:
             mp_payment = create_mercadopago_pix_payment(walk)
             apply_mp_payment_to_walk(walk, mp_payment)
+            add_event_log(db, "💳 PIX Asaas gerado", "pix_created", walk=walk, user_id=walk.client_id, actor_role="system", details=f"Pagamento Asaas vinculado: {walk.mp_payment_id}")
             db.commit()
             db.refresh(walk)
         except Exception as mp_error:
@@ -1794,6 +1872,7 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
     walk.walker_id = walker_id
     walk.status = "aceito"
     walk.expires_at = None
+    add_event_log(db, "✅ Passeador aceitou", "walk_accepted", walk=walk, user_id=walker_id, actor_role="walker", details="Passeio aceito pelo passeador.")
     db.commit()
     db.refresh(walk)
     payload = walk_to_dict(walk)
@@ -1806,6 +1885,7 @@ async def reject_walk(walk_id: int, db: Session = Depends(get_db)):
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     walk.status = "recusado"
+    add_event_log(db, "❌ Pedido recusado", "walk_rejected", walk=walk, user_id=walk.walker_id, actor_role="walker", details="Pedido recusado pelo passeador.")
     db.commit()
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_rejected", "walk": payload})
@@ -1835,6 +1915,7 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
     messages = []
     if changed or walk.payment_status == "pago":
         messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
+        add_event_log(db, "✅ Pagamento confirmado", "payment_confirmed", walk=walk, user_id=walk.client_id, actor_role="system", details="Pagamento confirmado pelo Asaas.")
 
     db.commit()
     db.refresh(walk)
@@ -1898,6 +1979,7 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
     messages = []
     if changed or walk.payment_status == "pago":
         messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
+        add_event_log(db, "✅ Pagamento confirmado", "payment_confirmed", walk=walk, user_id=walk.client_id, actor_role="system", details="Pagamento confirmado pelo Asaas/webhook.")
 
     db.commit()
     db.refresh(walk)
@@ -1924,6 +2006,7 @@ async def sync_asaas_payment(walk_id: int, db: Session = Depends(get_db)):
     messages = []
     if changed or walk.payment_status == "pago":
         messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
+        add_event_log(db, "✅ Pagamento confirmado", "payment_confirmed", walk=walk, user_id=walk.client_id, actor_role="system", details="Pagamento confirmado pelo Asaas/webhook.")
 
     db.commit()
     db.refresh(walk)
@@ -1944,6 +2027,7 @@ async def start_walk(walk_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Asaas")
     walk.status = "em_andamento"
     walk.started_at = datetime.utcnow()
+    add_event_log(db, "🚶 Passeio iniciado", "walk_started", walk=walk, user_id=walk.walker_id, actor_role="walker", details="Passeador iniciou o passeio.")
     db.commit()
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "walk_started", "walk": payload})
@@ -1959,6 +2043,7 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
 
     walk.status = "finalizado"
     walk.finished_at = datetime.utcnow()
+    add_event_log(db, "🏁 Passeio finalizado", "walk_finished", walk=walk, user_id=walk.walker_id, actor_role="walker", details="Passeio finalizado pelo passeador.")
     messages = [add_walk_system_message(db, walk, "🐶 Passeio finalizado com sucesso. Obrigado por utilizar o AmigoPet.")]
 
     if not walk.walker_id or not walk.walker:
@@ -1981,6 +2066,7 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
                 walk,
                 f"💵 Repasse PIX solicitado com sucesso. Valor: R$ {amount:.2f}. Aguardando confirmação da instituição financeira."
             ))
+            add_event_log(db, "💵 Repasse solicitado", "payout_requested", walk=walk, user_id=walk.walker_id, actor_role="system", details=f"Valor solicitado: R$ {amount:.2f}")
         except Exception as e:
             walk.payout_status = "erro"
             walk.payout_error = str(e)[:700]
@@ -2219,6 +2305,7 @@ async def create_message(data: MessageIn, db: Session = Depends(get_db)):
     )
     db.add(msg)
     db.flush()
+    add_event_log(db, "💬 Mensagem enviada", "message_sent", walk=walk, user_id=sender.id, actor_role=sender.role, details=clean_text[:180])
 
     target_id = walk.walker_id if sender.id == walk.client_id else walk.client_id
     if target_id:

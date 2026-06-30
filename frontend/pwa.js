@@ -1,6 +1,6 @@
 (function(){
   const APP_NAME = 'AmigoPet';
-  const SW_VERSION = 'sprint-010-login-persistente';
+  const SW_VERSION = 'patch-011-timeline';
 
   async function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return null;

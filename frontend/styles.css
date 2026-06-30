@@ -159,3 +159,8 @@ button.ok[onclick*="Notifications"]{
   .chat-bubble-pro{max-width:82%}
   .chat-enterprise .chat-head small{max-width:230px}
 }
+
+/* ===== AmigoPet Patch 011 - Timeline e Auditoria Operacional ===== */
+.walk-timeline{margin-top:16px;padding:14px;border-radius:20px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);border:1px solid #dbe4ef;box-shadow:0 12px 26px rgba(15,23,42,.05)}
+.walk-timeline h3{margin:0 0 10px;font-size:18px;color:#0f172a}.timeline-event{position:relative;display:flex;gap:10px;padding:0 0 12px 0}.timeline-event:not(:last-child)::before{content:"";position:absolute;left:7px;top:16px;width:2px;height:calc(100% - 8px);background:#cbd5e1}.timeline-dot{width:16px;height:16px;border-radius:999px;background:#0f766e;border:3px solid #ccfbf1;flex:0 0 16px;margin-top:2px;z-index:1}.timeline-content{display:grid;gap:2px}.timeline-content strong{font-size:14px;color:#0f172a}.timeline-content small{font-size:12px;color:#64748b;line-height:1.35}.timeline-empty{color:#64748b;font-weight:800;font-size:13px;padding:6px 0}
+@media(max-width:640px){.walk-timeline{padding:12px}.timeline-content strong{font-size:13px}.timeline-content small{font-size:11px}}

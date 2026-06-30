@@ -22,7 +22,6 @@ let registerWalkerPhotoData = "";
 let walkerCameraStream = null;
 let walkerCameraTarget = "";
 const WALKER_TERMS_VERSION = '1.0';
-const WALKER_SESSION_KEY = 'amigopet_walker_user';
 let walkerTermsReadComplete = false;
 
 const $ = (id) => document.getElementById(id);
@@ -127,7 +126,7 @@ async function acceptWalkerTerms(){
     if(!checkbox || !checkbox.checked) return toast('Marque o aceite dos termos para continuar.');
     const user = await api(`/api/walkers/${currentUser.id}/accept-terms`, {method:'POST'});
     currentUser = user;
-    saveWalkerSession(user);
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     hideWalkerTermsModal();
     setLoggedUI();
     await refreshAll();
@@ -146,28 +145,6 @@ function enforceWalkerTerms(){
   }
   hideWalkerTermsModal();
   return true;
-}
-
-function saveWalkerSession(user){
-  if(!user || user.role !== 'walker') return;
-  localStorage.setItem(WALKER_SESSION_KEY, JSON.stringify(user));
-}
-
-function clearWalkerSession(){
-  localStorage.removeItem(WALKER_SESSION_KEY);
-}
-
-async function validateWalkerSession(user){
-  if(!user || !user.id || user.role !== 'walker') throw new Error('Sessão inválida');
-  try{
-    const fresh = await api(`/api/auth/session/${user.id}`);
-    if(!fresh || fresh.role !== 'walker') throw new Error('Sessão inválida');
-    saveWalkerSession(fresh);
-    return fresh;
-  }catch(err){
-    clearWalkerSession();
-    throw err;
-  }
 }
 
 async function api(path, options={}){
@@ -224,7 +201,7 @@ async function handleGoogleLoginCallback(){
     }
 
     currentUser = user;
-    saveWalkerSession(user);
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
     if(needsWalkerTerms()){
       showWalkerTermsModal();
@@ -459,7 +436,7 @@ async function registerWalker(){
     });
 
     currentUser = user;
-    saveWalkerSession(user);
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
     showWalkerTermsModal();
     toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
@@ -598,7 +575,7 @@ async function registerWalker(){
     });
 
     currentUser = user;
-    saveWalkerSession(user);
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
     showWalkerTermsModal();
     toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
@@ -694,7 +671,7 @@ async function login(){
     if(user.role !== 'walker') throw new Error('Esta área é exclusiva para passeadores.');
 
     currentUser = user;
-    saveWalkerSession(user);
+    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
     setLoggedUI();
     await refreshAll();
     showView('pedidos', true);
@@ -709,7 +686,7 @@ function logout(){
   currentUser = null;
   currentWalk = null;
   availableWalks = [];
-  clearWalkerSession();
+  localStorage.removeItem('amigopet_walker_user');
   hideWalkerTermsModal();
   setLoggedUI();
   renderAvailableWalks();
@@ -771,6 +748,32 @@ async function notifyWalkerAboutWalk(w){
   }
 }
 
+
+function renderTimelineEvents(items){
+  if(!items || !items.length) return '<div class="timeline-empty">Nenhum evento registrado ainda.</div>';
+  return items.map(item => {
+    const dt = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '';
+    return `<div class="timeline-event">
+      <div class="timeline-dot"></div>
+      <div class="timeline-content">
+        <strong>${escapeHtml(item.title || 'Evento')}</strong>
+        <small>${escapeHtml(dt)}${item.details ? ' • ' + escapeHtml(item.details) : ''}</small>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadWalkTimeline(walkId, targetId){
+  const box = $(targetId);
+  if(!box || !walkId) return;
+  box.innerHTML = '<div class="timeline-empty">Carregando timeline...</div>';
+  try{
+    const items = await api(`/api/walks/${walkId}/timeline`);
+    box.innerHTML = renderTimelineEvents(items);
+  }catch(err){
+    box.innerHTML = '<div class="timeline-empty">Timeline indisponível no momento.</div>';
+  }
+}
 
 function moneyBR(value){
   return Number(value || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
@@ -1050,7 +1053,8 @@ function renderCurrentWalk(){
     box.innerHTML = 'Nenhum passeio aceito ainda.';
   }else{
     box.className = '';
-    box.innerHTML = walkCard(currentWalk, 'current') + walkerRatingBox(currentWalk);
+    box.innerHTML = walkCard(currentWalk, 'current') + walkerRatingBox(currentWalk) + `<div class="walk-timeline"><h3>📋 Timeline do passeio</h3><div id="walkerTimelineBox"></div></div>`;
+    loadWalkTimeline(currentWalk.id, 'walkerTimelineBox').catch(()=>{});
   }
   const summary = $('mapSummary');
   if(summary){
@@ -1286,57 +1290,32 @@ function connectWS(){
   }catch(e){}
 }
 
-async function restoreSession(){
-  const params = new URLSearchParams(window.location.search);
-  if(params.get('google_user_id') || params.get('google_error')){
-    setLoggedUI();
-    return;
-  }
-
-  const saved = localStorage.getItem(WALKER_SESSION_KEY);
-  if(!saved){
-    currentUser = null;
-    setLoggedUI();
-    showView('login', true);
-    return;
-  }
-
+function restoreSession(){
   try{
-    const cached = JSON.parse(saved);
-    if(!cached || cached.role !== 'walker' || !cached.id) throw new Error('Sessão local inválida');
-
-    // Login persistente real: restaura primeiro pelo localStorage para não pedir Google novamente.
-    currentUser = cached;
-    saveWalkerSession(cached);
-    setLoggedUI();
-
-    if(needsWalkerTerms()){
-      showView('login', true);
-      showWalkerTermsModal();
-    }else{
-      await refreshAll().catch(()=>{});
-      showView('pedidos', true);
-    }
-
-    // Atualiza os dados em segundo plano. Se o Render/API falhar, NÃO derruba a sessão local.
-    validateWalkerSession(cached).then((fresh) => {
-      currentUser = fresh;
+    const saved = localStorage.getItem('amigopet_walker_user');
+    if(saved){
+      currentUser = JSON.parse(saved);
       setLoggedUI();
-      if(!needsWalkerTerms()) refreshAll().catch(()=>{});
-    }).catch((err) => {
-      console.warn('Sessão local mantida; validação remota falhou:', err?.message || err);
-    });
+      if(needsWalkerTerms()){
+        showView('login', true);
+        showWalkerTermsModal();
+      }else{
+        refreshAll();
+        showView('pedidos', true);
+      }
+    }else{
+      setLoggedUI();
+      showView('login', true);
+    }
   }catch(e){
-    currentUser = null;
-    clearWalkerSession();
+    localStorage.removeItem('amigopet_walker_user');
     setLoggedUI();
-    showView('login', true);
   }
 }
 
 bindProfileForm();
 bindWalkerTermsModal();
-restoreSession().catch(()=>{});
+restoreSession();
 handleGoogleLoginCallback().catch(()=>{});
 connectWS();
 updateWalkerNotificationStatus();
