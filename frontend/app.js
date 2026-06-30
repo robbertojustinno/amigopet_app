@@ -1174,18 +1174,47 @@ async function refreshAll(){
   if($('walkerCards')){
     const visibleWalkers = availableWalkerList.slice(0, 6);
     $('walkerCards').innerHTML = `
-      <div class="notice" style="padding:12px;margin:6px 0 10px;border-radius:16px;">
-        <strong>${walkers.length}</strong> passeador(es) disponíveis. Use o campo acima para escolher.
+      <div class="notice walker-premium-notice">
+        <strong>${availableWalkerList.length}</strong> passeador(es) disponíveis perto de você.
       </div>
-      <div style="display:grid;gap:8px;">
-        ${visibleWalkers.map(w => `<div class="walker-card" data-walker-card="${w.id}" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:16px;">
-          ${photoOrAvatar(w, '🚶')}
-          <div style="flex:1;min-width:0;">
-            <strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(w.full_name)}</strong>
-            <small class="muted">⭐ ${Number(w.rating || 5).toFixed(1)} • ${escapeHtml(w.neighborhood || '-')}</small>
-          </div>
-          <button type="button" style="padding:9px 12px;border-radius:12px;" onclick="selectWalker(${w.id})">Escolher</button>
-        </div>`).join('')}
+      <div class="walker-premium-grid">
+        ${visibleWalkers.map(w => {
+          const km = kmBetween(
+            Number(currentUser?.lat || -22.5884),
+            Number(currentUser?.lng || -43.1847),
+            Number(w.lat || -22.5900),
+            Number(w.lng || -43.1810)
+          );
+          const eta = etaMinutesFromKm(km);
+          const name = escapeHtml(w.full_name || 'Passeador');
+          const city = escapeHtml(w.city || '-');
+          const neighborhood = escapeHtml(w.neighborhood || '-');
+          const bio = escapeHtml(w.bio || 'Passeador disponível para cuidar do seu pet.');
+          const rating = Number(w.rating || 5).toFixed(1);
+          const photo = photoOrAvatar(w, '🚶').replace('width:44px;height:44px;border-radius:14px;', 'width:92px;height:92px;border-radius:26px;');
+          return `<div class="walker-card walker-premium-card" data-walker-card="${w.id}">
+            <div class="walker-premium-photo-wrap">
+              ${photo}
+              <span class="walker-premium-badge">✓ Verificado</span>
+            </div>
+            <div class="walker-premium-body">
+              <div class="walker-premium-title-row">
+                <div>
+                  <strong class="walker-premium-name">${name}</strong>
+                  <small class="walker-premium-area">${neighborhood} • ${city}</small>
+                </div>
+                <span class="walker-premium-rating">⭐ ${rating}</span>
+              </div>
+              <p class="walker-premium-bio">${bio}</p>
+              <div class="walker-premium-stats">
+                <span>📍 ${km.toFixed(1)} km</span>
+                <span>🕒 ${eta} min</span>
+                <span>🐾 Disponível</span>
+              </div>
+              <button type="button" class="walker-premium-select" onclick="selectWalker(${w.id})">Escolher passeador</button>
+            </div>
+          </div>`;
+        }).join('')}
       </div>`;
   }
 
