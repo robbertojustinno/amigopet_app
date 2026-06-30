@@ -1377,23 +1377,35 @@ async function restoreClientSession(){
     return;
   }
 
-  try{
-    const saved = localStorage.getItem(CLIENT_SESSION_KEY) || localStorage.getItem(CLIENT_LEGACY_SESSION_KEY);
-    if(!saved) throw new Error('Sem sessão salva');
+  const saved = localStorage.getItem(CLIENT_SESSION_KEY) || localStorage.getItem(CLIENT_LEGACY_SESSION_KEY);
+  if(!saved){
+    currentUser = null;
+    setLoggedUI();
+    showView('home', true);
+    return;
+  }
 
+  try{
     const cached = JSON.parse(saved);
     if(!cached || cached.role !== 'client' || !cached.id) throw new Error('Sessão local inválida');
 
+    // Login persistente real: restaura primeiro pelo localStorage para não pedir Google novamente.
     currentUser = cached;
-    setLoggedUI();
-
-    const fresh = await validateClientSession(cached);
-    currentUser = fresh;
+    saveClientSession(cached);
     setLoggedUI();
     fillClientEditForm();
-    await refreshAll();
-
+    await refreshAll().catch(()=>{});
     if(enforceClientTerms()) showView('pet', true);
+
+    // Atualiza os dados em segundo plano. Se o Render/API falhar, NÃO derruba a sessão local.
+    validateClientSession(cached).then((fresh) => {
+      currentUser = fresh;
+      setLoggedUI();
+      fillClientEditForm();
+      refreshAll().catch(()=>{});
+    }).catch((err) => {
+      console.warn('Sessão local mantida; validação remota falhou:', err?.message || err);
+    });
   }catch(e){
     currentUser = null;
     clearSessions();

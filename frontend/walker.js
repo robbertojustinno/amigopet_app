@@ -1293,27 +1293,39 @@ async function restoreSession(){
     return;
   }
 
-  try{
-    const saved = localStorage.getItem(WALKER_SESSION_KEY);
-    if(!saved) throw new Error('Sem sessão salva');
+  const saved = localStorage.getItem(WALKER_SESSION_KEY);
+  if(!saved){
+    currentUser = null;
+    setLoggedUI();
+    showView('login', true);
+    return;
+  }
 
+  try{
     const cached = JSON.parse(saved);
     if(!cached || cached.role !== 'walker' || !cached.id) throw new Error('Sessão local inválida');
 
+    // Login persistente real: restaura primeiro pelo localStorage para não pedir Google novamente.
     currentUser = cached;
-    setLoggedUI();
-
-    const fresh = await validateWalkerSession(cached);
-    currentUser = fresh;
+    saveWalkerSession(cached);
     setLoggedUI();
 
     if(needsWalkerTerms()){
       showView('login', true);
       showWalkerTermsModal();
     }else{
-      await refreshAll();
+      await refreshAll().catch(()=>{});
       showView('pedidos', true);
     }
+
+    // Atualiza os dados em segundo plano. Se o Render/API falhar, NÃO derruba a sessão local.
+    validateWalkerSession(cached).then((fresh) => {
+      currentUser = fresh;
+      setLoggedUI();
+      if(!needsWalkerTerms()) refreshAll().catch(()=>{});
+    }).catch((err) => {
+      console.warn('Sessão local mantida; validação remota falhou:', err?.message || err);
+    });
   }catch(e){
     currentUser = null;
     clearWalkerSession();
