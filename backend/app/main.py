@@ -2156,6 +2156,7 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
             walk.payout_status = "erro"
             walk.payout_error = str(e)[:700]
             messages.append(add_walk_system_message(db, walk, "⚠️ Passeio finalizado. O repasse automático ao passeador ficou pendente e precisa ser verificado pela administração."))
+            add_event_log(db, "⚠️ Falha no repasse", "payout_error", walk=walk, user_id=walk.walker_id, actor_role="system", details=str(e)[:700])
             print("[ASAAS PAYOUT ERROR]", {"walk_id": walk.id, "error": str(e)})
 
     db.commit()
@@ -2174,6 +2175,12 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
     walk.walker_lat = data.lat
     walk.walker_lng = data.lng
+    try:
+        exists = db.query(EventLog).filter(EventLog.walk_id == walk.id, EventLog.event_type == "location_updated").first()
+        if not exists:
+            add_event_log(db, "📍 Localização atualizada", "location_updated", walk=walk, user_id=walk.walker_id, actor_role="walker", details="Primeira atualização de GPS registrada no passeio.")
+    except Exception as e:
+        print("[EVENT LOG WARNING] location_updated", str(e))
     db.commit()
     payload = walk_to_dict(walk)
     await manager.broadcast({"type": "location_updated", "walk": payload})
@@ -2228,6 +2235,15 @@ async def rate_walk_user(walk_id: int, data: RatingIn, db: Session = Depends(get
         f"{rater.full_name} avaliou você com {int(data.rating)} estrela(s).",
         "rating_received",
         "/passeador" if target.role == "walker" else "/"
+    )
+    add_event_log(
+        db,
+        "⭐ Avaliação enviada",
+        "rating_created",
+        walk=walk,
+        user_id=rater.id,
+        actor_role=rater.role,
+        details=f"{rater.full_name} avaliou {target.full_name} com {int(data.rating)} estrela(s)."
     )
 
     db.commit()
