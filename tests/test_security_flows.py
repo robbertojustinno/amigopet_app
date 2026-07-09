@@ -186,15 +186,33 @@ def test_rate_limit_uses_redis_atomic_pipeline_when_configured(app_module, monke
     assert exc.value.headers["Retry-After"] == "60"
 
 
-def test_rate_limit_does_not_use_memory_fallback_in_production_without_redis(app_module, monkeypatch):
+def test_rate_limit_uses_memory_fallback_in_production_without_redis(app_module, monkeypatch):
     monkeypatch.setattr(app_module, "IS_PRODUCTION", True)
     monkeypatch.setattr(app_module, "REDIS_URL", "")
     app_module.RATE_LIMIT_BUCKETS.clear()
+    app_module.RATE_LIMIT_FALLBACK_WARNED.clear()
 
+    request = fake_request("203.0.113.30")
+    app_module.enforce_rate_limit(request, "prod_scope", 1, 60)
     with pytest.raises(app_module.HTTPException) as exc:
-        app_module.enforce_rate_limit(fake_request(), "prod_scope", 10, 60)
-    assert exc.value.status_code == 503
-    assert app_module.RATE_LIMIT_BUCKETS == {}
+        app_module.enforce_rate_limit(request, "prod_scope", 1, 60)
+    assert exc.value.status_code == 429
+    assert "redis_url_not_configured" in app_module.RATE_LIMIT_FALLBACK_WARNED
+
+
+def test_rate_limit_uses_memory_fallback_in_production_when_redis_fails(app_module, monkeypatch):
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", True)
+    monkeypatch.setattr(app_module, "REDIS_URL", "redis://test")
+    monkeypatch.setattr(app_module, "RATE_LIMIT_REDIS_CLIENT", BrokenRedis())
+    app_module.RATE_LIMIT_BUCKETS.clear()
+    app_module.RATE_LIMIT_FALLBACK_WARNED.clear()
+
+    request = fake_request("203.0.113.31")
+    app_module.enforce_rate_limit(request, "prod_redis_down_scope", 1, 60)
+    with pytest.raises(app_module.HTTPException) as exc:
+        app_module.enforce_rate_limit(request, "prod_redis_down_scope", 1, 60)
+    assert exc.value.status_code == 429
+    assert "redis_error:RuntimeError" in app_module.RATE_LIMIT_FALLBACK_WARNED
 
 
 def test_rate_limit_can_fallback_to_memory_outside_production(app_module, monkeypatch):
@@ -202,6 +220,7 @@ def test_rate_limit_can_fallback_to_memory_outside_production(app_module, monkey
     monkeypatch.setattr(app_module, "REDIS_URL", "redis://test")
     monkeypatch.setattr(app_module, "RATE_LIMIT_REDIS_CLIENT", BrokenRedis())
     app_module.RATE_LIMIT_BUCKETS.clear()
+    app_module.RATE_LIMIT_FALLBACK_WARNED.clear()
 
     request = fake_request("203.0.113.20")
     app_module.enforce_rate_limit(request, "local_scope", 1, 60)

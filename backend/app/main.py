@@ -5,6 +5,7 @@ import hmac
 import json
 import base64
 import asyncio
+import logging
 import os
 import secrets
 import threading
@@ -34,6 +35,8 @@ except ImportError:
     redis = None
 from email.message import EmailMessage
 from urllib.parse import urlencode, quote
+
+logger = logging.getLogger("amigopet")
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -552,6 +555,7 @@ def client_ip_from_request(request: Request) -> str:
 RATE_LIMIT_BUCKETS: dict[str, list[float]] = {}
 RATE_LIMIT_LOCK = threading.Lock()
 RATE_LIMIT_REDIS_CLIENT = None
+RATE_LIMIT_FALLBACK_WARNED: set[str] = set()
 
 
 def normalize_rate_limit_part(value: object) -> str:
@@ -579,11 +583,17 @@ def get_rate_limit_redis_client():
     return RATE_LIMIT_REDIS_CLIENT
 
 
+def warn_rate_limit_memory_fallback(reason: str) -> None:
+    if reason in RATE_LIMIT_FALLBACK_WARNED:
+        return
+    RATE_LIMIT_FALLBACK_WARNED.add(reason)
+    logger.warning("Rate limit Redis indisponivel; usando fallback em memoria.", extra={"reason": reason})
+
+
 def enforce_redis_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
     client = get_rate_limit_redis_client()
     if client is None:
-        if IS_PRODUCTION:
-            raise HTTPException(status_code=503, detail="Rate limit distribuido indisponivel")
+        warn_rate_limit_memory_fallback("redis_url_absent_or_client_unavailable")
         return False
 
     try:
@@ -604,9 +614,7 @@ def enforce_redis_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
     except HTTPException:
         raise
     except Exception as e:
-        print("[RATE LIMIT REDIS ERROR]", {"error": str(e)[:200]})
-        if IS_PRODUCTION:
-            raise HTTPException(status_code=503, detail="Rate limit distribuido indisponivel")
+        warn_rate_limit_memory_fallback(f"redis_error:{type(e).__name__}")
         return False
 
 
@@ -618,9 +626,8 @@ def enforce_rate_limit(request: Request, scope: str, limit: int, window_seconds:
     if REDIS_URL:
         if enforce_redis_rate_limit(key, limit, window_seconds):
             return
-
-    if IS_PRODUCTION:
-        raise HTTPException(status_code=503, detail="Rate limit distribuido indisponivel")
+    else:
+        warn_rate_limit_memory_fallback("redis_url_not_configured")
 
     with RATE_LIMIT_LOCK:
         bucket = [item for item in RATE_LIMIT_BUCKETS.get(key, []) if item > cutoff]
