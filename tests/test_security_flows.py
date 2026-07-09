@@ -354,6 +354,38 @@ def test_finish_walk_is_idempotent_and_does_not_duplicate_payout(client, app_mod
     assert db.query(app_module.EventLog).filter(app_module.EventLog.walk_id == walk.id).count() == event_count
 
 
+def test_asaas_payout_error_is_sanitized_for_walker_wallet(client, app_module, db, monkeypatch):
+    client_user, _ = auth_headers(client, "cliente@amigopet.com")
+    walker = register_walker(client, "payout-error-walker@example.com")
+    walk = make_paid_walk(app_module, db, client_user["id"], walker["id"])
+    raw_error = {
+        "errors": [{"code": "invalid_action", "description": "Saldo insuficiente para realizar transferencia"}],
+        "http_status": 400,
+        "reason": "Bad Request",
+    }
+
+    def fake_transfer(db_session, walk_request):
+        raise app_module.AsaasPayoutError(app_module.friendly_asaas_pix_transfer_error(raw_error), raw_error)
+
+    monkeypatch.setattr(app_module, "create_asaas_pix_transfer_to_walker", fake_transfer)
+
+    login(client, "payout-error-walker@example.com")
+    walker_headers = csrf_headers(client)
+    response = client.post(f"/api/walks/{walk.id}/finish", headers=walker_headers)
+    assert response.status_code == 200, response.text
+
+    db.refresh(walk)
+    assert walk.payout_status == "erro"
+    assert walk.payout_error == "Transferência PIX não realizada. Saldo insuficiente na conta Asaas."
+    assert "invalid_action" not in walk.payout_error
+    assert "http_status" not in walk.payout_error
+
+    history = client.get(f"/api/wallet/{walker['id']}/history").json()
+    item = next(row for row in history if row["walk_id"] == walk.id)
+    assert item["payout_error"] == "Transferência PIX não realizada. Saldo insuficiente na conta Asaas."
+    assert "errors" not in item["payout_error"]
+
+
 def test_public_and_contextual_responses_do_not_expose_sensitive_fields(client):
     login(client, "cliente@amigopet.com")
     client_user = client.get("/api/auth/session/current").json()

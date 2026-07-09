@@ -1154,6 +1154,40 @@ def _asaas_response_data(res: requests.Response) -> dict:
     return data
 
 
+ASAAS_PIX_TRANSFER_GENERIC_ERROR = "Não foi possível realizar a transferência PIX. Tente novamente mais tarde."
+ASAAS_PIX_TRANSFER_INSUFFICIENT_BALANCE_ERROR = "Transferência PIX não realizada. Saldo insuficiente na conta Asaas."
+
+
+class AsaasPayoutError(RuntimeError):
+    def __init__(self, public_message: str, raw_response: object):
+        super().__init__(public_message)
+        self.public_message = public_message
+        self.raw_response = raw_response
+
+
+def _asaas_error_items(data: object) -> list[dict]:
+    if isinstance(data, dict):
+        errors = data.get("errors")
+        if isinstance(errors, list):
+            return [item for item in errors if isinstance(item, dict)]
+    return []
+
+
+def friendly_asaas_pix_transfer_error(data: object) -> str:
+    for item in _asaas_error_items(data):
+        code = str(item.get("code") or "").strip().lower()
+        description = str(item.get("description") or item.get("message") or "").strip().lower()
+        if code == "invalid_action" and "saldo insuficiente" in description:
+            return ASAAS_PIX_TRANSFER_INSUFFICIENT_BALANCE_ERROR
+    return ASAAS_PIX_TRANSFER_GENERIC_ERROR
+
+
+def public_payout_error(error: Exception) -> str:
+    if isinstance(error, AsaasPayoutError):
+        return error.public_message
+    return ASAAS_PIX_TRANSFER_GENERIC_ERROR
+
+
 def create_asaas_customer(walk: WalkRequest) -> str:
     if not walk.client:
         raise RuntimeError("Cliente do pedido não encontrado para criar cobrança no Asaas")
@@ -1445,7 +1479,12 @@ def create_asaas_pix_transfer_to_walker(db: Session, walk: WalkRequest) -> dict:
     )
     data = _asaas_response_data(res)
     if res.status_code >= 400:
-        raise RuntimeError(f"Asaas recusou transferência PIX ao passeador: {data}")
+        print("[ASAAS PAYOUT API ERROR]", {
+            "walk_id": walk.id,
+            "status_code": res.status_code,
+            "response": data,
+        })
+        raise AsaasPayoutError(friendly_asaas_pix_transfer_error(data), data)
     return data
 
 
@@ -2591,11 +2630,16 @@ async def finish_walk(walk_id: int, request: Request, current_user: User = Depen
             ))
             add_event_log(db, "💵 Repasse solicitado", "payout_requested", walk=walk, user_id=walk.walker_id, actor_role="system", details=f"Valor solicitado: R$ {amount:.2f}")
         except Exception as e:
+            payout_message = public_payout_error(e)
             walk.payout_status = "erro"
-            walk.payout_error = str(e)[:700]
+            walk.payout_error = payout_message
             messages.append(add_walk_system_message(db, walk, "⚠️ Passeio finalizado. O repasse automático ao passeador ficou pendente e precisa ser verificado pela administração."))
-            add_event_log(db, "⚠️ Falha no repasse", "payout_error", walk=walk, user_id=walk.walker_id, actor_role="system", details=str(e)[:700])
-            print("[ASAAS PAYOUT ERROR]", {"walk_id": walk.id, "error": str(e)})
+            add_event_log(db, "⚠️ Falha no repasse", "payout_error", walk=walk, user_id=walk.walker_id, actor_role="system", details=payout_message)
+            print("[ASAAS PAYOUT ERROR]", {
+                "walk_id": walk.id,
+                "error": str(e),
+                "raw_response": getattr(e, "raw_response", None),
+            })
 
     db.commit()
     db.refresh(walk)
