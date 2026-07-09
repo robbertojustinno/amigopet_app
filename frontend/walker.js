@@ -847,23 +847,15 @@ function moneyBR(value){
 function walletStatusLabel(status){
   const raw = String(status || 'pendente').toLowerCase();
   if(['pago','paid','done','confirmed','received','recebido','finalizado'].includes(raw)) return {text:'Pago', cls:'pago'};
-  if(raw === 'erro') return {text:'Erro', cls:'recusado'};
-  if(['solicitado','requested','processing','processando'].includes(raw)) return {text:'Solicitado', cls:'aguardando'};
+  if(['erro','failed','falhou','recusado','solicitado','requested','processing','processando'].includes(raw)) return {text:'Aguardando repasse', cls:'aguardando'};
   return {text:'Pendente', cls:'aguardando'};
 }
 
 function safePayoutErrorMessage(value){
-  const text = String(value || '').trim();
-  if(!text) return '';
-  const lower = text.toLowerCase();
-  if(lower.includes('saldo insuficiente')){
-    return 'Transferência PIX não realizada. Saldo insuficiente na conta Asaas.';
-  }
-  const rawMarkers = ['{"errors"', "{'errors'", 'http_status', 'invalid_action', '"code"', "'code'", '"reason"', "'reason'", 'raw_response', 'traceback'];
-  if(rawMarkers.some(marker => lower.includes(marker))){
-    return 'Não foi possível realizar a transferência PIX. Tente novamente mais tarde.';
-  }
-  return text.slice(0, 220);
+  // A carteira do passeador não deve exibir detalhes internos do Asaas.
+  // Erros operacionais ficam restritos ao backend/admin; para o passeador,
+  // o status visual já indica que o repasse segue pendente.
+  return '';
 }
 
 async function loadWallet(){
