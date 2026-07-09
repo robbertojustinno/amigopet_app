@@ -7,6 +7,7 @@ android {
     compileSdk 35
 
     def baseUrl = (project.findProperty('AMIGOPET_BASE_URL') ?: 'https://amigopet-6td8.onrender.com').toString().replaceAll('/+$', '')
+    def baseHost = new URI(baseUrl).host
 
     defaultConfig {
         applicationId 'com.rovix.amigopet.cliente'
@@ -15,7 +16,8 @@ android {
         versionCode 1
         versionName '1.0'
         buildConfigField 'String', 'APP_URL', "\"${baseUrl}\""
-        buildConfigField 'String', 'ALLOWED_WEBVIEW_HOSTS', '"accounts.google.com,ssl.gstatic.com,www.gstatic.com"'
+        buildConfigField 'String', 'ALLOWED_WEBVIEW_HOSTS', '""'
+        manifestPlaceholders = [amigopetHost: baseHost]
     }
 
     buildFeatures {
@@ -23,7 +25,4 @@ android {
     }
 }
 
-
-dependencies {
-    implementation 'com.google.android.gms:play-services-auth:21.2.0'
-}
+dependencies {}

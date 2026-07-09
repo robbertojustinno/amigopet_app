@@ -1,0 +1,1 @@
+com.rovix.amigopet.passeador:style/AppTheme = 0x7f010000

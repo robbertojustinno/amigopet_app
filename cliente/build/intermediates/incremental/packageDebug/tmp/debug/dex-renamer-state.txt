@@ -1,0 +1,7 @@
+#Thu Jul 09 15:19:32 BRT 2026
+base.1=E\:\\amigopet_app_NOVO\\cliente\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\5\\classes.dex
+path.1=5/classes.dex
+base.0=E\:\\amigopet_app_NOVO\\cliente\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
+renamed.1=classes2.dex
+renamed.0=classes.dex
+path.0=0/classes.dex

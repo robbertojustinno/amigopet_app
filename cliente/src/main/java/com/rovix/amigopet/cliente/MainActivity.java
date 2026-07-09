@@ -7,32 +7,25 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.GeolocationPermissions;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.WebResourceRequest;
-import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import com.google.android.gms.auth.api.signin.GoogleSignIn;
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
-import com.google.android.gms.common.api.ApiException;
-import com.google.android.gms.tasks.Task;
-
-import org.json.JSONObject;
-
 public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 1001;
-    private static final int GOOGLE_SIGN_IN_REQUEST = 2002;
+    private static final String APP_URL = BuildConfig.APP_URL;
+    private static final Uri APP_URI = Uri.parse(APP_URL);
+
     private WebView webView;
     private ProgressBar progressBar;
     private ValueCallback<Uri[]> filePathCallback;
-    private static final String APP_URL = BuildConfig.APP_URL;
-    private static final Uri APP_URI = Uri.parse(APP_URL);
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -113,18 +106,24 @@ public class MainActivity extends Activity {
                     startActivityForResult(params.createIntent(), FILE_CHOOSER_REQUEST);
                 } catch (Exception e) {
                     filePathCallback = null;
-                    Toast.makeText(MainActivity.this, "Não foi possível abrir arquivos.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Nao foi possivel abrir arquivos.", Toast.LENGTH_SHORT).show();
                     return false;
                 }
                 return true;
             }
         });
 
-        webView.loadUrl(APP_URL);
+        Uri launchUri = getIntent() != null ? getIntent().getData() : null;
+        if (!loadGoogleCallbackIfPresent(launchUri)) {
+            webView.loadUrl(APP_URL);
+        }
     }
 
     private boolean handleUrl(WebView view, Uri uri) {
         String url = uri.toString();
+        if (isGoogleLoginUri(uri)) {
+            return openExternal(uri);
+        }
         if (isAllowedWebViewUri(uri)) {
             view.loadUrl(url);
             return true;
@@ -135,6 +134,27 @@ public class MainActivity extends Activity {
         return openExternal(uri);
     }
 
+    private boolean isGoogleLoginUri(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
+        return "/api/auth/google/login/client".equals(uri.getPath());
+    }
+
+    private boolean isGoogleCallbackUri(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
+        String host = uri.getHost();
+        String appHost = APP_URI.getHost();
+        return host != null
+                && appHost != null
+                && host.equalsIgnoreCase(appHost)
+                && "/api/auth/google/callback".equals(uri.getPath());
+    }
+
+    private boolean loadGoogleCallbackIfPresent(Uri uri) {
+        if (!isGoogleCallbackUri(uri)) return false;
+        webView.loadUrl(uri.toString());
+        return true;
+    }
+
     private boolean isAllowedWebViewUri(Uri uri) {
         if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
         String host = uri.getHost();
@@ -142,7 +162,7 @@ public class MainActivity extends Activity {
         String appHost = APP_URI.getHost();
         if (host.equalsIgnoreCase(appHost)) return true;
         for (String allowedHost : BuildConfig.ALLOWED_WEBVIEW_HOSTS.split(",")) {
-            if (host.equalsIgnoreCase(allowedHost.trim())) return true;
+            if (!allowedHost.trim().isEmpty() && host.equalsIgnoreCase(allowedHost.trim())) return true;
         }
         return false;
     }
@@ -156,23 +176,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void injectClientSession(JSONObject user) {
-        String js = "(function(){" +
-                "try{" +
-                "currentUser=" + user.toString() + ";" +
-                "if(typeof clearSessions==='function') clearSessions();" +
-                "if(typeof setLoggedUI==='function') setLoggedUI();" +
-                "Promise.resolve(typeof refreshAll==='function'?refreshAll():null).then(function(){" +
-                "if(typeof showView==='function') showView('pet', true);" +
-                "if(typeof toast==='function') toast('Login com Google realizado.');" +
-                "});" +
-                "}catch(e){alert('Login Google concluído, mas houve erro ao abrir sessão: '+e.message);}" +
-                "})();";
-        webView.evaluateJavascript(js, null);
-    }
-
-    private void sendGoogleTokenToBackend(String idToken) {
-        Toast.makeText(this, "Use o login Google da tela web.", Toast.LENGTH_LONG).show();
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Uri uri = intent != null ? intent.getData() : null;
+        loadGoogleCallbackIfPresent(uri);
     }
 
     @Override
@@ -185,18 +194,6 @@ public class MainActivity extends Activity {
             }
             filePathCallback.onReceiveValue(result);
             filePathCallback = null;
-            return;
-        }
-        if (requestCode == GOOGLE_SIGN_IN_REQUEST) {
-            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
-            try {
-                GoogleSignInAccount account = task.getResult(ApiException.class);
-                String idToken = account != null ? account.getIdToken() : null;
-                if (idToken == null || idToken.isEmpty()) throw new Exception("Token Google vazio");
-                sendGoogleTokenToBackend(idToken);
-            } catch (Exception e) {
-                Toast.makeText(this, "Login Google cancelado ou não autorizado: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            }
         }
     }
 

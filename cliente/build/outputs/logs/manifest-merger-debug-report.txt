@@ -1,0 +1,102 @@
+-- Merging decision tree log ---
+data
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:28:17-31:70
+	android:host
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:30:21-51
+	android:scheme
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:29:21-43
+	android:pathPrefix
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:31:21-67
+manifest
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:1:1-35:12
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:1:1-35:12
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:1:1-35:12
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:1:1-35:12
+	package
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+	android:versionName
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+	android:versionCode
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+	xmlns:android
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:1:11-69
+uses-permission#android.permission.INTERNET
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:2:5-67
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:2:22-64
+uses-permission#android.permission.ACCESS_FINE_LOCATION
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:3:5-79
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:3:22-76
+uses-permission#android.permission.ACCESS_COARSE_LOCATION
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:4:5-81
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:4:22-78
+uses-permission#android.permission.CAMERA
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:5:5-65
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:5:22-62
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:6:5-77
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:6:22-74
+application
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:8:5-34:19
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:8:5-34:19
+	android:extractNativeLibs
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+	android:label
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:10:9-41
+	android:hardwareAccelerated
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:13:9-43
+	android:allowBackup
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:9:9-35
+	android:theme
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:11:9-40
+	android:usesCleartextTraffic
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:12:9-45
+activity#com.rovix.amigopet.cliente.MainActivity
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:14:9-33:20
+	android:screenOrientation
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:18:13-49
+	android:launchMode
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:17:13-43
+	android:exported
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:16:13-36
+	android:configChanges
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:19:13-74
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:15:13-41
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:20:13-23:29
+action#android.intent.action.MAIN
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:21:17-69
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:21:25-66
+category#android.intent.category.LAUNCHER
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:22:17-77
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:22:27-74
+intent-filter#action:name:android.intent.action.VIEW+category:name:android.intent.category.BROWSABLE+category:name:android.intent.category.DEFAULT+data:host:amigopet-6td8.onrender.com+data:pathPrefix:/api/auth/google/callback+data:scheme:https
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:24:13-32:29
+action#android.intent.action.VIEW
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:25:17-69
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:25:25-66
+category#android.intent.category.DEFAULT
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:26:17-76
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:26:27-73
+category#android.intent.category.BROWSABLE
+ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:27:17-78
+	android:name
+		ADDED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml:27:27-75
+uses-sdk
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from E:\amigopet_app_NOVO\cliente\src\main\AndroidManifest.xml

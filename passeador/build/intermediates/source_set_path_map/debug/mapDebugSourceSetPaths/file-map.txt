@@ -1,0 +1,7 @@
+com.rovix.amigopet.passeador-pngs-0 E:\amigopet_app_NOVO\passeador\build\generated\res\pngs\debug
+com.rovix.amigopet.passeador-resValues-1 E:\amigopet_app_NOVO\passeador\build\generated\res\resValues\debug
+com.rovix.amigopet.passeador-packageDebugResources-2 E:\amigopet_app_NOVO\passeador\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.rovix.amigopet.passeador-packageDebugResources-3 E:\amigopet_app_NOVO\passeador\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.rovix.amigopet.passeador-debug-4 E:\amigopet_app_NOVO\passeador\build\intermediates\merged_res\debug\mergeDebugResources
+com.rovix.amigopet.passeador-debug-5 E:\amigopet_app_NOVO\passeador\src\debug\res
+com.rovix.amigopet.passeador-main-6 E:\amigopet_app_NOVO\passeador\src\main\res

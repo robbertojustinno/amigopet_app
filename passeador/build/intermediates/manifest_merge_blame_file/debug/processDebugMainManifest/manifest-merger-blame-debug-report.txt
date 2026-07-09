@@ -1,0 +1,87 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.rovix.amigopet.passeador"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="23"
+9        android:targetSdkVersion="35" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:2:5-67
+11-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:2:22-64
+12    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+12-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:3:5-79
+12-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:3:22-76
+13    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+13-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:4:5-81
+13-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:4:22-78
+14    <uses-permission android:name="android.permission.CAMERA" />
+14-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:5:5-65
+14-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:5:22-62
+15    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+15-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:6:5-77
+15-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:6:22-74
+16
+17    <application
+17-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:8:5-34:19
+18        android:allowBackup="true"
+18-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:9:9-35
+19        android:debuggable="true"
+20        android:extractNativeLibs="false"
+21        android:hardwareAccelerated="true"
+21-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:13:9-43
+22        android:label="AmigoPet Passeador"
+22-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:10:9-43
+23        android:theme="@style/AppTheme"
+23-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:11:9-40
+24        android:usesCleartextTraffic="false" >
+24-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:12:9-45
+25        <activity
+25-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:14:9-33:20
+26            android:name="com.rovix.amigopet.passeador.MainActivity"
+26-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:15:13-41
+27            android:configChanges="orientation|screenSize|keyboardHidden"
+27-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:19:13-74
+28            android:exported="true"
+28-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:16:13-36
+29            android:launchMode="singleTop"
+29-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:17:13-43
+30            android:screenOrientation="portrait" >
+30-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:18:13-49
+31            <intent-filter>
+31-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:20:13-23:29
+32                <action android:name="android.intent.action.MAIN" />
+32-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:21:17-69
+32-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:21:25-66
+33
+34                <category android:name="android.intent.category.LAUNCHER" />
+34-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:22:17-77
+34-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:22:27-74
+35            </intent-filter>
+36            <intent-filter>
+36-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:24:13-32:29
+37                <action android:name="android.intent.action.VIEW" />
+37-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:25:17-69
+37-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:25:25-66
+38
+39                <category android:name="android.intent.category.DEFAULT" />
+39-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:26:17-76
+39-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:26:27-73
+40                <category android:name="android.intent.category.BROWSABLE" />
+40-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:27:17-78
+40-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:27:27-75
+41
+42                <data
+43                    android:host="amigopet-6td8.onrender.com"
+43-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:30:21-51
+44                    android:pathPrefix="/api/auth/google/callback"
+44-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:31:21-67
+45                    android:scheme="https" />
+45-->E:\amigopet_app_NOVO\passeador\src\main\AndroidManifest.xml:29:21-43
+46            </intent-filter>
+47        </activity>
+48    </application>
+49
+50</manifest>

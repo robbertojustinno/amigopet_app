@@ -7,45 +7,27 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.GeolocationPermissions;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.WebResourceRequest;
-import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import com.google.android.gms.auth.api.signin.GoogleSignIn;
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
-import com.google.android.gms.auth.api.signin.GoogleSignInClient;
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
-import com.google.android.gms.common.api.ApiException;
-import com.google.android.gms.tasks.Task;
-
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-
 public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 1001;
-    private static final int GOOGLE_SIGN_IN_REQUEST = 2002;
-    private WebView webView;
-    private ProgressBar progressBar;
-    private ValueCallback<Uri[]> filePathCallback;
-    private GoogleSignInClient googleSignInClient;
-    private String googleWebClientId = "";
     private static final String APP_URL = BuildConfig.APP_URL;
     private static final String API_BASE_URL = BuildConfig.API_BASE_URL;
     private static final Uri APP_URI = Uri.parse(APP_URL);
-    private final String ROLE = "walker";
+    private static final Uri API_URI = Uri.parse(API_BASE_URL);
+
+    private WebView webView;
+    private ProgressBar progressBar;
+    private ValueCallback<Uri[]> filePathCallback;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -126,18 +108,24 @@ public class MainActivity extends Activity {
                     startActivityForResult(params.createIntent(), FILE_CHOOSER_REQUEST);
                 } catch (Exception e) {
                     filePathCallback = null;
-                    Toast.makeText(MainActivity.this, "Não foi possível abrir arquivos.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Nao foi possivel abrir arquivos.", Toast.LENGTH_SHORT).show();
                     return false;
                 }
                 return true;
             }
         });
 
-        webView.loadUrl(APP_URL);
+        Uri launchUri = getIntent() != null ? getIntent().getData() : null;
+        if (!loadGoogleCallbackIfPresent(launchUri)) {
+            webView.loadUrl(APP_URL);
+        }
     }
 
     private boolean handleUrl(WebView view, Uri uri) {
         String url = uri.toString();
+        if (isGoogleLoginUri(uri)) {
+            return openExternal(uri);
+        }
         if (isAllowedWebViewUri(uri)) {
             view.loadUrl(url);
             return true;
@@ -148,14 +136,36 @@ public class MainActivity extends Activity {
         return openExternal(uri);
     }
 
+    private boolean isGoogleLoginUri(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
+        return "/api/auth/google/login/walker".equals(uri.getPath());
+    }
+
+    private boolean isGoogleCallbackUri(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
+        String host = uri.getHost();
+        String apiHost = API_URI.getHost();
+        return host != null
+                && apiHost != null
+                && host.equalsIgnoreCase(apiHost)
+                && "/api/auth/google/callback".equals(uri.getPath());
+    }
+
+    private boolean loadGoogleCallbackIfPresent(Uri uri) {
+        if (!isGoogleCallbackUri(uri)) return false;
+        webView.loadUrl(uri.toString());
+        return true;
+    }
+
     private boolean isAllowedWebViewUri(Uri uri) {
         if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
         String host = uri.getHost();
         if (host == null) return false;
         String appHost = APP_URI.getHost();
-        if (host.equalsIgnoreCase(appHost)) return true;
+        String apiHost = API_URI.getHost();
+        if (host.equalsIgnoreCase(appHost) || host.equalsIgnoreCase(apiHost)) return true;
         for (String allowedHost : BuildConfig.ALLOWED_WEBVIEW_HOSTS.split(",")) {
-            if (host.equalsIgnoreCase(allowedHost.trim())) return true;
+            if (!allowedHost.trim().isEmpty() && host.equalsIgnoreCase(allowedHost.trim())) return true;
         }
         return false;
     }
@@ -169,97 +179,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void startNativeGoogleLogin() {
-        webView.loadUrl(API_BASE_URL + "/api/auth/google/login/walker");
-    }
-
-    private void fetchGoogleConfigAndLogin() {
-        Toast.makeText(this, "Preparando login Google...", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE_URL + "/api/auth/google/login/walker").openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(15000);
-                int code = conn.getResponseCode();
-                BufferedReader br = new BufferedReader(new InputStreamReader(
-                        code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream(), StandardCharsets.UTF_8));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                if (code < 200 || code >= 300) throw new Exception(sb.toString());
-                JSONObject json = new JSONObject(sb.toString());
-                googleWebClientId = json.optString("client_id", "");
-                if (googleWebClientId.trim().isEmpty()) throw new Exception("GOOGLE_CLIENT_ID vazio no servidor");
-                runOnUiThread(this::launchGoogleSignIn);
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                        "Erro ao preparar login Google: " + e.getMessage(), Toast.LENGTH_LONG).show());
-            }
-        }).start();
-    }
-
-    private void launchGoogleSignIn() {
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail()
-                .requestProfile()
-                .requestIdToken(googleWebClientId)
-                .build();
-        googleSignInClient = GoogleSignIn.getClient(this, gso);
-        googleSignInClient.signOut().addOnCompleteListener(task -> {
-            Intent signInIntent = googleSignInClient.getSignInIntent();
-            startActivityForResult(signInIntent, GOOGLE_SIGN_IN_REQUEST);
-        });
-    }
-
-    private void sendGoogleTokenToBackend(String idToken) {
-        Toast.makeText(this, "Entrando com Google...", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                JSONObject payload = new JSONObject();
-                payload.put("id_token", idToken);
-                payload.put("role", ROLE);
-
-                HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE_URL + "/api/auth/google/login/walker").openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                conn.setConnectTimeout(20000);
-                conn.setReadTimeout(20000);
-                conn.setDoOutput(true);
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-                }
-                int code = conn.getResponseCode();
-                BufferedReader br = new BufferedReader(new InputStreamReader(
-                        code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream(), StandardCharsets.UTF_8));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                if (code < 200 || code >= 300) throw new Exception(sb.toString());
-                JSONObject user = new JSONObject(sb.toString());
-                runOnUiThread(() -> injectWalkerSession(user));
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                        "Falha no login Google: " + e.getMessage(), Toast.LENGTH_LONG).show());
-            }
-        }).start();
-    }
-
-    private void injectWalkerSession(JSONObject user) {
-        String js = "(function(){" +
-                "try{" +
-                "currentUser=" + user.toString() + ";" +
-                "localStorage.setItem('amigopet_walker_user', JSON.stringify(currentUser));" +
-                "if(typeof setLoggedUI==='function') setLoggedUI();" +
-                "Promise.resolve(typeof refreshAll==='function'?refreshAll():null).then(function(){" +
-                "if(typeof showView==='function') showView('pedidos', true);" +
-                "if(typeof toast==='function') toast('Login com Google realizado.');" +
-                "});" +
-                "}catch(e){alert('Login Google concluído, mas houve erro ao abrir sessão: '+e.message);}" +
-                "})();";
-        webView.evaluateJavascript(js, null);
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Uri uri = intent != null ? intent.getData() : null;
+        loadGoogleCallbackIfPresent(uri);
     }
 
     @Override
@@ -272,18 +197,6 @@ public class MainActivity extends Activity {
             }
             filePathCallback.onReceiveValue(result);
             filePathCallback = null;
-            return;
-        }
-        if (requestCode == GOOGLE_SIGN_IN_REQUEST) {
-            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
-            try {
-                GoogleSignInAccount account = task.getResult(ApiException.class);
-                String idToken = account != null ? account.getIdToken() : null;
-                if (idToken == null || idToken.isEmpty()) throw new Exception("Token Google vazio");
-                sendGoogleTokenToBackend(idToken);
-            } catch (Exception e) {
-                Toast.makeText(this, "Login Google cancelado ou não autorizado: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            }
         }
     }
 

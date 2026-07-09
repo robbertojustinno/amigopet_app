@@ -1,0 +1,7 @@
+com.rovix.amigopet.cliente-pngs-0 E:\amigopet_app_NOVO\cliente\build\generated\res\pngs\debug
+com.rovix.amigopet.cliente-resValues-1 E:\amigopet_app_NOVO\cliente\build\generated\res\resValues\debug
+com.rovix.amigopet.cliente-packageDebugResources-2 E:\amigopet_app_NOVO\cliente\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.rovix.amigopet.cliente-packageDebugResources-3 E:\amigopet_app_NOVO\cliente\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.rovix.amigopet.cliente-debug-4 E:\amigopet_app_NOVO\cliente\build\intermediates\merged_res\debug\mergeDebugResources
+com.rovix.amigopet.cliente-debug-5 E:\amigopet_app_NOVO\cliente\src\debug\res
+com.rovix.amigopet.cliente-main-6 E:\amigopet_app_NOVO\cliente\src\main\res
