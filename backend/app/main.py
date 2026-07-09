@@ -1188,6 +1188,34 @@ def public_payout_error(error: Exception) -> str:
     return ASAAS_PIX_TRANSFER_GENERIC_ERROR
 
 
+def sanitize_public_payout_error_text(value: object) -> str:
+    """Converte erros antigos/brutos do Asaas em texto seguro para usuários."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    lowered = text.lower()
+    if "saldo insuficiente" in lowered:
+        return ASAAS_PIX_TRANSFER_INSUFFICIENT_BALANCE_ERROR
+
+    raw_markers = [
+        "{'errors'",
+        '"errors"',
+        "http_status",
+        "invalid_action",
+        "'code'",
+        '"code"',
+        "'reason'",
+        '"reason"',
+        "raw_response",
+        "traceback",
+    ]
+    if any(marker in lowered for marker in raw_markers):
+        return ASAAS_PIX_TRANSFER_GENERIC_ERROR
+
+    return text[:220]
+
+
 def create_asaas_customer(walk: WalkRequest) -> str:
     if not walk.client:
         raise RuntimeError("Cliente do pedido não encontrado para criar cobrança no Asaas")
@@ -2875,7 +2903,7 @@ def get_walker_wallet_history(walker_id: int, current_user: User = Depends(get_c
             "platform_fee": round(platform, 2),
             "payout_status": payout_status,
             "payout_transfer_id": getattr(walk, "payout_transfer_id", "") or "",
-            "payout_error": getattr(walk, "payout_error", "") or "",
+            "payout_error": sanitize_public_payout_error_text(getattr(walk, "payout_error", "") or ""),
             "finished_at": walk.finished_at.isoformat() if walk.finished_at else None,
             "created_at": walk.created_at.isoformat() if walk.created_at else None,
         })

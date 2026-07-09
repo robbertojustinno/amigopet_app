@@ -852,6 +852,20 @@ function walletStatusLabel(status){
   return {text:'Pendente', cls:'aguardando'};
 }
 
+function safePayoutErrorMessage(value){
+  const text = String(value || '').trim();
+  if(!text) return '';
+  const lower = text.toLowerCase();
+  if(lower.includes('saldo insuficiente')){
+    return 'Transferência PIX não realizada. Saldo insuficiente na conta Asaas.';
+  }
+  const rawMarkers = ['{"errors"', "{'errors'", 'http_status', 'invalid_action', '"code"', "'code'", '"reason"', "'reason'", 'raw_response', 'traceback'];
+  if(rawMarkers.some(marker => lower.includes(marker))){
+    return 'Não foi possível realizar a transferência PIX. Tente novamente mais tarde.';
+  }
+  return text.slice(0, 220);
+}
+
 async function loadWallet(){
   if(!currentUser || currentUser.role !== 'walker') return;
   try{
@@ -892,7 +906,8 @@ function renderWallet(summary, history){
     setSafeHTML(historyBox, history.map(item => {
       const st = walletStatusLabel(item.payout_status);
       const date = item.finished_at ? new Date(item.finished_at).toLocaleString('pt-BR') : 'Data não informada';
-      const err = item.payout_error ? `<div class="wallet-error">${item.payout_error}</div>` : '';
+      const safeError = safePayoutErrorMessage(item.payout_error);
+      const err = safeError ? `<div class="wallet-error">${escapeHtml(safeError)}</div>` : '';
       return `<div class="wallet-item">
         <div>
           <strong>Passeio #${item.walk_id} • ${item.pet || 'Pet'}</strong><br>
