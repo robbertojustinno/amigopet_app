@@ -42,7 +42,9 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private GoogleSignInClient googleSignInClient;
     private String googleWebClientId = "";
-    private final String APP_URL = "https://amigopet-6td8.onrender.com/passeador";
+    private static final String APP_URL = BuildConfig.APP_URL;
+    private static final String API_BASE_URL = BuildConfig.API_BASE_URL;
+    private static final Uri APP_URI = Uri.parse(APP_URL);
     private final String ROLE = "walker";
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -136,18 +138,29 @@ public class MainActivity extends Activity {
 
     private boolean handleUrl(WebView view, Uri uri) {
         String url = uri.toString();
-        if (url.contains("/api/auth/google/login")) {
-            startNativeGoogleLogin();
-            return true;
-        }
-        if (url.startsWith(APP_URL)) {
+        if (isAllowedWebViewUri(uri)) {
             view.loadUrl(url);
             return true;
         }
         if (url.startsWith("http://") || url.startsWith("https://")) {
-            view.loadUrl(url);
-            return true;
+            return openExternal(uri);
         }
+        return openExternal(uri);
+    }
+
+    private boolean isAllowedWebViewUri(Uri uri) {
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
+        String host = uri.getHost();
+        if (host == null) return false;
+        String appHost = APP_URI.getHost();
+        if (host.equalsIgnoreCase(appHost)) return true;
+        for (String allowedHost : BuildConfig.ALLOWED_WEBVIEW_HOSTS.split(",")) {
+            if (host.equalsIgnoreCase(allowedHost.trim())) return true;
+        }
+        return false;
+    }
+
+    private boolean openExternal(Uri uri) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
             return true;
@@ -157,18 +170,14 @@ public class MainActivity extends Activity {
     }
 
     private void startNativeGoogleLogin() {
-        if (googleWebClientId == null || googleWebClientId.trim().isEmpty()) {
-            fetchGoogleConfigAndLogin();
-            return;
-        }
-        launchGoogleSignIn();
+        webView.loadUrl(API_BASE_URL + "/api/auth/google/login/walker");
     }
 
     private void fetchGoogleConfigAndLogin() {
         Toast.makeText(this, "Preparando login Google...", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL("https://amigopet-6td8.onrender.com/api/auth/google/android-config").openConnection();
+                HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE_URL + "/api/auth/google/login/walker").openConnection();
                 conn.setRequestMethod("GET");
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(15000);
@@ -212,7 +221,7 @@ public class MainActivity extends Activity {
                 payload.put("id_token", idToken);
                 payload.put("role", ROLE);
 
-                HttpURLConnection conn = (HttpURLConnection) new URL("https://amigopet-6td8.onrender.com/api/auth/google/android").openConnection();
+                HttpURLConnection conn = (HttpURLConnection) new URL(API_BASE_URL + "/api/auth/google/login/walker").openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 conn.setConnectTimeout(20000);

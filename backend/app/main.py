@@ -4,10 +4,14 @@ import hashlib
 import hmac
 import json
 import base64
+import asyncio
 import os
 import secrets
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Optional
 
@@ -16,10 +20,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 import requests
 import smtplib
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
+try:
+    import redis
+except ImportError:
+    redis = None
 from email.message import EmailMessage
 from urllib.parse import urlencode, quote
 
@@ -33,6 +45,9 @@ ASAAS_BASE_URL = os.getenv("ASAAS_BASE_URL", "https://api.asaas.com/v3").strip()
 if ASAAS_ENV in {"sandbox", "test", "testing"} and "asaas.com" in ASAAS_BASE_URL and "sandbox" not in ASAAS_BASE_URL:
     ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
+APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).strip().lower()
+IS_PRODUCTION = APP_ENV in {"production", "prod"} or bool(os.getenv("RENDER_EXTERNAL_URL", "").strip())
+DEV_SEED_PASSWORD = os.getenv("DEV_SEED_PASSWORD", "123456")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
@@ -51,14 +66,28 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 EMAIL_FROM = os.getenv("EMAIL_FROM", "AmigoPet <onboarding@resend.dev>").strip()
 WALKER_TERMS_VERSION = os.getenv("WALKER_TERMS_VERSION", "1.0").strip() or "1.0"
 CLIENT_TERMS_VERSION = os.getenv("CLIENT_TERMS_VERSION", "1.0").strip() or "1.0"
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+WS_REDIS_CHANNEL = os.getenv("WS_REDIS_CHANNEL", "amigopet:ws-events").strip() or "amigopet:ws-events"
+INSTANCE_ID = os.getenv("INSTANCE_ID", uuid.uuid4().hex)
 SESSION_COOKIE_NAME = "amigopet_session"
+CSRF_COOKIE_NAME = "amigopet_csrf"
+CSRF_HEADER_NAME = "x-csrf-token"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180
-SESSION_SECRET = (
-    os.getenv("SESSION_SECRET", "").strip()
-    or GOOGLE_CLIENT_SECRET
-    or ASAAS_API_KEY
-    or "amigopet-dev-session-secret"
-)
+SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip()
+if IS_PRODUCTION:
+    if len(SESSION_SECRET) < 32:
+        raise RuntimeError("SESSION_SECRET deve estar definido com pelo menos 32 caracteres em producao")
+else:
+    SESSION_SECRET = SESSION_SECRET or "amigopet-dev-session-secret"
+
+CORS_ORIGINS = [origin.strip().rstrip("/") for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+if IS_PRODUCTION:
+    if not CORS_ORIGINS:
+        raise RuntimeError("CORS_ORIGINS deve estar definido em producao com origens explicitas")
+    if any("*" in origin for origin in CORS_ORIGINS):
+        raise RuntimeError("CORS_ORIGINS nao pode usar wildcard em producao")
+else:
+    CORS_ORIGINS = CORS_ORIGINS or ["*"]
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./amigopet_v6.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -72,11 +101,62 @@ Base = declarative_base()
 app = FastAPI(title="AmigoPet V6 Uber", version="6.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+SECURITY_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://unpkg.com",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com",
+    "img-src 'self' data: blob: https://unpkg.com https://api.dicebear.com https://api.qrserver.com https://*.tile.openstreetmap.org",
+    "connect-src 'self' http: https: ws: wss:",
+    "font-src 'self' data:",
+    "manifest-src 'self'",
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+SECURITY_PERMISSIONS_POLICY = ", ".join([
+    "accelerometer=()",
+    "autoplay=()",
+    "camera=(self)",
+    "clipboard-read=()",
+    "clipboard-write=(self)",
+    "geolocation=(self)",
+    "gyroscope=()",
+    "magnetometer=()",
+    "microphone=()",
+    "payment=()",
+    "usb=()",
+])
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", SECURITY_CSP)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", SECURITY_PERMISSIONS_POLICY)
+    response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if IS_PRODUCTION:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+@app.on_event("startup")
+async def start_websocket_bus():
+    manager.set_loop(asyncio.get_running_loop())
+    websocket_bus.start()
 
 class User(Base):
     __tablename__ = "users"
@@ -341,19 +421,25 @@ class RatingIn(BaseModel):
 
 class ConnectionManager:
     def __init__(self):
-        self.active: list[WebSocket] = []
+        self.active: dict[WebSocket, int] = {}
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
 
-    async def connect(self, websocket: WebSocket):
+    def set_loop(self, loop: asyncio.AbstractEventLoop):
+        self.loop = loop
+
+    async def connect(self, websocket: WebSocket, user_id: int):
+        self.set_loop(asyncio.get_running_loop())
         await websocket.accept()
-        self.active.append(websocket)
+        self.active[websocket] = user_id
 
     def disconnect(self, websocket: WebSocket):
-        if websocket in self.active:
-            self.active.remove(websocket)
+        self.active.pop(websocket, None)
 
-    async def broadcast(self, payload: dict):
+    async def deliver_to_users(self, payload: dict, user_ids: set[int]):
         dead = []
-        for ws in self.active:
+        for ws, user_id in list(self.active.items()):
+            if user_id not in user_ids:
+                continue
             try:
                 await ws.send_json(payload)
             except Exception:
@@ -361,7 +447,85 @@ class ConnectionManager:
         for ws in dead:
             self.disconnect(ws)
 
+    async def send_to_users(self, payload: dict, user_ids: set[int], publish: bool = True):
+        await self.deliver_to_users(payload, user_ids)
+        if publish:
+            websocket_bus.publish_users(payload, user_ids)
+
+    async def broadcast_authenticated(self, payload: dict, publish: bool = True):
+        await self.deliver_to_users(payload, set(self.active.values()))
+        if publish:
+            websocket_bus.publish_broadcast(payload)
+
 manager = ConnectionManager()
+
+
+class RedisWebSocketBus:
+    def __init__(self):
+        self.enabled = bool(REDIS_URL and redis is not None)
+        self.client = None
+        self.thread: Optional[threading.Thread] = None
+        self.started = False
+
+    def start(self):
+        if not self.enabled or self.started:
+            return
+        try:
+            self.client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+            self.client.ping()
+        except Exception as e:
+            print("[REDIS WS WARNING] Redis indisponivel; usando WebSocket local em memoria:", e)
+            self.enabled = False
+            return
+        self.started = True
+        self.thread = threading.Thread(target=self._listen, name="amigopet-redis-ws", daemon=True)
+        self.thread.start()
+
+    def publish(self, message: dict):
+        if not self.enabled or not self.client:
+            return
+        try:
+            payload = {**message, "source": INSTANCE_ID}
+            self.client.publish(WS_REDIS_CHANNEL, json.dumps(payload, default=str))
+        except Exception as e:
+            print("[REDIS WS WARNING] Falha ao publicar evento:", e)
+
+    def publish_users(self, payload: dict, user_ids: set[int]):
+        self.publish({"kind": "users", "payload": payload, "user_ids": list(user_ids)})
+
+    def publish_broadcast(self, payload: dict):
+        self.publish({"kind": "broadcast", "payload": payload})
+
+    def publish_walk_event(self, payload: dict, walk_id: int, include_admin: bool, include_available_walkers: bool):
+        self.publish({
+            "kind": "walk",
+            "payload": payload,
+            "walk_id": int(walk_id),
+            "include_admin": bool(include_admin),
+            "include_available_walkers": bool(include_available_walkers),
+        })
+
+    def _listen(self):
+        try:
+            pubsub = self.client.pubsub(ignore_subscribe_messages=True)
+            pubsub.subscribe(WS_REDIS_CHANNEL)
+            for item in pubsub.listen():
+                if item.get("type") != "message":
+                    continue
+                try:
+                    message = json.loads(item.get("data") or "{}")
+                except Exception:
+                    continue
+                if message.get("source") == INSTANCE_ID:
+                    continue
+                loop = manager.loop
+                if loop and loop.is_running():
+                    asyncio.run_coroutine_threadsafe(handle_redis_ws_message(message), loop)
+        except Exception as e:
+            print("[REDIS WS WARNING] Listener encerrado; WebSocket remoto indisponivel:", e)
+
+
+websocket_bus = RedisWebSocketBus()
 
 def get_db():
     db = SessionLocal()
@@ -385,15 +549,117 @@ def client_ip_from_request(request: Request) -> str:
     return ""
 
 
+RATE_LIMIT_BUCKETS: dict[str, list[float]] = {}
+RATE_LIMIT_LOCK = threading.Lock()
+RATE_LIMIT_REDIS_CLIENT = None
+
+
+def normalize_rate_limit_part(value: object) -> str:
+    return str(value or "").strip().lower()[:120]
+
+
+def rate_limit_key(request: Request, scope: str, identifier: object = "") -> str:
+    ip = client_ip_from_request(request) or "unknown"
+    return ":".join([
+        "amigopet",
+        "rate_limit",
+        normalize_rate_limit_part(scope),
+        normalize_rate_limit_part(ip),
+        normalize_rate_limit_part(identifier),
+    ])
+
+
+def get_rate_limit_redis_client():
+    global RATE_LIMIT_REDIS_CLIENT
+    if RATE_LIMIT_REDIS_CLIENT is not None:
+        return RATE_LIMIT_REDIS_CLIENT
+    if not REDIS_URL or redis is None:
+        return None
+    RATE_LIMIT_REDIS_CLIENT = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    return RATE_LIMIT_REDIS_CLIENT
+
+
+def enforce_redis_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
+    client = get_rate_limit_redis_client()
+    if client is None:
+        if IS_PRODUCTION:
+            raise HTTPException(status_code=503, detail="Rate limit distribuido indisponivel")
+        return False
+
+    try:
+        pipe = client.pipeline(transaction=True)
+        pipe.incr(key)
+        pipe.expire(key, int(window_seconds))
+        count, _ = pipe.execute()
+        count = int(count or 0)
+        if count > limit:
+            ttl = int(client.ttl(key) or window_seconds)
+            retry_after = max(1, ttl if ttl > 0 else int(window_seconds))
+            raise HTTPException(
+                status_code=429,
+                detail="Muitas tentativas. Aguarde alguns instantes e tente novamente.",
+                headers={"Retry-After": str(retry_after)},
+            )
+        return True
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("[RATE LIMIT REDIS ERROR]", {"error": str(e)[:200]})
+        if IS_PRODUCTION:
+            raise HTTPException(status_code=503, detail="Rate limit distribuido indisponivel")
+        return False
+
+
+def enforce_rate_limit(request: Request, scope: str, limit: int, window_seconds: int, identifier: object = "") -> None:
+    now = time.time()
+    cutoff = now - window_seconds
+    key = rate_limit_key(request, scope, identifier)
+
+    if REDIS_URL:
+        if enforce_redis_rate_limit(key, limit, window_seconds):
+            return
+
+    if IS_PRODUCTION:
+        raise HTTPException(status_code=503, detail="Rate limit distribuido indisponivel")
+
+    with RATE_LIMIT_LOCK:
+        bucket = [item for item in RATE_LIMIT_BUCKETS.get(key, []) if item > cutoff]
+        if len(bucket) >= limit:
+            retry_after = max(1, int(window_seconds - (now - bucket[0])))
+            RATE_LIMIT_BUCKETS[key] = bucket
+            raise HTTPException(
+                status_code=429,
+                detail="Muitas tentativas. Aguarde alguns instantes e tente novamente.",
+                headers={"Retry-After": str(retry_after)},
+            )
+        bucket.append(now)
+        RATE_LIMIT_BUCKETS[key] = bucket
+
+        if len(RATE_LIMIT_BUCKETS) > 10000:
+            for old_key, old_bucket in list(RATE_LIMIT_BUCKETS.items()):
+                fresh = [item for item in old_bucket if item > cutoff]
+                if fresh:
+                    RATE_LIMIT_BUCKETS[old_key] = fresh
+                else:
+                    RATE_LIMIT_BUCKETS.pop(old_key, None)
+
+
 def hash_password(password: str) -> str:
     """Hash estável compatível com Python 3.14 no Render."""
-    salt = secrets.token_hex(16)
-    digest = hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
-    return f"sha256${salt}${digest}"
+    if bcrypt is None:
+        raise RuntimeError("Dependencia bcrypt nao instalada. Execute pip install -r requirements.txt")
+    return bcrypt.hashpw(str(password).encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 def verify_password(password: str, password_hash: str) -> bool:
     if not password_hash:
         return False
+    if password_hash.startswith(("$2a$", "$2b$", "$2y$")):
+        if bcrypt is None:
+            return False
+        try:
+            return bcrypt.checkpw(str(password).encode("utf-8"), password_hash.encode("utf-8"))
+        except Exception:
+            return False
     if password_hash.startswith("sha256$"):
         try:
             _, salt, digest = password_hash.split("$", 2)
@@ -403,9 +669,28 @@ def verify_password(password: str, password_hash: str) -> bool:
             return False
     return False
 
+
+def password_needs_rehash(password_hash: str) -> bool:
+    if not password_hash.startswith(("$2a$", "$2b$", "$2y$")):
+        return True
+    try:
+        rounds = int(password_hash.split("$", 3)[2])
+        return rounds < 12
+    except Exception:
+        return True
+
 def make_session_token(user_id: int) -> str:
     issued = str(int(datetime.utcnow().timestamp()))
     payload = f"{int(user_id)}:{issued}"
+    signature = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw = f"{payload}:{signature}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("utf-8")
+
+
+def make_csrf_token(user_id: int) -> str:
+    issued = str(int(datetime.utcnow().timestamp()))
+    nonce = secrets.token_urlsafe(24)
+    payload = f"{int(user_id)}:{issued}:{nonce}"
     signature = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     raw = f"{payload}:{signature}".encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("utf-8")
@@ -428,6 +713,36 @@ def read_session_user_id(token: str) -> Optional[int]:
         return None
 
 
+def read_csrf_user_id(token: str) -> Optional[int]:
+    if not token:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        user_id, issued, nonce, signature = raw.split(":", 3)
+        payload = f"{int(user_id)}:{int(issued)}:{nonce}"
+        expected = hmac.new(SESSION_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not secrets.compare_digest(signature, expected):
+            return None
+        if int(datetime.utcnow().timestamp()) - int(issued) > SESSION_MAX_AGE_SECONDS:
+            return None
+        return int(user_id)
+    except Exception:
+        return None
+
+
+def attach_csrf_cookie(response: Response, user_id: int) -> Response:
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=make_csrf_token(user_id),
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=False,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
 def attach_session_cookie(response: Response, user_id: int) -> Response:
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -438,11 +753,13 @@ def attach_session_cookie(response: Response, user_id: int) -> Response:
         samesite="lax",
         path="/",
     )
+    attach_csrf_cookie(response, user_id)
     return response
 
 
 def clear_session_cookie(response: Response) -> Response:
     response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie(key=CSRF_COOKIE_NAME, path="/")
     return response
 
 
@@ -454,6 +771,113 @@ def session_user_from_request(request: Request, db: Session) -> Optional[User]:
     if not user or not getattr(user, "active", True):
         return None
     return user
+
+
+def validate_csrf_request(request: Request, user_id: int) -> None:
+    if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return
+    cookie_token = request.cookies.get(CSRF_COOKIE_NAME, "")
+    header_token = request.headers.get(CSRF_HEADER_NAME, "")
+    if not cookie_token or not header_token:
+        raise HTTPException(status_code=403, detail="Token CSRF ausente")
+    if not secrets.compare_digest(cookie_token, header_token):
+        raise HTTPException(status_code=403, detail="Token CSRF invalido")
+    if read_csrf_user_id(header_token) != int(user_id):
+        raise HTTPException(status_code=403, detail="Token CSRF invalido")
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    user = session_user_from_request(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Autenticação necessária")
+    validate_csrf_request(request, user.id)
+    return user
+
+
+def get_current_client(user: User = Depends(get_current_user)) -> User:
+    if user.role != "client":
+        raise HTTPException(status_code=403, detail="Acesso exclusivo para clientes")
+    return user
+
+
+def get_current_walker(user: User = Depends(get_current_user)) -> User:
+    if user.role != "walker":
+        raise HTTPException(status_code=403, detail="Acesso exclusivo para passeadores")
+    return user
+
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Acesso exclusivo para administradores")
+    return user
+
+
+def walk_event_user_ids(db: Session, walk: WalkRequest, include_admin: bool = True, include_available_walkers: bool = False) -> set[int]:
+    user_ids = {user_id for user_id in (walk.client_id, walk.walker_id) if user_id}
+    if include_admin:
+        user_ids.update(user_id for (user_id,) in db.query(User.id).filter(User.role == "admin", User.active.is_(True)).all())
+    if include_available_walkers and not walk.walker_id:
+        user_ids.update(user_id for (user_id,) in db.query(User.id).filter(User.role == "walker", User.active.is_(True), User.available.is_(True)).all())
+    return user_ids
+
+
+async def send_walk_event(payload: dict, db: Session, walk: WalkRequest, include_admin: bool = True, include_available_walkers: bool = False, publish: bool = True) -> None:
+    user_ids = walk_event_user_ids(db, walk, include_admin, include_available_walkers)
+    if "walk" not in payload:
+        await manager.send_to_users(payload, user_ids, publish=publish)
+        return
+
+    dead = []
+    for ws, user_id in list(manager.active.items()):
+        if user_id not in user_ids:
+            continue
+        user = db.get(User, user_id)
+        if not user or not user.active:
+            dead.append(ws)
+            continue
+        if user.role == "admin":
+            context = "admin"
+        elif user.id == walk.client_id:
+            context = "client"
+        else:
+            context = "walker"
+        item_payload = dict(payload)
+        item_payload["walk"] = walk_to_dict(walk, context)
+        try:
+            await ws.send_json(item_payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        manager.disconnect(ws)
+    if publish:
+        websocket_bus.publish_walk_event(payload, walk.id, include_admin, include_available_walkers)
+
+
+async def handle_redis_ws_message(message: dict) -> None:
+    kind = message.get("kind")
+    payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+    if kind == "users":
+        user_ids = {int(user_id) for user_id in message.get("user_ids", []) if str(user_id).isdigit()}
+        await manager.send_to_users(payload, user_ids, publish=False)
+        return
+    if kind == "broadcast":
+        await manager.broadcast_authenticated(payload, publish=False)
+        return
+    if kind == "walk":
+        db = SessionLocal()
+        try:
+            walk = db.get(WalkRequest, int(message.get("walk_id") or 0))
+            if walk:
+                await send_walk_event(
+                    payload,
+                    db,
+                    walk,
+                    include_admin=bool(message.get("include_admin", True)),
+                    include_available_walkers=bool(message.get("include_available_walkers", False)),
+                    publish=False,
+                )
+        finally:
+            db.close()
 
 
 def user_to_dict(u: User):
@@ -477,6 +901,35 @@ def user_to_dict(u: User):
         "client_terms_version": getattr(u, "client_terms_version", "") or "",
         "client_terms_ip": getattr(u, "client_terms_ip", "") or "",
     }
+
+
+def public_walker_to_dict(u: User) -> dict:
+    return {
+        "id": u.id,
+        "full_name": u.full_name,
+        "role": u.role,
+        "photo": u.photo,
+        "neighborhood": u.neighborhood,
+        "city": u.city,
+        "lat": u.lat,
+        "lng": u.lng,
+        "rating": u.rating,
+        "available": u.available,
+        "bio": u.bio,
+    }
+
+
+def admin_user_list_to_dict(u: User) -> dict:
+    return {
+        "id": u.id,
+        "full_name": u.full_name,
+        "email": u.email,
+        "role": u.role,
+        "phone": u.phone,
+        "city": u.city,
+        "available": u.available,
+    }
+
 
 def pet_to_dict(p: Pet):
     return {
@@ -817,9 +1270,96 @@ def get_asaas_payment(payment_id: str) -> dict:
 
 def validate_asaas_webhook_token(request: Request) -> bool:
     if not ASAAS_WEBHOOK_TOKEN:
-        return True
+        return not IS_PRODUCTION
     received = request.headers.get("asaas-access-token", "")
     return secrets.compare_digest(received, ASAAS_WEBHOOK_TOKEN)
+
+
+ASAAS_PAID_STATUSES = {"RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"}
+ASAAS_KNOWN_PAYMENT_STATUSES = {
+    "PENDING",
+    "RECEIVED",
+    "CONFIRMED",
+    "OVERDUE",
+    "REFUNDED",
+    "RECEIVED_IN_CASH",
+    "REFUND_REQUESTED",
+    "REFUND_IN_PROGRESS",
+    "CHARGEBACK_REQUESTED",
+    "CHARGEBACK_DISPUTE",
+    "AWAITING_CHARGEBACK_REVERSAL",
+    "DUNNING_REQUESTED",
+    "DUNNING_RECEIVED",
+    "AWAITING_RISK_ANALYSIS",
+    "DELETED",
+    "CANCELLED",
+}
+
+
+def _asaas_str(value) -> str:
+    return str(value or "").strip()
+
+
+def _asaas_external_reference(payment: dict) -> str:
+    return _asaas_str(payment.get("externalReference") or payment.get("external_reference"))
+
+
+def _asaas_customer_id(payment: dict) -> str:
+    customer = payment.get("customer")
+    if isinstance(customer, dict):
+        return _asaas_str(customer.get("id"))
+    return _asaas_str(customer)
+
+
+def _asaas_amount(value) -> Optional[Decimal]:
+    if value is None or value == "":
+        return None
+    try:
+        return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def validate_asaas_payment_for_walk(
+    walk: WalkRequest,
+    asaas_payment: dict,
+    payment_id: str,
+    webhook_payment: Optional[dict] = None,
+) -> None:
+    if not isinstance(asaas_payment, dict):
+        raise HTTPException(status_code=502, detail="Resposta inválida do Asaas")
+
+    api_payment_id = _asaas_str(asaas_payment.get("id"))
+    if not api_payment_id or api_payment_id != _asaas_str(payment_id):
+        raise HTTPException(status_code=400, detail="payment_id do Asaas não confere")
+
+    if walk.mp_payment_id and _asaas_str(walk.mp_payment_id) != api_payment_id:
+        raise HTTPException(status_code=409, detail="Pagamento não pertence ao pedido")
+
+    external_reference = _asaas_external_reference(asaas_payment)
+    if external_reference != f"walk_{walk.id}":
+        raise HTTPException(status_code=409, detail="externalReference do Asaas não confere")
+
+    expected_value = _asaas_amount(walk.estimated_price)
+    asaas_value = _asaas_amount(asaas_payment.get("value"))
+    if expected_value is not None and asaas_value is not None and asaas_value != expected_value:
+        raise HTTPException(status_code=409, detail="Valor do pagamento não confere")
+
+    currency = _asaas_str(asaas_payment.get("currency") or asaas_payment.get("currencyCode")).upper()
+    if currency and currency != "BRL":
+        raise HTTPException(status_code=409, detail="Moeda do pagamento não confere")
+
+    if isinstance(webhook_payment, dict):
+        webhook_customer = _asaas_customer_id(webhook_payment)
+        api_customer = _asaas_customer_id(asaas_payment)
+        if webhook_customer and api_customer and webhook_customer != api_customer:
+            raise HTTPException(status_code=409, detail="Customer do pagamento não confere")
+
+    status = _asaas_str(asaas_payment.get("status")).upper()
+    if not status:
+        raise HTTPException(status_code=400, detail="Status do pagamento ausente")
+    if status not in ASAAS_KNOWN_PAYMENT_STATUSES:
+        raise HTTPException(status_code=409, detail="Status do pagamento inválido")
 
 
 def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
@@ -843,7 +1383,7 @@ def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
     if invoice_url:
         walk.mp_ticket_url = invoice_url
 
-    if status in {"RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"}:
+    if status in ASAAS_PAID_STATUSES:
         walk.payment_status = "pago"
         if walk.status in ["pendente", "convite_enviado"]:
             walk.status = "pagamento_confirmado"
@@ -1052,31 +1592,56 @@ get_mercadopago_payment = get_asaas_payment
 validate_mp_webhook_signature = lambda request, payment_id=None: validate_asaas_webhook_token(request)
 apply_mp_payment_to_walk = apply_asaas_payment_to_walk
 
-def walk_to_dict(w: WalkRequest):
+def walk_to_dict(w: WalkRequest, context: str = "admin"):
     now = datetime.utcnow()
     seconds_left = max(0, int((w.expires_at - now).total_seconds())) if w.expires_at else 0
-    return {
+    context = (context or "walker").strip().lower()
+    payload = {
         "id": w.id, "client_id": w.client_id, "walker_id": w.walker_id, "pet_id": w.pet_id,
         "client": w.client.full_name if w.client else "", "walker": w.walker.full_name if w.walker else "Aguardando",
         "pet": w.pet.name if w.pet else "", "address": w.address,
         "pickup_lat": w.pickup_lat, "pickup_lng": w.pickup_lng, "walker_lat": w.walker_lat, "walker_lng": w.walker_lng,
         "duration_minutes": w.duration_minutes, "dogs_count": w.dogs_count,
         "estimated_price": w.estimated_price, "distance_km": w.distance_km,
-        "status": w.status, "payment_status": w.payment_status, "pix_code": w.pix_code,
-        "mp_payment_id": w.mp_payment_id, "mp_status": w.mp_status, "mp_status_detail": w.mp_status_detail,
-        "mp_qr_code": w.mp_qr_code, "mp_qr_code_base64": w.mp_qr_code_base64, "mp_ticket_url": w.mp_ticket_url,
-        "payout_status": getattr(w, "payout_status", "") or "aguardando",
-        "payout_transfer_id": getattr(w, "payout_transfer_id", "") or "",
-        "payout_amount": getattr(w, "payout_amount", 0) or 0,
-        "payout_error": getattr(w, "payout_error", "") or "",
-        "notes": w.notes, "seconds_left": seconds_left,
+        "status": w.status, "payment_status": w.payment_status,
+        "mp_status": w.mp_status,
+        "seconds_left": seconds_left,
         "expires_at": w.expires_at.isoformat() if w.expires_at else None,
         "started_at": w.started_at.isoformat() if w.started_at else None,
         "finished_at": w.finished_at.isoformat() if w.finished_at else None,
         "created_at": w.created_at.isoformat(),
     }
+    if context in {"client", "admin"}:
+        payload.update({
+            "pix_code": w.pix_code,
+            "mp_status_detail": w.mp_status_detail,
+            "mp_qr_code": w.mp_qr_code,
+            "mp_qr_code_base64": w.mp_qr_code_base64,
+            "mp_ticket_url": w.mp_ticket_url,
+        })
+    if context == "admin":
+        payload.update({
+            "mp_payment_id": w.mp_payment_id,
+            "payout_status": getattr(w, "payout_status", "") or "aguardando",
+            "payout_transfer_id": getattr(w, "payout_transfer_id", "") or "",
+            "payout_amount": getattr(w, "payout_amount", 0) or 0,
+            "payout_error": getattr(w, "payout_error", "") or "",
+            "notes": w.notes,
+        })
+    return payload
+
+
+def walk_context_for_user(w: WalkRequest, user: User) -> str:
+    if user.role == "admin":
+        return "admin"
+    if user.id == w.client_id:
+        return "client"
+    return "walker"
 
 def seed_data():
+    if IS_PRODUCTION:
+        return
+
     db = SessionLocal()
     try:
         seed_users = [
@@ -1089,10 +1654,9 @@ def seed_data():
         for data in seed_users:
             user = db.query(User).filter(User.email == data["email"]).first()
             if not user:
-                user = User(**data, password_hash=hash_password("123456"))
+                user = User(**data, password_hash=hash_password(DEV_SEED_PASSWORD))
                 db.add(user)
             else:
-                user.password_hash = hash_password("123456")
                 for k, v in data.items():
                     if hasattr(user, k):
                         setattr(user, k, v)
@@ -1117,259 +1681,6 @@ def seed_data():
         db.close()
 
 
-def run_lightweight_migrations():
-    """Corrige banco antigo sem precisar de Shell no Render Free.
-
-    Importante:
-    - NÃO apaga usuários, pets ou pedidos.
-    - Mantém compatibilidade com banco antigo do Render.
-    - Remove NOT NULL legado em colunas que não são mais usadas pelo código atual,
-      evitando erro 500 / {} na criação do convite.
-    """
-    Base.metadata.create_all(bind=engine)
-
-    with engine.begin() as conn:
-        if engine.dialect.name != "postgresql":
-            return
-
-        def safe(sql: str, label: str = ""):
-            try:
-                conn.execute(text(sql))
-            except Exception as e:
-                print(f"[MIGRATION WARNING] {label or sql}:", e)
-
-        for old_col in ["password", "online"]:
-            safe(f"ALTER TABLE users DROP COLUMN IF EXISTS {old_col}", f"drop old users.{old_col}")
-
-        user_columns_sql = [
-            ("password_hash", "VARCHAR(255)"),
-            ("phone", "VARCHAR(30) DEFAULT ''"),
-            ("photo", "TEXT DEFAULT ''"),
-            ("document", "VARCHAR(40) DEFAULT ''"),
-            ("pix_key_type", "VARCHAR(30) DEFAULT ''"),
-            ("pix_key", "VARCHAR(180) DEFAULT ''"),
-            ("pix_holder_name", "VARCHAR(160) DEFAULT ''"),
-            ("pix_holder_document", "VARCHAR(40) DEFAULT ''"),
-            ("address", "TEXT DEFAULT ''"),
-            ("neighborhood", "VARCHAR(120) DEFAULT ''"),
-            ("city", "VARCHAR(120) DEFAULT ''"),
-            ("zip_code", "VARCHAR(20) DEFAULT ''"),
-            ("street", "VARCHAR(160) DEFAULT ''"),
-            ("number", "VARCHAR(30) DEFAULT ''"),
-            ("complement", "VARCHAR(120) DEFAULT ''"),
-            ("state", "VARCHAR(60) DEFAULT 'RJ'"),
-            ("lat", "DOUBLE PRECISION DEFAULT -22.5884"),
-            ("lng", "DOUBLE PRECISION DEFAULT -43.1847"),
-            ("rating", "DOUBLE PRECISION DEFAULT 5"),
-            ("available", "BOOLEAN DEFAULT TRUE"),
-            ("bio", "TEXT DEFAULT ''"),
-            ("active", "BOOLEAN DEFAULT TRUE"),
-            ("email_verified", "BOOLEAN DEFAULT TRUE"),
-            ("phone_verified", "BOOLEAN DEFAULT TRUE"),
-            ("verification_code_hash", "VARCHAR(255) DEFAULT ''"),
-            ("verification_expires_at", "TIMESTAMP NULL"),
-            ("verified_at", "TIMESTAMP NULL"),
-            ("accepted_terms", "BOOLEAN DEFAULT FALSE"),
-            ("accepted_terms_at", "TIMESTAMP NULL"),
-            ("terms_version", "VARCHAR(20) DEFAULT ''"),
-            ("accepted_terms_ip", "VARCHAR(80) DEFAULT ''"),
-            ("accepted_terms_user_agent", "TEXT DEFAULT ''"),
-            ("client_terms_accepted", "BOOLEAN DEFAULT FALSE"),
-            ("client_terms_accepted_at", "TIMESTAMP NULL"),
-            ("client_terms_version", "VARCHAR(20) DEFAULT ''"),
-            ("client_terms_ip", "VARCHAR(80) DEFAULT ''"),
-            ("client_terms_user_agent", "TEXT DEFAULT ''"),
-            ("created_at", "TIMESTAMP DEFAULT NOW()"),
-        ]
-
-        for col, ddl in user_columns_sql:
-            safe(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}", f"add users.{col}")
-
-        for col in ["available", "active", "email_verified", "phone_verified"]:
-            safe(f"ALTER TABLE users ALTER COLUMN {col} SET DEFAULT TRUE", f"default users.{col}")
-            safe(f"UPDATE users SET {col}=TRUE WHERE {col} IS NULL", f"normalize users.{col}")
-            safe(f"ALTER TABLE users ALTER COLUMN {col} SET NOT NULL", f"not null users.{col}")
-
-        safe("ALTER TABLE users ALTER COLUMN accepted_terms SET DEFAULT FALSE", "default users.accepted_terms")
-        safe("UPDATE users SET accepted_terms=FALSE WHERE accepted_terms IS NULL", "normalize users.accepted_terms")
-        safe("ALTER TABLE users ALTER COLUMN accepted_terms SET NOT NULL", "not null users.accepted_terms")
-        safe("UPDATE users SET terms_version='' WHERE terms_version IS NULL", "normalize users.terms_version")
-        safe("ALTER TABLE users ALTER COLUMN terms_version SET DEFAULT ''", "default users.terms_version")
-        safe("ALTER TABLE users ALTER COLUMN terms_version SET NOT NULL", "not null users.terms_version")
-        safe("ALTER TABLE users ALTER COLUMN client_terms_accepted SET DEFAULT FALSE", "default users.client_terms_accepted")
-        safe("UPDATE users SET client_terms_accepted=FALSE WHERE client_terms_accepted IS NULL", "normalize users.client_terms_accepted")
-        safe("ALTER TABLE users ALTER COLUMN client_terms_accepted SET NOT NULL", "not null users.client_terms_accepted")
-        safe("UPDATE users SET client_terms_version='' WHERE client_terms_version IS NULL", "normalize users.client_terms_version")
-        safe("ALTER TABLE users ALTER COLUMN client_terms_version SET DEFAULT ''", "default users.client_terms_version")
-        safe("ALTER TABLE users ALTER COLUMN client_terms_version SET NOT NULL", "not null users.client_terms_version")
-
-        safe("UPDATE users SET password_hash='sha256$legacy$invalid' WHERE password_hash IS NULL", "normalize users.password_hash")
-        safe("ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL", "not null users.password_hash")
-
-        pet_columns_sql = [
-            ("species", "VARCHAR(60) DEFAULT 'Cachorro'"),
-            ("breed", "VARCHAR(100) DEFAULT ''"),
-            ("size", "VARCHAR(50) DEFAULT 'Médio'"),
-            ("age", "VARCHAR(50) DEFAULT ''"),
-            ("photo", "TEXT DEFAULT ''"),
-            ("notes", "TEXT DEFAULT ''"),
-            ("dog_count", "INTEGER DEFAULT 1"),
-        ]
-
-        for col, ddl in pet_columns_sql:
-            safe(f"ALTER TABLE pets ADD COLUMN IF NOT EXISTS {col} {ddl}", f"add pets.{col}")
-
-        safe("ALTER TABLE pets ALTER COLUMN dog_count SET DEFAULT 1", "default pets.dog_count")
-        safe("UPDATE pets SET dog_count=1 WHERE dog_count IS NULL", "normalize pets.dog_count")
-        safe("ALTER TABLE pets ALTER COLUMN dog_count SET NOT NULL", "not null pets.dog_count")
-
-        walk_columns_sql = [
-            ("client_id", "INTEGER"),
-            ("walker_id", "INTEGER"),
-            ("pet_id", "INTEGER"),
-            ("address", "TEXT DEFAULT ''"),
-            ("pickup_lat", "DOUBLE PRECISION DEFAULT -22.5884"),
-            ("pickup_lng", "DOUBLE PRECISION DEFAULT -43.1847"),
-            ("walker_lat", "DOUBLE PRECISION DEFAULT -22.5900"),
-            ("walker_lng", "DOUBLE PRECISION DEFAULT -43.1810"),
-            ("duration_minutes", "INTEGER DEFAULT 30"),
-            ("dogs_count", "INTEGER DEFAULT 1"),
-            ("estimated_price", "DOUBLE PRECISION DEFAULT 25"),
-            ("distance_km", "DOUBLE PRECISION DEFAULT 1.8"),
-            ("status", "VARCHAR(40) DEFAULT 'pendente'"),
-            ("payment_status", "VARCHAR(40) DEFAULT 'aguardando'"),
-            ("pix_code", "TEXT DEFAULT ''"),
-            ("mp_payment_id", "VARCHAR(80) DEFAULT ''"),
-            ("mp_status", "VARCHAR(60) DEFAULT ''"),
-            ("mp_status_detail", "VARCHAR(120) DEFAULT ''"),
-            ("mp_qr_code", "TEXT DEFAULT ''"),
-            ("mp_qr_code_base64", "TEXT DEFAULT ''"),
-            ("mp_ticket_url", "TEXT DEFAULT ''"),
-            ("payout_status", "VARCHAR(40) DEFAULT 'aguardando'"),
-            ("payout_transfer_id", "VARCHAR(120) DEFAULT ''"),
-            ("payout_amount", "DOUBLE PRECISION DEFAULT 0"),
-            ("payout_error", "TEXT DEFAULT ''"),
-            ("notes", "TEXT DEFAULT ''"),
-            ("expires_at", "TIMESTAMP NULL"),
-            ("started_at", "TIMESTAMP NULL"),
-            ("finished_at", "TIMESTAMP NULL"),
-            ("created_at", "TIMESTAMP DEFAULT NOW()"),
-        ]
-
-        for col, ddl in walk_columns_sql:
-            safe(f"ALTER TABLE walk_requests ADD COLUMN IF NOT EXISTS {col} {ddl}", f"add walk_requests.{col}")
-
-        # Normaliza defaults das colunas atuais.
-        walk_defaults_sql = [
-            ("address", "''"),
-            ("pickup_lat", "-22.5884"),
-            ("pickup_lng", "-43.1847"),
-            ("walker_lat", "-22.5900"),
-            ("walker_lng", "-43.1810"),
-            ("duration_minutes", "30"),
-            ("dogs_count", "1"),
-            ("estimated_price", "25"),
-            ("distance_km", "1.8"),
-            ("status", "'pendente'"),
-            ("payment_status", "'aguardando'"),
-            ("pix_code", "''"),
-            ("mp_payment_id", "''"),
-            ("mp_status", "''"),
-            ("mp_status_detail", "''"),
-            ("mp_qr_code", "''"),
-            ("mp_qr_code_base64", "''"),
-            ("mp_ticket_url", "''"),
-            ("payout_status", "'aguardando'"),
-            ("payout_transfer_id", "''"),
-            ("payout_amount", "0"),
-            ("payout_error", "''"),
-            ("notes", "''"),
-            ("created_at", "NOW()"),
-        ]
-
-        for col, default in walk_defaults_sql:
-            safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}", f"default walk_requests.{col}")
-
-        # Backfill de dados atuais e antigos.
-        safe("UPDATE walk_requests SET address='' WHERE address IS NULL", "normalize walk_requests.address")
-        safe("UPDATE walk_requests SET pickup_lat=-22.5884 WHERE pickup_lat IS NULL", "normalize walk_requests.pickup_lat")
-        safe("UPDATE walk_requests SET pickup_lng=-43.1847 WHERE pickup_lng IS NULL", "normalize walk_requests.pickup_lng")
-        safe("UPDATE walk_requests SET walker_lat=-22.5900 WHERE walker_lat IS NULL", "normalize walk_requests.walker_lat")
-        safe("UPDATE walk_requests SET walker_lng=-43.1810 WHERE walker_lng IS NULL", "normalize walk_requests.walker_lng")
-        safe("UPDATE walk_requests SET duration_minutes=30 WHERE duration_minutes IS NULL", "normalize walk_requests.duration_minutes")
-        safe("UPDATE walk_requests SET dogs_count=1 WHERE dogs_count IS NULL", "normalize walk_requests.dogs_count")
-        safe("UPDATE walk_requests SET estimated_price=25 WHERE estimated_price IS NULL", "normalize walk_requests.estimated_price")
-        safe("UPDATE walk_requests SET distance_km=1.8 WHERE distance_km IS NULL", "normalize walk_requests.distance_km")
-        safe("UPDATE walk_requests SET status='pendente' WHERE status IS NULL", "normalize walk_requests.status")
-        safe("UPDATE walk_requests SET payment_status='aguardando' WHERE payment_status IS NULL", "normalize walk_requests.payment_status")
-        safe("UPDATE walk_requests SET pix_code='' WHERE pix_code IS NULL", "normalize walk_requests.pix_code")
-        safe("UPDATE walk_requests SET mp_payment_id='' WHERE mp_payment_id IS NULL", "normalize walk_requests.mp_payment_id")
-        safe("UPDATE walk_requests SET mp_status='' WHERE mp_status IS NULL", "normalize walk_requests.mp_status")
-        safe("UPDATE walk_requests SET mp_status_detail='' WHERE mp_status_detail IS NULL", "normalize walk_requests.mp_status_detail")
-        safe("UPDATE walk_requests SET mp_qr_code='' WHERE mp_qr_code IS NULL", "normalize walk_requests.mp_qr_code")
-        safe("UPDATE walk_requests SET mp_qr_code_base64='' WHERE mp_qr_code_base64 IS NULL", "normalize walk_requests.mp_qr_code_base64")
-        safe("UPDATE walk_requests SET mp_ticket_url='' WHERE mp_ticket_url IS NULL", "normalize walk_requests.mp_ticket_url")
-        safe("UPDATE walk_requests SET payout_status='aguardando' WHERE payout_status IS NULL", "normalize walk_requests.payout_status")
-        safe("UPDATE walk_requests SET payout_transfer_id='' WHERE payout_transfer_id IS NULL", "normalize walk_requests.payout_transfer_id")
-        safe("UPDATE walk_requests SET payout_amount=0 WHERE payout_amount IS NULL", "normalize walk_requests.payout_amount")
-        safe("UPDATE walk_requests SET payout_error='' WHERE payout_error IS NULL", "normalize walk_requests.payout_error")
-        safe("UPDATE walk_requests SET notes='' WHERE notes IS NULL", "normalize walk_requests.notes")
-        safe("UPDATE walk_requests SET created_at=NOW() WHERE created_at IS NULL", "normalize walk_requests.created_at")
-
-        # Compatibilidade com banco legacy: se existirem colunas antigas que o SQLAlchemy não usa mais,
-        # elas não podem continuar NOT NULL sem default, senão todo INSERT novo quebra.
-        rows = conn.execute(text("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = 'walk_requests'
-              AND is_nullable = 'NO'
-              AND column_name <> 'id'
-        """)).fetchall()
-
-        for row in rows:
-            col = row[0]
-            if not col.replace('_', '').isalnum():
-                continue
-            safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} DROP NOT NULL", f"drop not null walk_requests.{col}")
-
-        # Se algumas colunas legacy específicas existirem, deixamos defaults úteis.
-        legacy_defaults = {
-            "pickup_address": "''",
-            "pickup_time": "NOW()",
-            "price": "0",
-            "total_price": "0",
-            "client_name": "''",
-            "walker_name": "''",
-            "dog_name": "''",
-            "dog_size": "''",
-            "request_status": "'convite_enviado'",
-        }
-        existing_cols = [r[0] for r in conn.execute(text("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = 'walk_requests'
-        """)).fetchall()]
-        for col, default in legacy_defaults.items():
-            if col in existing_cols:
-                safe(f"ALTER TABLE walk_requests ALTER COLUMN {col} SET DEFAULT {default}", f"default legacy walk_requests.{col}")
-
-        safe("ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(30) DEFAULT 'text'", "add messages.message_type")
-        safe("ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP NULL", "add messages.read_at")
-        safe("UPDATE messages SET message_type='text' WHERE message_type IS NULL", "normalize messages.message_type")
-        safe("ALTER TABLE messages ALTER COLUMN message_type SET DEFAULT 'text'", "default messages.message_type")
-        safe("CREATE INDEX IF NOT EXISTS ix_messages_request_created ON messages (request_id, created_at)", "index messages request/created")
-
-        safe("CREATE INDEX IF NOT EXISTS ix_notifications_user_read ON notifications (user_id, is_read)", "index notifications user/read")
-        safe("CREATE INDEX IF NOT EXISTS ix_notifications_created_at ON notifications (created_at)", "index notifications created_at")
-        safe("CREATE INDEX IF NOT EXISTS ix_ratings_walk_rater ON ratings (walk_id, rater_id)", "index ratings walk/rater")
-        safe("CREATE INDEX IF NOT EXISTS ix_ratings_target ON ratings (target_id)", "index ratings target")
-        safe("CREATE INDEX IF NOT EXISTS ix_event_logs_walk_created ON event_logs (walk_id, created_at)", "index event_logs walk/created")
-        safe("CREATE INDEX IF NOT EXISTS ix_event_logs_type ON event_logs (event_type)", "index event_logs type")
-
-
-run_lightweight_migrations()
 seed_data()
 seed_pricing_settings()
 seed_payout_settings()
@@ -1377,7 +1688,16 @@ seed_payout_settings()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    user_id = read_session_user_id(websocket.cookies.get(SESSION_COOKIE_NAME, ""))
+    db = SessionLocal()
+    try:
+        user = db.get(User, user_id) if user_id else None
+        if not user or not user.active:
+            await websocket.close(code=1008)
+            return
+        await manager.connect(websocket, user.id)
+    finally:
+        db.close()
     try:
         while True:
             raw = await websocket.receive_text()
@@ -1386,13 +1706,19 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception:
                 payload = {"type": "ping"}
             if isinstance(payload, dict) and payload.get("type") == "typing":
-                await manager.broadcast({
-                    "type": "typing",
-                    "request_id": payload.get("request_id"),
-                    "sender_id": payload.get("sender_id"),
-                    "sender_role": payload.get("sender_role", ""),
-                    "is_typing": bool(payload.get("is_typing", True)),
-                })
+                typing_db = SessionLocal()
+                try:
+                    walk = typing_db.get(WalkRequest, int(payload.get("request_id") or 0))
+                    if walk and user.id in {walk.client_id, walk.walker_id}:
+                        await send_walk_event({
+                            "type": "typing",
+                            "request_id": walk.id,
+                            "sender_id": user.id,
+                            "sender_role": user.role,
+                            "is_typing": bool(payload.get("is_typing", True)),
+                        }, typing_db, walk, include_admin=False)
+                finally:
+                    typing_db.close()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -1401,10 +1727,37 @@ def health():
     return {"ok": True, "app": "AmigoPet V6 Uber", "version": "6.0.0"}
 
 @app.post("/api/auth/register")
-def register(data: RegisterIn, db: Session = Depends(get_db)):
+def register(data: RegisterIn, request: Request, db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "auth_register_ip", 12, 60 * 60)
+    enforce_rate_limit(request, "auth_register_email", 3, 60 * 60, data.email)
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
-    user = User(**pydantic_dump(data, exclude={"password"}), password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
+    user = User(**pydantic_dump(data, exclude={"password", "role"}), role="client", password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    response = JSONResponse(user_to_dict(user))
+    attach_session_cookie(response, user.id)
+    return response
+
+@app.post("/api/auth/register/walker")
+def register_walker(data: RegisterIn, request: Request, db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "auth_register_walker_ip", 8, 60 * 60)
+    enforce_rate_limit(request, "auth_register_walker_email", 3, 60 * 60, data.email)
+    if db.query(User).filter(User.email == data.email).first():
+        raise HTTPException(status_code=400, detail="E-mail jÃ¡ cadastrado")
+    payload = pydantic_dump(data, exclude={"password", "role"})
+    required = [
+        "full_name", "email", "phone", "photo", "document",
+        "pix_key_type", "pix_key", "pix_holder_name", "pix_holder_document",
+        "neighborhood", "city",
+    ]
+    for field in required:
+        if not str(payload.get(field, "")).strip():
+            raise HTTPException(status_code=400, detail="Preencha todos os dados obrigatÃ³rios do passeador")
+    if len(data.password or "") < 6:
+        raise HTTPException(status_code=400, detail="A senha deve ter no mÃ­nimo 6 caracteres")
+    user = User(**payload, role="walker", password_hash=hash_password(data.password), active=True, email_verified=True, phone_verified=True)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -1413,10 +1766,16 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     return response
 
 @app.post("/api/auth/login")
-def login(data: LoginIn, db: Session = Depends(get_db)):
+def login(data: LoginIn, request: Request, db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "auth_login_ip", 40, 15 * 60)
+    enforce_rate_limit(request, "auth_login_email", 12, 15 * 60, data.email)
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(data.password)
+        db.commit()
+        db.refresh(user)
     response = JSONResponse(user_to_dict(user))
     attach_session_cookie(response, user.id)
     return response
@@ -1424,12 +1783,13 @@ def login(data: LoginIn, db: Session = Depends(get_db)):
 
 
 @app.get("/api/auth/google/login")
-def google_login():
-    return google_login_role("client")
+def google_login(request: Request):
+    return google_login_role("client", request)
 
 
 @app.get("/api/auth/google/login/{role}")
-def google_login_role(role: str):
+def google_login_role(role: str, request: Request):
+    enforce_rate_limit(request, "auth_google_login_ip", 30, 15 * 60)
     role = (role or "client").strip().lower()
     if role not in ["client", "walker"]:
         role = "client"
@@ -1450,7 +1810,8 @@ def google_login_role(role: str):
 
 
 @app.get("/api/auth/google/callback")
-def google_callback(code: str = "", error: str = "", state: str = "client", db: Session = Depends(get_db)):
+def google_callback(request: Request, code: str = "", error: str = "", state: str = "client", db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "auth_google_callback_ip", 60, 15 * 60)
     role = (state or "client").strip().lower()
     if role not in ["client", "walker"]:
         role = "client"
@@ -1527,7 +1888,7 @@ def google_callback(code: str = "", error: str = "", state: str = "client", db: 
         db.refresh(user)
 
         redirect_base = "/passeador" if user.role == "walker" else "/"
-        response = RedirectResponse(f"{redirect_base}?google_user_id={user.id}")
+        response = RedirectResponse(f"{redirect_base}?google_login=success")
         attach_session_cookie(response, user.id)
         return response
     except Exception as e:
@@ -1535,33 +1896,30 @@ def google_callback(code: str = "", error: str = "", state: str = "client", db: 
         return RedirectResponse(f"{redirect_base}?google_error=server_error")
 
 
-@app.get("/api/auth/google/session/{user_id}")
-def google_session(user_id: int, db: Session = Depends(get_db)):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário Google não encontrado")
-    response = JSONResponse(user_to_dict(user))
-    attach_session_cookie(response, user.id)
-    return response
-
-
 @app.get("/api/auth/session/current")
 def current_session(request: Request, db: Session = Depends(get_db)):
     user = session_user_from_request(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Sessão expirada ou não encontrada")
-    return user_to_dict(user)
+    response = JSONResponse(user_to_dict(user))
+    attach_csrf_cookie(response, user.id)
+    return response
 
 
 @app.post("/api/auth/logout")
-def auth_logout():
+def auth_logout(request: Request, db: Session = Depends(get_db)):
+    user = session_user_from_request(request, db)
+    if user:
+        validate_csrf_request(request, user.id)
     response = JSONResponse({"ok": True})
     clear_session_cookie(response)
     return response
 
 
 @app.post("/api/auth/request-password-reset")
-def request_password_reset(data: PasswordResetRequestIn, db: Session = Depends(get_db)):
+def request_password_reset(data: PasswordResetRequestIn, request: Request, db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "password_reset_request_ip", 10, 60 * 60)
+    enforce_rate_limit(request, "password_reset_request_email", 3, 60 * 60, data.email)
     user = db.query(User).filter(User.email == data.email).first()
 
     # Por segurança, não revelamos se o e-mail existe ou não.
@@ -1607,7 +1965,9 @@ Powered by ROVIX
     return generic_response
 
 @app.post("/api/auth/reset-password")
-def reset_password(data: PasswordResetConfirmIn, db: Session = Depends(get_db)):
+def reset_password(data: PasswordResetConfirmIn, request: Request, db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "password_reset_confirm_ip", 20, 60 * 60)
+    enforce_rate_limit(request, "password_reset_confirm_email", 6, 60 * 60, data.email)
     user = db.query(User).filter(User.email == data.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="E-mail não encontrado")
@@ -1632,17 +1992,27 @@ def reset_password(data: PasswordResetConfirmIn, db: Session = Depends(get_db)):
     return {"ok": True, "message": "Senha alterada com sucesso. Faça login com a nova senha."}
 
 @app.get("/api/users")
-def users(role: Optional[str] = None, db: Session = Depends(get_db)):
+def users(request: Request, role: Optional[str] = None, db: Session = Depends(get_db)):
+    session_user = session_user_from_request(request, db)
     q = db.query(User)
-    if role:
-        q = q.filter(User.role == role)
-    return [user_to_dict(u) for u in q.order_by(User.rating.desc(), User.id.asc()).all()]
+    if session_user and session_user.role == "admin":
+        if role:
+            q = q.filter(User.role == role)
+        return [admin_user_list_to_dict(u) for u in q.order_by(User.rating.desc(), User.id.asc()).all()]
+
+    if role not in {None, "walker"}:
+        raise HTTPException(status_code=403, detail="A listagem pública está disponível apenas para passeadores")
+    q = q.filter(User.role == "walker", User.active.is_(True))
+    return [public_walker_to_dict(u) for u in q.order_by(User.rating.desc(), User.id.asc()).all()]
 
 @app.put("/api/users/{user_id}")
-def update_user(user_id: int, data: ClientUpdateIn, db: Session = Depends(get_db)):
+def update_user(user_id: int, data: ClientUpdateIn, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "profile_update_user", 30, 15 * 60, current_user.id)
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    if current_user.role != "admin" and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este perfil")
     if user.role != "client":
         raise HTTPException(status_code=400, detail="Esta edição é exclusiva para clientes")
 
@@ -1675,7 +2045,10 @@ def update_user(user_id: int, data: ClientUpdateIn, db: Session = Depends(get_db
 
 
 @app.post("/api/clients/{user_id}/accept-terms")
-def accept_client_terms(user_id: int, request: Request, db: Session = Depends(get_db)):
+def accept_client_terms(user_id: int, request: Request, current_user: User = Depends(get_current_client), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "terms_accept_user", 20, 15 * 60, current_user.id)
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este perfil")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
@@ -1693,7 +2066,10 @@ def accept_client_terms(user_id: int, request: Request, db: Session = Depends(ge
 
 
 @app.put("/api/walkers/{user_id}/profile")
-def update_walker_profile(user_id: int, data: WalkerUpdateIn, db: Session = Depends(get_db)):
+def update_walker_profile(user_id: int, data: WalkerUpdateIn, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "profile_update_user", 30, 15 * 60, current_user.id)
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este perfil")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Passeador não encontrado")
@@ -1722,7 +2098,10 @@ def update_walker_profile(user_id: int, data: WalkerUpdateIn, db: Session = Depe
 
 
 @app.post("/api/walkers/{user_id}/accept-terms")
-def accept_walker_terms(user_id: int, request: Request, db: Session = Depends(get_db)):
+def accept_walker_terms(user_id: int, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "terms_accept_user", 20, 15 * 60, current_user.id)
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este perfil")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Passeador não encontrado")
@@ -1740,7 +2119,10 @@ def accept_walker_terms(user_id: int, request: Request, db: Session = Depends(ge
 
 
 @app.put("/api/walkers/{user_id}/availability")
-async def update_walker_availability(user_id: int, data: AvailabilityIn, db: Session = Depends(get_db)):
+async def update_walker_availability(user_id: int, data: AvailabilityIn, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "availability_user", 120, 15 * 60, current_user.id)
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este perfil")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Passeador não encontrado")
@@ -1751,22 +2133,32 @@ async def update_walker_availability(user_id: int, data: AvailabilityIn, db: Ses
     db.commit()
     db.refresh(user)
 
-    payload = user_to_dict(user)
-    await manager.broadcast({
+    payload = public_walker_to_dict(user)
+    await manager.broadcast_authenticated({
         "type": "walker_availability_changed",
         "walker": payload
     })
     return payload
 
 @app.get("/api/pets")
-def pets(owner_id: Optional[int] = None, db: Session = Depends(get_db)):
+def pets(owner_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     q = db.query(Pet)
-    if owner_id:
-        q = q.filter(Pet.owner_id == owner_id)
+    if current_user.role == "admin":
+        if owner_id:
+            q = q.filter(Pet.owner_id == owner_id)
+    elif current_user.role == "client":
+        if owner_id and owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Acesso negado aos pets deste cliente")
+        q = q.filter(Pet.owner_id == current_user.id)
+    else:
+        raise HTTPException(status_code=403, detail="Acesso negado aos pets")
     return [pet_to_dict(p) for p in q.order_by(Pet.id.desc()).all()]
 
 @app.post("/api/pets")
-def create_pet(data: PetIn, db: Session = Depends(get_db)):
+def create_pet(data: PetIn, request: Request, current_user: User = Depends(get_current_client), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "pet_create_user", 30, 60 * 60, current_user.id)
+    if data.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este cliente")
     if not data.photo or len(data.photo.strip()) < 10:
         raise HTTPException(status_code=400, detail="A foto do pet é obrigatória")
     owner = db.get(User, data.owner_id)
@@ -1791,7 +2183,8 @@ def get_pricing(db: Session = Depends(get_db)):
     }
 
 @app.post("/api/admin/pricing")
-def update_pricing(data: PricingIn, db: Session = Depends(get_db)):
+def update_pricing(data: PricingIn, request: Request, current_user: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "sensitive_admin_settings_user", 30, 15 * 60, current_user.id)
     values = pydantic_dump(data)
     for key in DEFAULT_PRICING.keys():
         value = float(values.get(key, DEFAULT_PRICING[key]))
@@ -1802,11 +2195,12 @@ def update_pricing(data: PricingIn, db: Session = Depends(get_db)):
     return get_pricing_config(db)
 
 @app.get("/api/admin/payout-settings")
-def get_payout_settings(db: Session = Depends(get_db)):
+def get_payout_settings(current_user: User = Depends(get_current_admin), db: Session = Depends(get_db)):
     return get_payout_config(db)
 
 @app.post("/api/admin/payout-settings")
-def update_payout_settings(data: PayoutSettingsIn, db: Session = Depends(get_db)):
+def update_payout_settings(data: PayoutSettingsIn, request: Request, current_user: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "sensitive_admin_settings_user", 30, 15 * 60, current_user.id)
     walker_percent = float(data.walker_percent or 0)
     platform_percent = float(data.platform_percent or 0)
 
@@ -1823,28 +2217,41 @@ def update_payout_settings(data: PayoutSettingsIn, db: Session = Depends(get_db)
     return get_payout_config(db)
 
 @app.get("/api/walks")
-def walks(status: Optional[str] = None, db: Session = Depends(get_db)):
+def walks(status: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     q = db.query(WalkRequest)
+    if current_user.role == "client":
+        q = q.filter(WalkRequest.client_id == current_user.id)
+    elif current_user.role == "walker":
+        q = q.filter((WalkRequest.walker_id == current_user.id) | (WalkRequest.walker_id.is_(None)))
+    elif current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Acesso negado aos passeios")
     if status:
         q = q.filter(WalkRequest.status == status)
-    return [walk_to_dict(w) for w in q.order_by(WalkRequest.id.desc()).all()]
+    return [walk_to_dict(w, walk_context_for_user(w, current_user)) for w in q.order_by(WalkRequest.id.desc()).all()]
 
 @app.get("/api/walks/{walk_id}")
-def get_walk(walk_id: int, db: Session = Depends(get_db)):
+def get_walk(walk_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
-    return walk_to_dict(walk)
+    if current_user.role != "admin" and current_user.id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Acesso negado a este passeio")
+    return walk_to_dict(walk, walk_context_for_user(walk, current_user))
 
 @app.get("/api/walks/{walk_id}/timeline")
-def get_walk_timeline(walk_id: int, db: Session = Depends(get_db)):
+def get_walk_timeline(walk_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if current_user.role != "admin" and current_user.id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Acesso negado a este passeio")
     return build_walk_timeline(db, walk)
 
 @app.post("/api/walks")
-async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
+async def create_walk(data: WalkIn, request: Request, current_user: User = Depends(get_current_client), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "walk_create_user", 12, 60 * 60, current_user.id)
+    if data.client_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este cliente")
     if not data.client_id:
         raise HTTPException(status_code=400, detail="Cliente inválido")
     if not data.address or not data.address.strip():
@@ -1915,7 +2322,7 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
         if "NotNullViolation" in msg or "violates not-null constraint" in msg:
             raise HTTPException(
                 status_code=500,
-                detail="Banco antigo com coluna obrigatória incompatível em walk_requests. O deploy precisa reiniciar para aplicar a migration automática. Erro técnico: " + msg[:700],
+                detail="Banco antigo com coluna obrigatória incompatível em walk_requests. Execute `alembic upgrade head` antes de iniciar o backend. Erro técnico: " + msg[:700],
             )
         raise HTTPException(status_code=500, detail="Erro ao criar convite: " + msg[:700])
 
@@ -1941,15 +2348,18 @@ async def create_walk(data: WalkIn, db: Session = Depends(get_db)):
         db.rollback()
         print("[NOTIFICATION WARNING] walk_created", str(notify_error))
 
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "walk_created", "walk": payload})
+    payload = walk_to_dict(walk, "client")
+    await send_walk_event({"type": "walk_created", "walk": payload}, db, walk, include_available_walkers=True)
     return payload
 
 @app.post("/api/walks/{walk_id}/accept")
-async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db)):
+async def accept_walk(walk_id: int, walker_id: int, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "walk_state_user", 60, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walker_id != current_user.id or walk.walker_id not in {None, current_user.id}:
+        raise HTTPException(status_code=403, detail="Ação exclusiva do passeador autorizado")
     if walk.status in ["finalizado", "cancelado"]:
         raise HTTPException(status_code=400, detail="Pedido já encerrado")
     if walk.payment_status != "pago":
@@ -1960,28 +2370,34 @@ async def accept_walk(walk_id: int, walker_id: int, db: Session = Depends(get_db
     add_event_log(db, "✅ Passeador aceitou", "walk_accepted", walk=walk, user_id=walker_id, actor_role="walker", details="Passeio aceito pelo passeador.")
     db.commit()
     db.refresh(walk)
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "walk_accepted", "walk": payload})
+    payload = walk_to_dict(walk, "walker")
+    await send_walk_event({"type": "walk_accepted", "walk": payload}, db, walk)
     return payload
 
 @app.post("/api/walks/{walk_id}/reject")
-async def reject_walk(walk_id: int, db: Session = Depends(get_db)):
+async def reject_walk(walk_id: int, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "walk_state_user", 60, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walk.walker_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Ação exclusiva do passeador vinculado ao passeio")
     walk.status = "recusado"
     add_event_log(db, "❌ Pedido recusado", "walk_rejected", walk=walk, user_id=walk.walker_id, actor_role="walker", details="Pedido recusado pelo passeador.")
     db.commit()
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "walk_rejected", "walk": payload})
+    payload = walk_to_dict(walk, "walker")
+    await send_walk_event({"type": "walk_rejected", "walk": payload}, db, walk)
     return payload
 
 @app.post("/api/walks/{walk_id}/pay")
-async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
+async def pay_walk(walk_id: int, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Compatível com o botão antigo: se houver Mercado Pago, verifica no gateway; se não houver, confirma manualmente."""
+    enforce_rate_limit(request, "payment_user", 30, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if current_user.role != "admin" and current_user.id != walk.client_id:
+        raise HTTPException(status_code=403, detail="Pagamento exclusivo do cliente deste passeio")
 
     changed = False
     if not walk.mp_payment_id:
@@ -2004,12 +2420,12 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(walk)
-    payload = walk_to_dict(walk)
+    payload = walk_to_dict(walk, walk_context_for_user(walk, current_user))
     if changed or walk.payment_status == "pago":
-        await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+        await send_walk_event({"type": "payment_confirmed", "walk": payload}, db, walk)
         for msg in messages:
             if msg:
-                await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
+                await send_walk_event({"type": "message", "message": message_to_dict(msg)}, db, walk, include_admin=False)
     return payload
 
 @app.post("/api/asaas/webhook")
@@ -2017,13 +2433,16 @@ async def pay_walk(walk_id: int, db: Session = Depends(get_db)):
 @app.post("/api/payments/webhook")
 async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
     """Webhook real do Asaas. Confirma automaticamente o pedido quando o PIX é pago."""
+    enforce_rate_limit(request, "payment_webhook_ip", 120, 60)
+    if not validate_mp_webhook_signature(request):
+        raise HTTPException(status_code=401, detail="Token do webhook Asaas inválido")
+
     try:
         body = await request.json()
     except Exception:
         body = {}
-
-    if not validate_mp_webhook_signature(request):
-        raise HTTPException(status_code=401, detail="Token do webhook Asaas inválido")
+    if not isinstance(body, dict):
+        body = {}
 
     topic = body.get("event") or body.get("type") or body.get("topic") or request.query_params.get("topic") or request.query_params.get("type")
     if topic and not str(topic).startswith("PAYMENT_"):
@@ -2035,20 +2454,19 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
 
     payment_id = payment_obj.get("id") or body.get("id") or request.query_params.get("id") or request.query_params.get("data.id")
     if not payment_id:
-        return {"ok": True, "ignored": True, "reason": "sem payment_id"}
+        raise HTTPException(status_code=400, detail="payment_id ausente")
+    payment_id = _asaas_str(payment_id)
 
     try:
         mp_payment = get_mercadopago_payment(str(payment_id))
     except Exception as e:
-        print("[ASAAS WEBHOOK CONSULT ERROR]", str(e))
-        mp_payment = payment_obj or {"id": payment_id, "status": "PENDING"}
+        print("[ASAAS WEBHOOK VALIDATION ERROR]", {"payment_id": payment_id, "error": type(e).__name__})
+        raise HTTPException(status_code=502, detail="Não foi possível validar pagamento no Asaas")
 
     if topic:
         mp_payment["event"] = str(topic)
-        if str(topic) in {"PAYMENT_RECEIVED", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED_IN_CASH"}:
-            mp_payment["status"] = mp_payment.get("status") or "RECEIVED"
 
-    external_reference = str(mp_payment.get("externalReference") or mp_payment.get("external_reference") or "")
+    external_reference = _asaas_external_reference(mp_payment)
     walk = None
     if external_reference.startswith("walk_"):
         try:
@@ -2060,30 +2478,35 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
     if not walk:
         return {"ok": True, "ignored": True, "reason": "pedido não encontrado"}
 
+    validate_asaas_payment_for_walk(walk, mp_payment, payment_id, payment_obj)
+    was_paid = walk.payment_status == "pago"
     changed = apply_mp_payment_to_walk(walk, mp_payment)
     messages = []
-    if changed or walk.payment_status == "pago":
+    if changed and walk.payment_status == "pago" and not was_paid:
         messages.append(add_walk_system_message(db, walk, "✅ Pagamento confirmado com sucesso. O pedido foi liberado para o passeador aceitar."))
         add_event_log(db, "✅ Pagamento confirmado", "payment_confirmed", walk=walk, user_id=walk.client_id, actor_role="system", details="Pagamento confirmado pelo Asaas/webhook.")
 
     db.commit()
     db.refresh(walk)
-    payload = walk_to_dict(walk)
-    if changed or walk.payment_status == "pago":
-        await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+    payload = walk_to_dict(walk, "admin")
+    if changed and walk.payment_status == "pago":
+        await send_walk_event({"type": "payment_confirmed", "walk": payload}, db, walk)
         for msg in messages:
             if msg:
-                await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
-    else:
-        await manager.broadcast({"type": "payment_updated", "walk": payload})
-    return {"ok": True, "walk_id": walk.id, "payment_status": walk.payment_status, "mp_status": walk.mp_status}
+                await send_walk_event({"type": "message", "message": message_to_dict(msg)}, db, walk, include_admin=False)
+    elif changed:
+        await send_walk_event({"type": "payment_updated", "walk": payload}, db, walk)
+    return {"ok": True, "walk_id": walk.id, "payment_status": walk.payment_status, "mp_status": walk.mp_status, "idempotent": not changed}
 
 @app.post("/api/payments/asaas/sync/{walk_id}")
 @app.post("/api/payments/mercadopago/sync/{walk_id}")
-async def sync_asaas_payment(walk_id: int, db: Session = Depends(get_db)):
+async def sync_asaas_payment(walk_id: int, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "payment_sync_user", 30, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if current_user.role != "admin" and current_user.id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Acesso restrito aos participantes do passeio")
     if not walk.mp_payment_id:
         raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Asaas vinculado")
     mp_payment = get_mercadopago_payment(walk.mp_payment_id)
@@ -2095,36 +2518,44 @@ async def sync_asaas_payment(walk_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(walk)
-    payload = walk_to_dict(walk)
+    payload = walk_to_dict(walk, walk_context_for_user(walk, current_user))
     if changed or walk.payment_status == "pago":
-        await manager.broadcast({"type": "payment_confirmed", "walk": payload})
+        await send_walk_event({"type": "payment_confirmed", "walk": payload}, db, walk)
         for msg in messages:
             if msg:
-                await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
+                await send_walk_event({"type": "message", "message": message_to_dict(msg)}, db, walk, include_admin=False)
     return payload
 
 @app.post("/api/walks/{walk_id}/start")
-async def start_walk(walk_id: int, db: Session = Depends(get_db)):
+async def start_walk(walk_id: int, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "walk_state_user", 60, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walk.walker_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Ação exclusiva do passeador vinculado ao passeio")
     if walk.payment_status != "pago":
         raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Asaas")
     walk.status = "em_andamento"
     walk.started_at = datetime.utcnow()
     add_event_log(db, "🚶 Passeio iniciado", "walk_started", walk=walk, user_id=walk.walker_id, actor_role="walker", details="Passeador iniciou o passeio.")
     db.commit()
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "walk_started", "walk": payload})
+    payload = walk_to_dict(walk, "walker")
+    await send_walk_event({"type": "walk_started", "walk": payload}, db, walk)
     return payload
 
 @app.post("/api/walks/{walk_id}/finish")
-async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
+async def finish_walk(walk_id: int, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "walk_state_user", 60, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walk.walker_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Ação exclusiva do passeador vinculado ao passeio")
     if walk.payment_status != "pago":
         raise HTTPException(status_code=402, detail="Pagamento PIX ainda não confirmado pelo Asaas")
+    if walk.status == "finalizado":
+        return walk_to_dict(walk, "walker")
 
     walk.status = "finalizado"
     walk.finished_at = datetime.utcnow()
@@ -2135,7 +2566,7 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
         walk.payout_status = "pendente"
         walk.payout_error = "Passeador não vinculado ao passeio"
         messages.append(add_walk_system_message(db, walk, "⚠️ Passeio finalizado, mas o repasse ao passeador ficou pendente porque o passeador não foi identificado."))
-    elif (getattr(walk, "payout_status", "") or "") == "pago" and getattr(walk, "payout_transfer_id", ""):
+    elif getattr(walk, "payout_transfer_id", ""):
         messages.append(add_walk_system_message(db, walk, "💵 Repasse do passeador já havia sido processado anteriormente."))
     else:
         amount = calculate_walker_payout_amount(db, walk)
@@ -2161,18 +2592,21 @@ async def finish_walk(walk_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(walk)
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "walk_finished", "walk": payload})
+    payload = walk_to_dict(walk, "walker")
+    await send_walk_event({"type": "walk_finished", "walk": payload}, db, walk)
     for msg in messages:
         if msg:
-            await manager.broadcast({"type": "message", "message": message_to_dict(msg)})
+            await send_walk_event({"type": "message", "message": message_to_dict(msg)}, db, walk, include_admin=False)
     return payload
 
 @app.post("/api/walks/{walk_id}/location")
-async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(get_db)):
+async def update_location(walk_id: int, data: LocationIn, request: Request, current_user: User = Depends(get_current_walker), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "walk_location_user", 180, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada")
+    if walk.walker_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Ação exclusiva do passeador vinculado ao passeio")
     walk.walker_lat = data.lat
     walk.walker_lng = data.lng
     try:
@@ -2182,17 +2616,20 @@ async def update_location(walk_id: int, data: LocationIn, db: Session = Depends(
     except Exception as e:
         print("[EVENT LOG WARNING] location_updated", str(e))
     db.commit()
-    payload = walk_to_dict(walk)
-    await manager.broadcast({"type": "location_updated", "walk": payload})
+    payload = walk_to_dict(walk, "walker")
+    await send_walk_event({"type": "location_updated", "walk": payload}, db, walk)
     return payload
 
 @app.post("/api/walks/{walk_id}/ratings")
-async def rate_walk_user(walk_id: int, data: RatingIn, db: Session = Depends(get_db)):
+async def rate_walk_user(walk_id: int, data: RatingIn, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "rating_user", 20, 60 * 60, current_user.id)
     walk = db.get(WalkRequest, walk_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Passeio não encontrado")
     if walk.status != "finalizado":
         raise HTTPException(status_code=400, detail="A avaliação só pode ser feita após o passeio ser finalizado")
+    if current_user.id not in {walk.client_id, walk.walker_id} or data.rater_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Acesso negado a esta avaliação")
 
     rater = db.get(User, data.rater_id)
     target = db.get(User, data.target_id)
@@ -2249,16 +2686,23 @@ async def rate_walk_user(walk_id: int, data: RatingIn, db: Session = Depends(get
     db.commit()
     db.refresh(item)
     payload = rating_to_dict(item)
-    await manager.broadcast({"type": "rating_created", "rating": payload})
+    await send_walk_event({"type": "rating_created", "rating": payload}, db, walk)
     return payload
 
 @app.get("/api/walks/{walk_id}/ratings")
-def list_walk_ratings(walk_id: int, db: Session = Depends(get_db)):
+def list_walk_ratings(walk_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, walk_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Passeio não encontrado")
+    if current_user.role != "admin" and current_user.id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Acesso negado a este passeio")
     items = db.query(UserRating).filter(UserRating.walk_id == walk_id).order_by(UserRating.id.desc()).all()
     return [rating_to_dict(item) for item in items]
 
 @app.get("/api/notifications/{user_id}")
-def list_user_notifications(user_id: int, unread_only: bool = False, db: Session = Depends(get_db)):
+def list_user_notifications(user_id: int, unread_only: bool = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin" and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a estas notificações")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -2269,17 +2713,23 @@ def list_user_notifications(user_id: int, unread_only: bool = False, db: Session
     return [notification_to_dict(item) for item in items]
 
 @app.post("/api/notifications/{notification_id}/read")
-def mark_notification_read(notification_id: int, db: Session = Depends(get_db)):
+def mark_notification_read(notification_id: int, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "notification_mutation_user", 120, 15 * 60, current_user.id)
     item = db.get(UserNotification, notification_id)
     if not item:
         raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    if current_user.role != "admin" and current_user.id != item.user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a esta notificação")
     item.is_read = True
     db.commit()
     db.refresh(item)
     return notification_to_dict(item)
 
 @app.post("/api/notifications/read-all/{user_id}")
-def mark_all_notifications_read(user_id: int, db: Session = Depends(get_db)):
+def mark_all_notifications_read(user_id: int, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "notification_mutation_user", 120, 15 * 60, current_user.id)
+    if current_user.role != "admin" and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a estas notificações")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -2290,7 +2740,9 @@ def mark_all_notifications_read(user_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/wallet/{walker_id}")
-def get_walker_wallet(walker_id: int, db: Session = Depends(get_db)):
+def get_walker_wallet(walker_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin" and current_user.id != walker_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a esta carteira")
     walker = db.get(User, walker_id)
     if not walker or walker.role != "walker":
         raise HTTPException(status_code=404, detail="Passeador não encontrado")
@@ -2343,7 +2795,9 @@ def get_walker_wallet(walker_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/wallet/{walker_id}/history")
-def get_walker_wallet_history(walker_id: int, db: Session = Depends(get_db)):
+def get_walker_wallet_history(walker_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != "admin" and current_user.id != walker_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a esta carteira")
     walker = db.get(User, walker_id)
     if not walker or walker.role != "walker":
         raise HTTPException(status_code=404, detail="Passeador não encontrado")
@@ -2377,10 +2831,13 @@ def get_walker_wallet_history(walker_id: int, db: Session = Depends(get_db)):
     return items
 
 @app.post("/api/messages")
-async def create_message(data: MessageIn, db: Session = Depends(get_db)):
+async def create_message(data: MessageIn, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "message_create_user", 120, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, data.request_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Passeio não encontrado para o chat")
+    if data.sender_id != current_user.id or current_user.id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Você não participa deste chat")
 
     sender = db.get(User, data.sender_id)
     if not sender:
@@ -2422,19 +2879,27 @@ async def create_message(data: MessageIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(msg)
     payload = message_to_dict(msg)
-    await manager.broadcast({"type": "message", "message": payload, "request_id": msg.request_id})
+    await send_walk_event({"type": "message", "message": payload, "request_id": msg.request_id}, db, walk, include_admin=False)
     return payload
 
 @app.get("/api/messages/{request_id}")
-def list_messages(request_id: int, db: Session = Depends(get_db)):
+def list_messages(request_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    walk = db.get(WalkRequest, request_id)
+    if not walk:
+        raise HTTPException(status_code=404, detail="Passeio não encontrado")
+    if current_user.id not in {walk.client_id, walk.walker_id}:
+        raise HTTPException(status_code=403, detail="Você não participa deste chat")
     msgs = db.query(Message).filter(Message.request_id == request_id).order_by(Message.id.asc()).all()
     return [message_to_dict(m) for m in msgs]
 
 @app.post("/api/messages/{request_id}/read/{user_id}")
-async def mark_messages_read(request_id: int, user_id: int, db: Session = Depends(get_db)):
+async def mark_messages_read(request_id: int, user_id: int, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    enforce_rate_limit(request, "message_read_user", 120, 15 * 60, current_user.id)
     walk = db.get(WalkRequest, request_id)
     if not walk:
         raise HTTPException(status_code=404, detail="Passeio não encontrado")
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a este chat")
     if user_id not in [walk.client_id, walk.walker_id]:
         raise HTTPException(status_code=403, detail="Usuário não participa deste chat")
     now = datetime.utcnow()
@@ -2444,7 +2909,9 @@ async def mark_messages_read(request_id: int, user_id: int, db: Session = Depend
         Message.read_at == None,
     ).update({"read_at": now}, synchronize_session=False)
     db.commit()
-    await manager.broadcast({"type": "messages_read", "request_id": request_id, "reader_id": user_id})
+    walk = db.get(WalkRequest, request_id)
+    if walk:
+        await send_walk_event({"type": "messages_read", "request_id": request_id, "reader_id": user_id}, db, walk, include_admin=False)
     return {"ok": True, "read_at": now.isoformat()}
 
 

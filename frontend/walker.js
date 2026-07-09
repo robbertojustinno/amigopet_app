@@ -1,5 +1,9 @@
-const API = 'https://amigopet-6td8.onrender.com';
-const WS_URL = 'wss://amigopet-6td8.onrender.com/ws';
+const AMIGOPET_CONFIG = window.AMIGOPET_CONFIG || {};
+const AMIGOPET_ORIGIN = window.location.protocol === 'file:' || window.location.origin === 'null'
+  ? 'http://localhost:8000'
+  : window.location.origin;
+const API = (AMIGOPET_CONFIG.API_BASE_URL || AMIGOPET_CONFIG.apiBaseUrl || AMIGOPET_ORIGIN).replace(/\/$/, '');
+const WS_URL = AMIGOPET_CONFIG.WS_URL || AMIGOPET_CONFIG.wsUrl || `${API.replace(/^http/i, 'ws')}/ws`;
 
 let currentUser = null;
 let availableWalks = [];
@@ -50,6 +54,54 @@ function toast(msg){
 
 function escapeHtml(value){
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function sanitizeHtml(html){
+  const template = document.createElement('template');
+  template.innerHTML = String(html ?? '');
+  template.content.querySelectorAll('script, iframe, object, embed, meta, link').forEach(el => el.remove());
+  template.content.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      const name = attr.name.toLowerCase();
+      const value = String(attr.value || '').trim();
+      if(name.startsWith('on') && !isAllowedInlineHandler(name, value)){
+        el.removeAttribute(attr.name);
+        return;
+      }
+      if((name === 'href' || name === 'src' || name === 'xlink:href') && /^\s*javascript:/i.test(value)){
+        el.removeAttribute(attr.name);
+        return;
+      }
+      if(name === 'src' && /^\s*data:/i.test(value) && !/^data:image\//i.test(value)){
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+  return template.innerHTML;
+}
+
+function isAllowedInlineHandler(name, value){
+  if(name === 'onerror'){
+    return /^this\.onerror=null;this\.src='https:\/\/api\.dicebear\.com\/8\.x\/initials\/svg\?seed=[^']*'$/.test(value);
+  }
+  if(name !== 'onclick') return false;
+  return [
+    /^navigator\.clipboard\.writeText\(`[^`]*`\); toast\('Código PIX copiado'\)$/,
+    /^payWalk\(\d+\)$/,
+    /^sendClientRating\(\d+, \d+\)$/,
+    /^openChat\(\d+\)$/,
+    /^currentRequestId=\d+; loadWalk\(\d+\); showView\('tracking', true\)$/,
+    /^selectWalker\(\d+\)$/,
+    /^sendWalkerRating\(\d+, \d+\)$/,
+    /^acceptWalk\(\d+\)$/,
+    /^rejectWalk\(\d+\)$/,
+    /^openWalkerChat\(\d+\)$/,
+    /^selectWalk\(\d+\)$/,
+  ].some(pattern => pattern.test(value));
+}
+
+function setSafeHTML(el, html){
+  if(el) el.innerHTML = sanitizeHtml(html);
 }
 
 
@@ -147,12 +199,22 @@ function enforceWalkerTerms(){
   return true;
 }
 
+function getCookie(name){
+  return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
+}
+
 async function api(path, options={}){
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if(['POST','PUT','PATCH','DELETE'].includes(method)){
+    const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
+    if(csrf) headers['X-CSRF-Token'] = csrf;
+  }
   const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+    headers,
     credentials: 'include',
-    cache: 'no-store',
-    ...options
+    cache: 'no-store'
   });
 
   let data = null;
@@ -183,7 +245,7 @@ function loginWithGoogle(){
 
 async function handleGoogleLoginCallback(){
   const params = new URLSearchParams(window.location.search);
-  const googleUserId = params.get('google_user_id');
+  const googleLogin = params.get('google_login');
   const googleError = params.get('google_error');
 
   if(googleError){
@@ -192,10 +254,10 @@ async function handleGoogleLoginCallback(){
     return;
   }
 
-  if(!googleUserId) return;
+  if(googleLogin !== 'success') return;
 
   try{
-    const user = await api(`/api/auth/google/session/${googleUserId}`);
+    const user = await api('/api/auth/session/current');
     if(user.role !== 'walker'){
       toast('Esta área é exclusiva para passeadores. Use o app Cliente.');
       if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
@@ -257,7 +319,7 @@ function setLoggedUI(){
   if(chip) chip.classList.toggle('hidden', !loggedIn);
   if(loggedIn){
     const termBadge = termsOk ? 'Termo aceito' : 'Termo pendente';
-    $('loggedUser').innerHTML = `<strong>${currentUser.full_name}</strong><br><span class="muted">${termBadge}</span>`;
+    setSafeHTML($('loggedUser'), `<strong>${currentUser.full_name}</strong><br><span class="muted">${termBadge}</span>`);
     $('profileName').textContent = currentUser.full_name;
     $('profilePhoto').src = currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(currentUser.full_name)}`;
     renderWalkerDetails();
@@ -299,7 +361,7 @@ function renderProfilePreview(){
   const pixType = $('profilePixType')?.value || currentUser.pix_key_type || '';
   const pixKey = $('profilePixKey')?.value || currentUser.pix_key || '';
   const photo = walkerPhotoData || currentUser.photo || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`;
-  box.innerHTML = `
+  setSafeHTML(box, `
     <div class="item-head">
       <img src="${photo}" alt="Foto do passeador" style="width:64px;height:64px;border-radius:20px;object-fit:cover;border:1px solid #d8e2ee;" />
       <div>
@@ -311,10 +373,10 @@ function renderProfilePreview(){
     <p>Telefone: ${phone}</p>
     <p>PIX: ${pixType && pixKey ? `${pixType} • ${pixKey}` : 'Dados PIX não preenchidos'}</p>
     <p class="muted">${bio}</p>
-  `;
+  `);
   const preview = $('profilePhotoPreview');
   if(preview){
-    preview.innerHTML = walkerPhotoData ? `<img src="${walkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />` : 'Nenhuma foto selecionada.';
+    setSafeHTML(preview, walkerPhotoData ? `<img src="${walkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />` : 'Nenhuma foto selecionada.');
   }
 }
 
@@ -386,7 +448,7 @@ async function handleRegisterWalkerPhoto(event){
     registerWalkerPhotoData = reader.result;
     const preview = $('registerWalkerPhotoPreview');
     if(preview){
-      preview.innerHTML = `<img src="${registerWalkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`;
+      setSafeHTML(preview, `<img src="${registerWalkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`);
     }
   };
   reader.readAsDataURL(file);
@@ -432,7 +494,7 @@ async function registerWalker(){
 
     if(data.password.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.');
 
-    const user = await api('/api/auth/register', {
+    const user = await api('/api/auth/register/walker', {
       method:'POST',
       body: JSON.stringify(data)
     });
@@ -525,7 +587,7 @@ async function handleRegisterWalkerPhoto(event){
     registerWalkerPhotoData = reader.result;
     const preview = $('registerWalkerPhotoPreview');
     if(preview){
-      preview.innerHTML = `<img src="${registerWalkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`;
+      setSafeHTML(preview, `<img src="${registerWalkerPhotoData}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`);
     }
   };
   reader.readAsDataURL(file);
@@ -571,7 +633,7 @@ async function registerWalker(){
 
     if(data.password.length < 6) return toast('A senha deve ter no mínimo 6 caracteres.');
 
-    const user = await api('/api/auth/register', {
+    const user = await api('/api/auth/register/walker', {
       method:'POST',
       body: JSON.stringify(data)
     });
@@ -647,7 +709,7 @@ function takeWalkerCameraPhoto(){
     registerWalkerPhotoData = dataUrl;
     const preview = $('registerWalkerPhotoPreview');
     if(preview){
-      preview.innerHTML = `<img src="${dataUrl}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`;
+      setSafeHTML(preview, `<img src="${dataUrl}" alt="Prévia" style="max-width:110px;max-height:110px;border-radius:18px;object-fit:cover;" />`);
     }
   }
 
@@ -769,12 +831,12 @@ function renderTimelineEvents(items){
 async function loadWalkTimeline(walkId, targetId){
   const box = $(targetId);
   if(!box || !walkId) return;
-  box.innerHTML = '<div class="timeline-empty">Carregando timeline...</div>';
+  setSafeHTML(box, '<div class="timeline-empty">Carregando timeline...</div>');
   try{
     const items = await api(`/api/walks/${walkId}/timeline`);
-    box.innerHTML = renderTimelineEvents(items);
+    setSafeHTML(box, renderTimelineEvents(items));
   }catch(err){
-    box.innerHTML = '<div class="timeline-empty">Timeline indisponível no momento.</div>';
+    setSafeHTML(box, '<div class="timeline-empty">Timeline indisponível no momento.</div>');
   }
 }
 
@@ -800,7 +862,7 @@ async function loadWallet(){
     renderWallet(summary, history);
   }catch(err){
     const box = $('walletSummary');
-    if(box) box.innerHTML = `<div class="notice">${err.message || 'Não foi possível carregar a carteira.'}</div>`;
+    if(box) setSafeHTML(box, `<div class="notice">${err.message || 'Não foi possível carregar a carteira.'}</div>`);
   }
 }
 
@@ -812,22 +874,22 @@ function renderWallet(summary, history){
 
   const summaryBox = $('walletSummary');
   if(summaryBox){
-    summaryBox.innerHTML = `
+    setSafeHTML(summaryBox, `
       <div class="wallet-summary-line"><span>Passeador</span><strong>${summary.walker_name || currentUser.full_name}</strong></div>
       <div class="wallet-summary-line"><span>Disponível</span><strong>${moneyBR(summary.available_balance)}</strong></div>
       <div class="wallet-summary-line"><span>Pendente</span><strong>${moneyBR(summary.pending_balance)}</strong></div>
       <div class="wallet-summary-line"><span>Comissão AmigoPet</span><strong>${moneyBR(summary.total_platform_fee)}</strong></div>
       <div class="notice" style="margin-top:12px;">Os valores são calculados sobre passeios finalizados. O status do repasse vem do PIX/Asaas quando disponível.</div>
-    `;
+    `);
   }
 
   const historyBox = $('walletHistory');
   if(historyBox){
     if(!history || !history.length){
-      historyBox.innerHTML = '<div class="notice">Nenhum passeio finalizado ainda.</div>';
+      setSafeHTML(historyBox, '<div class="notice">Nenhum passeio finalizado ainda.</div>');
       return;
     }
-    historyBox.innerHTML = history.map(item => {
+    setSafeHTML(historyBox, history.map(item => {
       const st = walletStatusLabel(item.payout_status);
       const date = item.finished_at ? new Date(item.finished_at).toLocaleString('pt-BR') : 'Data não informada';
       const err = item.payout_error ? `<div class="wallet-error">${item.payout_error}</div>` : '';
@@ -843,7 +905,7 @@ function renderWallet(summary, history){
           <small>Bruto: ${moneyBR(item.gross_amount)}</small>
         </div>
       </div>`;
-    }).join('');
+    }).join(''));
   }
 }
 
@@ -906,15 +968,15 @@ async function loadWalkerChatMessages(){
   const walk = currentWalk && Number(currentWalk.id) === Number(currentChatRequestId) ? currentWalk : availableWalks.find(w => Number(w.id) === Number(currentChatRequestId));
   updateWalkerChatHeader(walk);
   if(!currentChatRequestId || !walk){
-    chatBody.innerHTML = '<div class="chat-locked">Selecione um passeio para conversar.</div>';
+    setSafeHTML(chatBody, '<div class="chat-locked">Selecione um passeio para conversar.</div>');
     return;
   }
   if(!canUseWalkerChat(walk)){
-    chatBody.innerHTML = `<div class="chat-locked">🔒 Chat será liberado após o aceite do passeio.<br><small>Status atual: ${escapeHtml(walk.status || '-')}</small></div>`;
+    setSafeHTML(chatBody, `<div class="chat-locked">🔒 Chat será liberado após o aceite do passeio.<br><small>Status atual: ${escapeHtml(walk.status || '-')}</small></div>`);
     return;
   }
   const msgs = await api(`/api/messages/${currentChatRequestId}`);
-  chatBody.innerHTML = msgs.length ? msgs.map(renderWalkerChatMessage).join('') : '<div class="chat-locked">Nenhuma mensagem ainda. Envie a primeira mensagem.</div>';
+  setSafeHTML(chatBody, msgs.length ? msgs.map(renderWalkerChatMessage).join('') : '<div class="chat-locked">Nenhuma mensagem ainda. Envie a primeira mensagem.</div>');
   await api(`/api/messages/${currentChatRequestId}/read/${currentUser.id}`, {method:'POST'}).catch(()=>{});
   scrollWalkerChatToBottom();
 }
@@ -954,14 +1016,14 @@ function renderWalkerDetails(){
     return;
   }
   $('onlineLabel').textContent = online ? 'Disponível' : 'Offline';
-  $('walkerDetails').innerHTML = `
+  setSafeHTML($('walkerDetails'), `
     <strong>${currentUser.full_name}</strong><br>
     E-mail: ${currentUser.email}<br>
     Cidade: ${currentUser.city || '-'}<br>
     Bairro: ${currentUser.neighborhood || '-'}<br>
     Avaliação: ⭐ ${Number(currentUser.rating || 5).toFixed(1)}<br>
     Status: <span class="badge ${online ? 'aceito' : 'recusado'}">${online ? 'online' : 'offline'}</span>
-  `;
+  `);
 }
 
 function isAvailable(w){
@@ -1042,10 +1104,10 @@ function walkCard(w, mode='available'){
 function renderAvailableWalks(){
   const box = $('availableWalks');
   if(!box) return;
-  if(!currentUser){ box.innerHTML = 'Faça login como passeador.'; return; }
+  if(!currentUser){ setSafeHTML(box, 'Faça login como passeador.'); return; }
   const list = availableWalks.filter(isAvailable);
   box.classList.toggle('notice', list.length === 0);
-  box.innerHTML = list.length ? list.map(w => walkCard(w)).join('') : 'Nenhum convite disponível agora.';
+  setSafeHTML(box, list.length ? list.map(w => walkCard(w)).join('') : 'Nenhum convite disponível agora.');
 }
 
 function renderCurrentWalk(){
@@ -1053,10 +1115,10 @@ function renderCurrentWalk(){
   if(!box) return;
   if(!currentWalk){
     box.className = 'notice';
-    box.innerHTML = 'Nenhum passeio aceito ainda.';
+    setSafeHTML(box, 'Nenhum passeio aceito ainda.');
   }else{
     box.className = '';
-    box.innerHTML = walkCard(currentWalk, 'current') + walkerRatingBox(currentWalk) + `<div class="walk-timeline"><h3>📋 Timeline do passeio</h3><div id="walkerTimelineBox"></div></div>`;
+    setSafeHTML(box, walkCard(currentWalk, 'current') + walkerRatingBox(currentWalk) + `<div class="walk-timeline"><h3>📋 Timeline do passeio</h3><div id="walkerTimelineBox"></div></div>`);
     loadWalkTimeline(currentWalk.id, 'walkerTimelineBox').catch(()=>{});
   }
   const summary = $('mapSummary');
@@ -1068,7 +1130,7 @@ function renderCurrentWalk(){
         Number(currentWalk.pickup_lat || -22.5884),
         Number(currentWalk.pickup_lng || -43.1847)
       );
-      summary.innerHTML = `
+      setSafeHTML(summary, `
         <strong>#${currentWalk.id} • ${currentWalk.pet || 'Pet'}</strong><br>
         Cliente: ${currentWalk.client || '-'}<br>
         Status: <span class="badge ${currentWalk.status}">${currentWalk.status}</span><br>
@@ -1078,9 +1140,9 @@ function renderCurrentWalk(){
         Distância até cliente: <strong>${km.toFixed(2)} km</strong><br>
         Previsão: <strong>${etaMinutesFromKm(km)} min</strong><br>
         GPS automático: <span class="badge ${gpsActive ? 'aceito' : 'recusado'}">${gpsActive ? 'ativo' : 'parado'}</span>
-      `;
+      `);
     }else{
-      summary.innerHTML = 'Nenhum passeio selecionado.';
+      setSafeHTML(summary, 'Nenhum passeio selecionado.');
     }
   }
   renderMap();
@@ -1317,12 +1379,7 @@ async function restoreSession(){
   }
 
   try{
-    let freshUser = null;
-    if(savedUser && savedUser.id){
-      freshUser = await api(`/api/auth/google/session/${savedUser.id}`);
-    }else{
-      freshUser = await api('/api/auth/session/current');
-    }
+    const freshUser = await api('/api/auth/session/current');
 
     if(freshUser && freshUser.role === 'walker'){
       currentUser = freshUser;

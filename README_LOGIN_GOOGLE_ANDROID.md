@@ -7,28 +7,18 @@ Este projeto foi ajustado para o botão **Entrar com Google** funcionar dentro d
 - Cliente: `cliente/src/main/java/com/rovix/amigopet/cliente/MainActivity.java`
 - Passeador: `passeador/src/main/java/com/rovix/amigopet/passeador/MainActivity.java`
 - Gradle dos dois apps com `play-services-auth`
-- Backend incluído em `backend_patch/app/main.py` com as rotas Android:
+- Backend ativo `backend/app/main.py` com as rotas Android:
   - `GET /api/auth/google/android-config`
   - `POST /api/auth/google/android`
 
 ## Antes de gerar o APK
-
-Suba o backend patch no projeto web principal:
-
-```powershell
-cd E:\amigopet_app
-copy /Y <esta_pasta>\backend_patch\app\main.py backend\app\main.py
-git add backend/app/main.py
-git commit -m "Adicionar login Google nativo Android"
-git push
-```
 
 No Render, confirme:
 
 ```env
 GOOGLE_CLIENT_ID=seu_client_id_web_do_google
 GOOGLE_CLIENT_SECRET=seu_client_secret
-GOOGLE_REDIRECT_URI=https://amigopet-6td8.onrender.com/api/auth/google/callback
+GOOGLE_REDIRECT_URI=https://seu-dominio.com/api/auth/google/callback
 ```
 
 ## Google Cloud obrigatório para APK
@@ -62,4 +52,3 @@ Módulos:
 
 - `cliente`
 - `passeador`
-

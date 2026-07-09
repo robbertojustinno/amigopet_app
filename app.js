@@ -357,22 +357,12 @@ document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
   btn.addEventListener('click', () => showView(btn.dataset.view));
 });
 
-function getCookie(name){
-  return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
-}
-
 async function api(path, options={}){
-  const method = String(options.method || 'GET').toUpperCase();
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if(['POST','PUT','PATCH','DELETE'].includes(method)){
-    const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
-    if(csrf) headers['X-CSRF-Token'] = csrf;
-  }
   const res = await fetch(API + path, {
-    ...options,
-    headers,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     credentials: 'include',
-    cache: 'no-store'
+    cache: 'no-store',
+    ...options
   });
 
   let data = null;
@@ -566,7 +556,7 @@ function loginWithGoogle(){
 
 async function handleGoogleLoginCallback(){
   const params = new URLSearchParams(window.location.search);
-  const googleLogin = params.get('google_login');
+  const googleUserId = params.get('google_user_id');
   const googleError = params.get('google_error');
 
   if(googleError){
@@ -575,10 +565,10 @@ async function handleGoogleLoginCallback(){
     return;
   }
 
-  if(googleLogin !== 'success') return;
+  if(!googleUserId) return;
 
   try{
-    const user = await api('/api/auth/session/current');
+    const user = await api(`/api/auth/google/session/${googleUserId}`);
     currentUser = user;
     localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
     setLoggedUI();
@@ -663,13 +653,50 @@ async function registerClient(){
 }
 
 async function verifyCode(){
-  toast('A confirmação por código não é necessária nesta versão. Faça login ou crie sua conta normalmente.');
-  setAuthMode('login');
+  try{
+    const email = $('verifyEmail').value.trim();
+    const code = $('verifyCode').value.trim();
+
+    if(!email || !code) return toast('Informe e-mail e código.');
+
+    const user = await api('/api/auth/verify-code', {
+      method:'POST',
+      body: JSON.stringify({email, code})
+    });
+
+    currentUser = user;
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(user));
+    setLoggedUI();
+    await refreshAll();
+    toast('Conta confirmada com sucesso.');
+    showView('pet', true);
+  }catch(err){
+    toast(err.message || 'Código inválido.');
+  }
 }
 
 async function resendCode(){
-  toast('Reenvio de código indisponível porque a confirmação por código não é necessária nesta versão.');
-  setAuthMode('login');
+  try{
+    const email = $('verifyEmail').value.trim() || $('registerEmail').value.trim();
+    if(!email) return toast('Informe o e-mail cadastrado.');
+
+    const result = await api('/api/auth/resend-code', {
+      method:'POST',
+      body: JSON.stringify({email})
+    });
+
+    if(result.dev_code){
+      const box = $('devCodeBox');
+      if(box){
+        box.classList.remove('hidden');
+        box.textContent = `SMTP não configurado. Código de teste: ${result.dev_code}`;
+      }
+    }
+
+    toast(result.message || 'Novo código enviado.');
+  }catch(err){
+    toast(err.message || 'Não foi possível reenviar.');
+  }
 }
 
 
@@ -746,6 +773,10 @@ async function login(){
   }catch(err){
     const msg = err.message || 'Não foi possível entrar.';
     toast(msg);
+    if(msg.toLowerCase().includes('confirme')){
+      $('verifyEmail').value = $('loginEmail').value.trim();
+      setAuthMode('verify');
+    }
   }
 }
 
@@ -1451,7 +1482,12 @@ async function restoreClientSession(){
   }
 
   try{
-    const freshUser = await api('/api/auth/session/current');
+    let freshUser = null;
+    if(savedUser && savedUser.id){
+      freshUser = await api(`/api/auth/google/session/${savedUser.id}`);
+    }else{
+      freshUser = await api('/api/auth/session/current');
+    }
 
     if(freshUser && freshUser.role === 'client'){
       currentUser = freshUser;

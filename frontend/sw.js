@@ -1,9 +1,10 @@
-const CACHE_NAME = 'amigopet-pwa-v12-login-persistente';
+const CACHE_NAME = 'amigopet-pwa-v13-env-config';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
   '/static/styles.css?v=login-persistente-v3',
+  '/static/config.js?v=env-config-v1',
   '/static/app.js?v=login-persistente-v3',
   '/static/walker.js?v=login-persistente-v3',
   '/static/pwa.js?v=login-persistente-v3',

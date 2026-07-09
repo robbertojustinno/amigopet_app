@@ -1,0 +1,14 @@
+Patch 012.1 - Cards Premium dos Passeadores
+
+Arquivos alterados:
+- frontend/index.html
+- frontend/app.js
+- frontend/styles.css
+
+Mudanças:
+- Melhorado visual dos cards dos passeadores na tela Solicitar passeio.
+- Foto maior do passeador.
+- Selo Verificado visual.
+- Exibição de bairro/cidade, nota, distância aproximada e previsão de chegada.
+- Botão Escolher passeador mais destacado.
+- Sem alteração em backend, PIX, login, chat, GPS ou banco de dados.

@@ -23,5 +23,7 @@ Este pacote foi ajustado para subir como **um único Web Service Docker** no Ren
 ## Observações
 - O frontend agora é servido pelo próprio backend.
 - O frontend chama a API em `/api` no mesmo domínio.
+- O schema do banco ? aplicado com Alembic (`alembic upgrade head`) antes do backend iniciar.
+- Novas altera??es de banco devem virar arquivos versionados em `migrations/versions/`.
 - Se quiser Redis depois, adicione `REDIS_URL`.
 - Se quiser Mercado Pago real depois, adicione as chaves.

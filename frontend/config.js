@@ -1,0 +1,1 @@
+window.AMIGOPET_CONFIG = window.AMIGOPET_CONFIG || {};

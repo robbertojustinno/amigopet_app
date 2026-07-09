@@ -2,8 +2,8 @@
 
 Projeto com 2 APKs WebView:
 
-- cliente: abre https://amigopet-6td8.onrender.com
-- passeador: abre https://amigopet-6td8.onrender.com/passeador
+- cliente: abre a URL configurada do backend/web
+- passeador: abre a URL configurada do backend/web em `/passeador`
 
 ## Abrir no Android Studio
 

@@ -1,0 +1,6 @@
+Sprint 010.2 - Hotfix Login Persistente
+
+- Corrigida restauração para usar sessão local imediatamente.
+- Validação no backend agora roda em segundo plano e não derruba login salvo se API/cache falhar.
+- Atualizados versionamentos de app.js, walker.js, pwa.js e service worker para forçar atualização no navegador/PWA.
+- Sem mudança visual.

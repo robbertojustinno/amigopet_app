@@ -61,7 +61,7 @@
             <option value="admin@amigopet.com" data-role="admin">Administrador</option>
           </select>
           <input id="loginEmail" placeholder="E-mail" value="admin@amigopet.com" />
-          <input id="loginPassword" placeholder="Senha" type="password" value="123456" />
+          <input id="loginPassword" placeholder="Senha" type="password" />
           <button onclick="login()">Entrar como Admin</button>
         </div>
         <div id="loggedUser" class="notice">Nenhum administrador conectado.</div>
@@ -144,8 +144,14 @@
 
   <footer>Powered by ROVIX • Admin AmigoPet</footer>
 
+  <script src="/static/config.js?v=env-config-v1"></script>
   <script>
-    const API = location.origin;
+    const AMIGOPET_CONFIG = window.AMIGOPET_CONFIG || {};
+    const AMIGOPET_ORIGIN = window.location.protocol === 'file:' || window.location.origin === 'null'
+      ? 'http://localhost:8000'
+      : window.location.origin;
+    const API = (AMIGOPET_CONFIG.API_BASE_URL || AMIGOPET_CONFIG.apiBaseUrl || AMIGOPET_ORIGIN).replace(/\/$/, '');
+    const WS_URL = AMIGOPET_CONFIG.WS_URL || AMIGOPET_CONFIG.wsUrl || `${API.replace(/^http/i, 'ws')}/ws`;
     let adminUser = null;
     let users = [];
     let walks = [];
@@ -155,16 +161,70 @@
     function $(id){ return document.getElementById(id); }
     function money(v){ return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
     function toast(msg){ const el=$('toast'); el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',3600); }
+    function escapeHtml(value){
+      return String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    function sanitizeHtml(html){
+      const template = document.createElement('template');
+      template.innerHTML = String(html ?? '');
+      template.content.querySelectorAll('script, iframe, object, embed, meta, link').forEach(el => el.remove());
+      template.content.querySelectorAll('*').forEach(el => {
+        [...el.attributes].forEach(attr => {
+          const name = attr.name.toLowerCase();
+          const value = String(attr.value || '').trim();
+          if(name.startsWith('on')){
+            el.removeAttribute(attr.name);
+            return;
+          }
+          if((name === 'href' || name === 'src' || name === 'xlink:href') && /^\s*javascript:/i.test(value)){
+            el.removeAttribute(attr.name);
+            return;
+          }
+          if(name === 'src' && /^\s*data:/i.test(value) && !/^data:image\//i.test(value)){
+            el.removeAttribute(attr.name);
+          }
+        });
+      });
+      return template.innerHTML;
+    }
+    function setSafeHTML(el, html){
+      if(el) el.innerHTML = sanitizeHtml(html);
+    }
+    function getCookie(name){
+      return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
+    }
+    function clearAdminState(){
+      localStorage.removeItem('amigopet_admin_user');
+      adminUser = null;
+      users = [];
+      walks = [];
+      pricing = null;
+      payout = null;
+      setNav();
+    }
+    function handleAdminSessionExpired(message='Sessão administrativa expirada. Faça login novamente.'){
+      const wasLogged = Boolean(adminUser);
+      clearAdminState();
+      showView('login');
+      if(wasLogged && message) toast(message);
+    }
     function badge(text){
       const t = String(text || '');
       let cls = 'status-badge';
       if(['pago','finalizado','aceito','pagamento_confirmado'].includes(t)) cls += ' status-ok';
       else if(['aguardando','convite_enviado','em_andamento'].includes(t)) cls += ' status-warn';
       else if(['recusado','cancelado','rejected'].includes(t)) cls += ' status-bad';
-      return `<span class="${cls}">${t || '-'}</span>`;
+      return `<span class="${cls}">${escapeHtml(t || '-')}</span>`;
     }
     async function api(path, options={}){
-      const res = await fetch(API + path, {headers:{'Content-Type':'application/json', ...(options.headers||{})}, ...options});
+      const {skipAuthClear=false, ...fetchOptions} = options;
+      const method = String(fetchOptions.method || 'GET').toUpperCase();
+      const headers = {'Content-Type':'application/json', ...(fetchOptions.headers||{})};
+      if(['POST','PUT','PATCH','DELETE'].includes(method)){
+        const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
+        if(csrf) headers['X-CSRF-Token'] = csrf;
+      }
+      const res = await fetch(API + path, {...fetchOptions, headers, credentials:'include'});
       let data = null;
       try{ data = await res.json(); }catch(e){ data = {}; }
       if(!res.ok){
@@ -172,11 +232,27 @@
         if(Array.isArray(data?.detail)) detail = data.detail.map(e=>e.msg).join(' | ');
         else if(typeof data?.detail === 'string') detail = data.detail;
         else detail = JSON.stringify(data);
+        if(!skipAuthClear && [401, 403].includes(res.status)){
+          handleAdminSessionExpired(detail);
+        }
         throw new Error(detail);
       }
       return data;
     }
-    function fillLogin(){ $('loginEmail').value = $('quickLogin').value; $('loginPassword').value = '123456'; }
+    async function validateAdminSession(){
+      try{
+        const user = await api('/api/auth/session/current', {skipAuthClear:true});
+        if(!user || user.role !== 'admin') throw new Error('Sessão atual não é administrativa');
+        adminUser = user;
+        localStorage.setItem('amigopet_admin_user', JSON.stringify(user));
+        setNav();
+        return user;
+      }catch(e){
+        handleAdminSessionExpired('');
+        throw e;
+      }
+    }
+    function fillLogin(){ $('loginEmail').value = $('quickLogin').value; $('loginPassword').value = ''; }
     function setNav(){
       const logged = adminUser && adminUser.role === 'admin';
       document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('admin-hide', !logged));
@@ -196,18 +272,17 @@
       try{
         const user = await api('/api/auth/login', {method:'POST', body:JSON.stringify({email:$('loginEmail').value.trim(), password:$('loginPassword').value})});
         if(user.role !== 'admin') throw new Error('Este usuário não é administrador');
-        adminUser = user;
-        localStorage.setItem('amigopet_admin_user', JSON.stringify(user));
-        setNav();
+        await validateAdminSession();
         toast('Admin conectado');
         showView('dashboard');
       }catch(e){ toast(e.message); }
     }
-    function logout(){ localStorage.removeItem('amigopet_admin_user'); adminUser=null; setNav(); showView('login'); }
+    function logout(){ clearAdminState(); showView('login'); }
 
     async function refreshAdmin(){
       if(!adminUser) return;
       try{
+        await validateAdminSession();
         const [allUsers, allWalks, priceData, payoutData] = await Promise.all([api('/api/users'), api('/api/walks'), api('/api/pricing'), api('/api/admin/payout-settings')]);
         users = allUsers || [];
         walks = allWalks || [];
@@ -231,21 +306,21 @@
       $('sPending').textContent = walks.filter(w=>w.payment_status==='aguardando').length;
       $('sActive').textContent = active.length;
       $('sFinished').textContent = finished.length;
-      $('latestOrders').innerHTML = ordersTable(walks.slice(0,6));
+      setSafeHTML($('latestOrders'), ordersTable(walks.slice(0,6)));
     }
     function usersTable(list){
       if(!list.length) return '<p class="muted">Nenhum registro encontrado.</p>';
-      return `<table class="admin-table"><thead><tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Cidade</th><th>Status</th></tr></thead><tbody>${list.map(u=>`<tr><td>#${u.id}</td><td><strong>${u.full_name||''}</strong><br><small>${u.phone||''}</small></td><td>${u.email||''}</td><td>${u.role||''}</td><td>${u.city||''}</td><td>${badge(u.available ? 'disponível' : 'indisponível')}</td></tr>`).join('')}</tbody></table>`;
+      return `<table class="admin-table"><thead><tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Cidade</th><th>Status</th></tr></thead><tbody>${list.map(u=>`<tr><td>#${escapeHtml(u.id)}</td><td><strong>${escapeHtml(u.full_name||'')}</strong><br><small>${escapeHtml(u.phone||'')}</small></td><td>${escapeHtml(u.email||'')}</td><td>${escapeHtml(u.role||'')}</td><td>${escapeHtml(u.city||'')}</td><td>${badge(u.available ? 'disponível' : 'indisponível')}</td></tr>`).join('')}</tbody></table>`;
     }
-    function renderUsers(){ $('clientsList').innerHTML = usersTable(users.filter(u=>u.role==='client')); $('walkersList').innerHTML = usersTable(users.filter(u=>u.role==='walker')); }
+    function renderUsers(){ setSafeHTML($('clientsList'), usersTable(users.filter(u=>u.role==='client'))); setSafeHTML($('walkersList'), usersTable(users.filter(u=>u.role==='walker'))); }
     function ordersTable(list){
       if(!list.length) return '<p class="muted">Nenhum pedido encontrado.</p>';
-      return `<table class="admin-table"><thead><tr><th>Pedido</th><th>Cliente / Pet</th><th>Passeador</th><th>Status</th><th>Pagamento</th><th>Valor</th><th>Data</th></tr></thead><tbody>${list.map(w=>`<tr><td>#${w.id}</td><td><strong>${w.client||''}</strong><br><small>${w.pet||''}</small></td><td>${w.walker||'Aguardando'}</td><td>${badge(w.status)}</td><td>${badge(w.payment_status)}<br><small>${w.mp_status||''}</small></td><td>${money(w.estimated_price)}</td><td><small>${w.created_at ? new Date(w.created_at).toLocaleString('pt-BR') : ''}</small></td></tr>`).join('')}</tbody></table>`;
+      return `<table class="admin-table"><thead><tr><th>Pedido</th><th>Cliente / Pet</th><th>Passeador</th><th>Status</th><th>Pagamento</th><th>Valor</th><th>Data</th></tr></thead><tbody>${list.map(w=>`<tr><td>#${escapeHtml(w.id)}</td><td><strong>${escapeHtml(w.client||'')}</strong><br><small>${escapeHtml(w.pet||'')}</small></td><td>${escapeHtml(w.walker||'Aguardando')}</td><td>${badge(w.status)}</td><td>${badge(w.payment_status)}<br><small>${escapeHtml(w.mp_status||'')}</small></td><td>${escapeHtml(money(w.estimated_price))}</td><td><small>${escapeHtml(w.created_at ? new Date(w.created_at).toLocaleString('pt-BR') : '')}</small></td></tr>`).join('')}</tbody></table>`;
     }
-    function renderOrders(){ const f = $('orderFilter')?.value || ''; const list = f ? walks.filter(w=>w.status===f) : walks; $('ordersList').innerHTML = ordersTable(list); }
+    function renderOrders(){ const f = $('orderFilter')?.value || ''; const list = f ? walks.filter(w=>w.status===f) : walks; setSafeHTML($('ordersList'), ordersTable(list)); }
     function renderPayments(){
       const list = walks.filter(w => w.payment_status || w.mp_payment_id);
-      $('paymentsList').innerHTML = ordersTable(list);
+      setSafeHTML($('paymentsList'), ordersTable(list));
     }
     function renderPricing(){
       if(!pricing) return;
@@ -285,17 +360,21 @@
     }
     function connectWS(){
       try{
-        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${proto}://${location.host}/ws`);
+        const ws = new WebSocket(WS_URL);
         ws.onopen = () => $('liveStatus').textContent = 'Tempo real conectado';
         ws.onclose = () => { $('liveStatus').textContent = 'Tempo real desconectado'; setTimeout(connectWS, 3000); };
-        ws.onmessage = () => refreshAdmin();
+        ws.onmessage = () => { if(adminUser?.role === 'admin') refreshAdmin(); };
       }catch(e){ $('liveStatus').textContent = 'Tempo real indisponível'; }
     }
-    (function init(){
-      try{ adminUser = JSON.parse(localStorage.getItem('amigopet_admin_user') || 'null'); }catch(e){ adminUser = null; }
+    (async function init(){
+      clearAdminState();
       setNav();
-      if(adminUser && adminUser.role === 'admin') showView('dashboard');
+      try{
+        await validateAdminSession();
+        showView('dashboard');
+      }catch(e){
+        showView('login');
+      }
       connectWS();
     })();
   </script>

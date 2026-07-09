@@ -1,0 +1,21 @@
+Patch 011 - Timeline e Auditoria Operacional
+
+Arquivos alterados:
+- backend/app/main.py
+- frontend/app.js
+- frontend/walker.js
+- frontend/index.html
+- frontend/passeador.html
+- frontend/styles.css
+- frontend/sw.js
+- frontend/pwa.js
+
+Incluído:
+- Tabela event_logs para auditoria operacional.
+- Endpoint /api/walks/{walk_id}/timeline.
+- Registro de eventos principais: convite, PIX, pagamento, aceite, início, finalização, repasse, mensagens e avaliações.
+- Timeline visual no app Cliente e no app Passeador.
+- Cache bust atualizado no PWA/Service Worker.
+
+Objetivo:
+Melhorar rastreabilidade, suporte e operação do AmigoPet sem alterar o visual aprovado.

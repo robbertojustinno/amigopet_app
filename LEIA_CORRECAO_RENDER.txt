@@ -9,11 +9,11 @@ Arquivos corrigidos:
 - render.yaml
 
 Correções:
-1. API do frontend aponta para https://amigopet-6td8.onrender.com
-2. WebSocket aponta para wss://amigopet-6td8.onrender.com/ws
+1. API do frontend deriva de location.origin ou de window.AMIGOPET_CONFIG
+2. WebSocket deriva da API configurada ou de location.origin
 3. requirements com passlib[bcrypt] e bcrypt
 4. runtime travado em Python 3.11.9
-5. Backend agora corrige banco antigo automaticamente quando faltar users.password_hash.
+5. Schema do banco agora ? aplicado por Alembic antes do backend iniciar.
 
 Como aplicar:
 Copie as pastas/arquivos por cima do seu projeto.
@@ -25,3 +25,6 @@ git push
 
 No Render:
 Manual Deploy -> Clear build cache & deploy
+Observa??o:
+- O comando de start executa `alembic upgrade head` antes do Uvicorn.
+- N?o h? mais DDL improvisado no startup da aplica??o.

@@ -1,0 +1,37 @@
+Patch 011.1 - Auditoria Real da Timeline
+
+Arquivos alterados:
+- backend/app/main.py
+- frontend/app.js
+- frontend/walker.js
+- frontend/styles.css
+
+O que foi conferido/entregue:
+- Mantida timeline no cliente.
+- Mantida timeline no passeador.
+- Mantido endpoint GET /api/walks/{walk_id}/timeline.
+- Registro de eventos no banco via event_logs.
+- Evento de pedido criado.
+- Evento de PIX Asaas gerado.
+- Evento de pagamento confirmado por botão/sync/webhook.
+- Evento de passeador aceitou.
+- Evento de passeio iniciado.
+- Evento de passeio finalizado.
+- Evento de repasse solicitado.
+- Evento de falha no repasse.
+- Evento de primeira atualização de GPS.
+- Evento de avaliação enviada.
+- Removido decorator duplicado da rota de localização.
+
+Como testar:
+1. Cliente faz login.
+2. Cliente cria passeio.
+3. Verifique se aparece Timeline no pedido.
+4. Pague PIX.
+5. Webhook deve registrar pagamento confirmado.
+6. Passeador aceita.
+7. Passeador inicia passeio.
+8. Envia GPS.
+9. Finaliza passeio.
+10. Cliente/passeador avaliam.
+11. Timeline deve mostrar os eventos registrados.

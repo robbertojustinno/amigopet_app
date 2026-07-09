@@ -9,3 +9,8 @@ python-multipart
 email-validator
 psycopg2-binary
 passlib
+bcrypt
+redis
+alembic
+pytest
+httpx

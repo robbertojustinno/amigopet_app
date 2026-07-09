@@ -61,3 +61,15 @@ Para produção de alto nível, troque por:
 cp .env.example .env
 docker compose up --build
 ```
+
+## 11. Migrations de banco
+
+As altera??es de schema s?o versionadas com Alembic em `migrations/`.
+Antes de iniciar o backend, execute:
+
+```bash
+alembic upgrade head
+```
+
+O `Procfile`, o `render.yaml` e o `backend/Dockerfile` j? executam esse comando antes do `uvicorn`.
+N?o edite o banco manualmente e n?o dependa de DDL no startup da aplica??o.

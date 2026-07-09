@@ -1,0 +1,20 @@
+Sprint 010.1 - Login Persistente
+
+Arquivos alterados:
+- backend/app/main.py
+- frontend/app.js
+- frontend/walker.js
+- frontend/index.html
+- frontend/passeador.html
+- frontend/sw.js
+- frontend/pwa.js
+
+Implementado:
+- Rota /api/auth/session/{user_id} para validar sessão salva.
+- Cliente restaura sessão automaticamente ao abrir o app.
+- Passeador restaura sessão automaticamente ao abrir o app.
+- Sessão salva é validada no backend.
+- Se usuário for removido/desativado, sessão local é limpa.
+- Logout limpa a sessão corretamente.
+- Cache PWA atualizado para evitar carregar JavaScript antigo.
+- Visual preservado.

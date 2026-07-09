@@ -1,0 +1,44 @@
+AmigoPet Patch 010.3 - Login Persistente Definitivo
+
+Alterações reais implementadas:
+
+1. Backend
+- Adicionado cookie seguro amigopet_session no login Google, login por e-mail e cadastro.
+- Criado endpoint GET /api/auth/session/current para restaurar sessão pelo cookie.
+- Criado endpoint POST /api/auth/logout para limpar o cookie da sessão.
+- Endpoint /api/auth/google/session/{user_id} agora também renova o cookie seguro.
+
+2. Cliente
+- api() agora usa credentials: include e cache: no-store.
+- Restauração de sessão ficou assíncrona e robusta.
+- Primeiro tenta validar usuário salvo no localStorage pelo backend.
+- Se não houver localStorage, tenta restaurar pelo cookie amigopet_session.
+- Logout chama backend para limpar cookie e remove dados locais.
+
+3. Passeador
+- Mesmas correções do cliente.
+- Restauração valida o usuário salvo e respeita o termo do passeador.
+- Se houver cookie válido, entra automaticamente sem precisar clicar Google.
+
+4. PWA / Cache
+- Atualizado cache para amigopet-pwa-v12-login-persistente.
+- Atualizadas versões dos arquivos JS/CSS para forçar navegador e PWA a baixarem os arquivos novos.
+
+Como testar:
+1. Subir no Git/Render.
+2. Abrir o app cliente.
+3. Fazer login Google uma vez.
+4. Fechar totalmente o navegador/app.
+5. Abrir novamente: deve entrar logado.
+6. Repetir no /passeador.
+7. Clicar em Sair: deve pedir login novamente.
+
+Arquivos alterados:
+- backend/app/main.py
+- frontend/app.js
+- frontend/walker.js
+- frontend/index.html
+- frontend/passeador.html
+- frontend/sw.js
+- frontend/pwa.js
+- frontend/styles.css
