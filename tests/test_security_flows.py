@@ -354,6 +354,46 @@ def test_finish_walk_is_idempotent_and_does_not_duplicate_payout(client, app_mod
     assert db.query(app_module.EventLog).filter(app_module.EventLog.walk_id == walk.id).count() == event_count
 
 
+def test_create_walk_invite_survives_asaas_pix_failure(client, app_module, monkeypatch):
+    client_user, headers = auth_headers(client, "cliente@amigopet.com")
+    pet = client.get(f"/api/pets?owner_id={client_user['id']}").json()[0]
+    walker = register_walker(client, "invite-pix-failure-walker@example.com")
+
+    def fail_pix_payment(walk):
+        raise RuntimeError("{'errors': [{'code': 'invalid_action'}], 'http_status': 400, 'reason': 'Bad Request'}")
+
+    monkeypatch.setattr(app_module, "create_mercadopago_pix_payment", fail_pix_payment)
+    login(client, "cliente@amigopet.com")
+    headers = csrf_headers(client)
+
+    response = client.post("/api/walks", json={
+        "client_id": client_user["id"],
+        "walker_id": walker["id"],
+        "pet_id": pet["id"],
+        "address": "Rua Teste, 123",
+        "pickup_lat": -22.58,
+        "pickup_lng": -43.18,
+        "duration_minutes": 30,
+        "dogs_count": 1,
+        "notes": "Convite teste",
+    }, headers=headers)
+    assert response.status_code == 200, response.text
+
+    created = response.json()
+    assert created["status"] == "convite_enviado"
+    assert created["client_id"] == client_user["id"]
+    assert created["walker_id"] == walker["id"]
+    assert created["pet_id"] == pet["id"]
+    assert created["mp_status"] == "asaas_error"
+    assert created["mp_status_detail"] == "Não foi possível gerar o PIX Asaas agora. Tente novamente em instantes."
+    assert "errors" not in created["mp_status_detail"]
+    assert "http_status" not in created["mp_status_detail"]
+
+    login(client, "invite-pix-failure-walker@example.com")
+    walker_walks = client.get("/api/walks").json()
+    assert any(item["id"] == created["id"] for item in walker_walks)
+
+
 def test_asaas_payout_error_is_sanitized_for_walker_wallet(client, app_module, db, monkeypatch):
     client_user, _ = auth_headers(client, "cliente@amigopet.com")
     walker = register_walker(client, "payout-error-walker@example.com")

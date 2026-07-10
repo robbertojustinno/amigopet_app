@@ -21,6 +21,7 @@ let pricingConfig = null;
 let chatSocket = null;
 let chatTypingTimer = null;
 let chatTypingClearTimer = null;
+let creatingWalk = false;
 const CLIENT_TERMS_VERSION = '1.0';
 let clientTermsReadComplete = false;
 
@@ -119,6 +120,14 @@ function toast(msg){
 function safeText(id, value){
   const el = $(id);
   if(el) el.textContent = value;
+}
+
+function setInviteStatus(message, isError=false){
+  const el = $('inviteStatus');
+  if(!el) return;
+  el.textContent = message || '';
+  el.style.display = message ? 'block' : 'none';
+  el.style.color = isError ? '#92400e' : '';
 }
 
 
@@ -913,26 +922,52 @@ function selectWalker(id){
 }
 
 async function createWalk(){
+  let data = null;
   try{
     if(!requireClient()) return;
+    if(creatingWalk) return;
+    creatingWalk = true;
+    setInviteStatus('Enviando convite ao passeador...');
 
-    const data = {
+    const sessionUser = await api('/api/auth/session/current');
+    if(!sessionUser || sessionUser.role !== 'client'){
+      throw new Error('Sessão do cliente expirada. Faça login novamente.');
+    }
+    currentUser = sessionUser;
+    localStorage.setItem('amigopet_cliente_user', JSON.stringify(sessionUser));
+
+    const walkerId = Number($('walkerSelect')?.value || selectedWalkerId || 0);
+    const petId = Number($('petSelect')?.value || 0);
+    const duration = Number($('duration')?.value || 30);
+    const dogsCount = Math.max(1, Number($('dogsCount')?.value || 1));
+    const address = String($('address')?.value || '').trim();
+
+    data = {
       client_id: currentUser.id,
-      walker_id: Number($('walkerSelect').value) || selectedWalkerId || null,
-      pet_id: Number($('petSelect').value) || null,
-      address: $('address').value,
+      walker_id: walkerId || null,
+      pet_id: petId || null,
+      address,
       pickup_lat: Number(currentUser.lat || -22.5884),
       pickup_lng: Number(currentUser.lng || -43.1847),
-      duration_minutes: Number($('duration').value),
-      dogs_count: Number($('dogsCount').value),
+      duration_minutes: [30, 45, 60].includes(duration) ? duration : 30,
+      dogs_count: dogsCount,
       notes: 'Convite criado pelo cliente.'
     };
 
-    if(!data.pet_id) return toast('Escolha um pet.');
-    if(!data.walker_id) return toast('Escolha um passeador.');
-    if(!data.address) return toast('Informe o endereço.');
+    if(!data.pet_id){
+      setInviteStatus('Escolha um pet antes de enviar o convite.', true);
+      return toast('Escolha um pet.');
+    }
+    if(!data.walker_id){
+      setInviteStatus('Escolha um passeador antes de enviar o convite.', true);
+      return toast('Escolha um passeador.');
+    }
+    if(!data.address){
+      setInviteStatus('Informe o endereço de retirada antes de enviar o convite.', true);
+      return toast('Informe o endereço.');
+    }
 
-    console.log('DADOS ENVIADOS /api/walks:', data);
+    console.info('[AmigoPet] Enviando convite /api/walks', data);
 
     const walk = await api('/api/walks', {
       method:'POST',
@@ -945,9 +980,20 @@ async function createWalk(){
     renderMap(walk);
     await refreshAll();
     toast(`Convite #${walk.id} enviado. R$ ${Number(walk.estimated_price).toFixed(2)}`);
+    setInviteStatus(`Convite #${walk.id} enviado ao passeador.`);
     showView('tracking', true);
   }catch(err){
-    toast(err.message || 'Não foi possível solicitar o passeio.');
+    const message = err.message || 'Não foi possível enviar o convite. Tente novamente.';
+    console.error('[AmigoPet] Falha ao enviar convite /api/walks', {
+      message,
+      payload: data,
+      csrfPresente: Boolean(getCookie('amigopet_csrf')),
+      clienteLogado: Boolean(currentUser && currentUser.role === 'client')
+    });
+    setInviteStatus(message, true);
+    toast(message);
+  }finally{
+    creatingWalk = false;
   }
 }
 

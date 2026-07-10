@@ -1156,6 +1156,7 @@ def _asaas_response_data(res: requests.Response) -> dict:
 
 ASAAS_PIX_TRANSFER_GENERIC_ERROR = "Não foi possível realizar a transferência PIX. Tente novamente mais tarde."
 ASAAS_PIX_TRANSFER_INSUFFICIENT_BALANCE_ERROR = "Transferência PIX não realizada. Saldo insuficiente na conta Asaas."
+ASAAS_PIX_PAYMENT_GENERIC_ERROR = "Não foi possível gerar o PIX Asaas agora. Tente novamente em instantes."
 
 
 class AsaasPayoutError(RuntimeError):
@@ -1186,6 +1187,13 @@ def public_payout_error(error: Exception) -> str:
     if isinstance(error, AsaasPayoutError):
         return error.public_message
     return ASAAS_PIX_TRANSFER_GENERIC_ERROR
+
+
+def public_asaas_pix_payment_error(error: Exception) -> str:
+    text = str(error or "").strip().lower()
+    if "cpf/cnpj" in text:
+        return "Não foi possível gerar o PIX Asaas. Verifique os dados do CPF/CNPJ do cliente."
+    return ASAAS_PIX_PAYMENT_GENERIC_ERROR
 
 
 def sanitize_public_payout_error_text(value: object) -> str:
@@ -2385,10 +2393,10 @@ async def create_walk(data: WalkIn, request: Request, current_user: User = Depen
                 walk.mp_qr_code_base64 = ""
                 walk.mp_ticket_url = ""
                 walk.mp_status = "asaas_error"
-                walk.mp_status_detail = str(mp_error)[:240]
+                walk.mp_status_detail = public_asaas_pix_payment_error(mp_error)
                 db.commit()
                 db.refresh(walk)
-            print("[ASAAS PIX ERROR]", str(mp_error))
+            print("[ASAAS PIX ERROR]", {"walk_id": getattr(walk, "id", None), "error": str(mp_error)})
     except Exception as e:
         db.rollback()
         msg = str(e)

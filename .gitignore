@@ -3,4 +3,5 @@ __pycache__/
 .venv/
 .env
 amigopet.db
+amigopet_v6.db
 .DS_Store
