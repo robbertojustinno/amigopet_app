@@ -682,3 +682,15 @@ def test_admin_panel_file_contains_session_validation_not_localstorage_authority
     assert "/api/auth/session/current" in content
     assert "localStorage.getItem('amigopet_admin_user'" not in content
     assert "JSON.parse(localStorage.getItem" not in content
+
+
+def test_client_frontend_restores_session_from_server_not_localstorage_authority():
+    content = open("frontend/app.js", encoding="utf-8").read()
+    start = content.index("async function restoreClientSession()")
+    end = content.index("async function bootstrapClientApp()", start)
+    restore_block = content[start:end]
+
+    assert "/api/auth/session/current" in restore_block
+    assert "localStorage.getItem" not in restore_block
+    assert "currentUser = savedUser" not in restore_block
+    assert "expireClientSession" in restore_block

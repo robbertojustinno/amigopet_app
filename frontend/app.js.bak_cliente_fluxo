@@ -22,7 +22,6 @@ let chatSocket = null;
 let chatTypingTimer = null;
 let chatTypingClearTimer = null;
 let creatingWalk = false;
-let restoringClientSession = false;
 const CLIENT_TERMS_VERSION = '1.0';
 let clientTermsReadComplete = false;
 
@@ -290,37 +289,6 @@ function clearSessions(){
   localStorage.removeItem('amigopet_cliente_user');
 }
 
-function isAuthError(err){
-  const message = String(err?.message || '').toLowerCase();
-  return err?.status === 401
-    || err?.status === 403
-    || message.includes('csrf')
-    || message.includes('autentica')
-    || message.includes('sessão')
-    || message.includes('sessao');
-}
-
-function resetClientDataViews(message='Faça login para carregar seus dados.'){
-  if($('myPets')) setSafeHTML($('myPets'), `<div class="notice">${escapeHtml(message)}</div>`);
-  if($('myWalks')) setSafeHTML($('myWalks'), `<div class="notice">${escapeHtml(message)}</div>`);
-  if($('walkerCards')) setSafeHTML($('walkerCards'), `<div class="notice">${escapeHtml(message)}</div>`);
-  if($('petSelect')) setSafeHTML($('petSelect'), '<option value="">Faça login para carregar seus pets</option>');
-  if($('walkerSelect')) setSafeHTML($('walkerSelect'), '<option value="">Faça login para carregar passeadores</option>');
-  setInviteStatus('');
-}
-
-function expireClientSession(message='Sessão expirada. Faça login novamente.'){
-  currentUser = null;
-  currentRequestId = null;
-  selectedWalkerId = null;
-  lastWalk = null;
-  clearSessions();
-  hideClientTermsModal();
-  resetClientDataViews(message);
-  setLoggedUI();
-  showView('home', true);
-}
-
 function setAuthMode(mode){
   ['login','register','verify','forgotClientPassword'].forEach(name => {
     const tab = $(`${name}Tab`);
@@ -449,7 +417,7 @@ function showView(id, force=false){
   const btn = document.querySelector(`[data-view="${id}"]`);
   if(btn) btn.classList.add('active');
 
-  if(currentUser && !restoringClientSession) refreshAll().catch(()=>{});
+  if(currentUser) refreshAll().catch(()=>{});
   if(id === 'tracking') setTimeout(() => { initMap(); if(lastWalk) renderMap(lastWalk); }, 250);
 }
 
@@ -496,11 +464,7 @@ async function api(path, options={}){
       detail = JSON.stringify(data);
     }
 
-    const error = new Error(detail);
-    error.status = res.status;
-    error.path = path;
-    error.data = data;
-    throw error;
+    throw new Error(detail);
   }
 
   return data;
@@ -1335,16 +1299,6 @@ async function refreshAll(){
       api(`/api/pets?owner_id=${currentUser.id}`)
     ]);
   }catch(e){
-    console.error('[AmigoPet] Falha ao carregar dados do cliente', {
-      status: e.status,
-      path: e.path,
-      message: e.message
-    });
-    if(isAuthError(e)){
-      expireClientSession('Sessão expirada. Faça login novamente para carregar pets, passeadores e pedidos.');
-      return;
-    }
-    resetClientDataViews('Não foi possível carregar pets, passeadores e pedidos agora. Tente novamente em instantes.');
     return;
   }
 
@@ -1605,7 +1559,25 @@ function connectWS(){
 
 
 async function restoreClientSession(){
-  restoringClientSession = true;
+  let savedUser = null;
+
+  try{
+    const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
+    if(saved){
+      savedUser = JSON.parse(saved);
+      if(savedUser && savedUser.role === 'client'){
+        currentUser = savedUser;
+        setLoggedUI();
+        fillClientEditForm();
+        if(enforceClientTerms()) showView('pet', true);
+      }
+    }
+  }catch(e){
+    localStorage.removeItem('amigopet_cliente_user');
+    localStorage.removeItem('amigopet_user');
+    savedUser = null;
+  }
+
   try{
     const freshUser = await api('/api/auth/session/current');
 
@@ -1620,16 +1592,20 @@ async function restoreClientSession(){
       return true;
     }
   }catch(e){
-    console.info('[AmigoPet] Sessão do cliente não restaurada pelo servidor', {
-      status: e.status,
-      message: e.message
-    });
-  }finally{
-    restoringClientSession = false;
+    if(!savedUser){
+      localStorage.removeItem('amigopet_cliente_user');
+      localStorage.removeItem('amigopet_user');
+    }
   }
 
-  expireClientSession('Faça login para acessar seus pets, passeadores e pedidos.');
-  return false;
+  if(!currentUser || currentUser.role !== 'client'){
+    setLoggedUI();
+    showView('home', true);
+    return false;
+  }
+
+  refreshAll().catch(()=>{});
+  return true;
 }
 
 async function bootstrapClientApp(){
