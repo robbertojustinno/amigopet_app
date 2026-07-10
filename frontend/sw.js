@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amigopet-pwa-v14-cliente-session-refresh';
+const CACHE_NAME = 'amigopet-pwa-v15-cliente-flow';
 const APP_SHELL = [
   '/',
   '/passeador',
@@ -7,7 +7,7 @@ const APP_SHELL = [
   '/static/config.js?v=env-config-v1',
   '/static/app.js?v=cliente-session-refresh-v1',
   '/static/walker.js?v=login-persistente-v3',
-  '/static/pwa.js?v=login-persistente-v3',
+  '/static/pwa.js?v=cliente-session-refresh-v2',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];

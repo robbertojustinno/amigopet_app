@@ -1,6 +1,6 @@
 (function(){
   const APP_NAME = 'AmigoPet';
-  const SW_VERSION = 'patch-0103-login-persistente';
+  const SW_VERSION = 'cliente-session-refresh-v2';
 
   async function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return null;

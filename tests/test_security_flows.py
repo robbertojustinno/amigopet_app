@@ -694,3 +694,21 @@ def test_client_frontend_restores_session_from_server_not_localstorage_authority
     assert "localStorage.getItem" not in restore_block
     assert "currentUser = savedUser" not in restore_block
     assert "expireClientSession" in restore_block
+
+
+def test_client_frontend_static_ids_and_cache_versions_are_consistent():
+    import re
+
+    app_js = open("frontend/app.js", encoding="utf-8").read()
+    index_html = open("frontend/index.html", encoding="utf-8").read()
+    sw_js = open("frontend/sw.js", encoding="utf-8").read()
+    pwa_js = open("frontend/pwa.js", encoding="utf-8").read()
+
+    js_ids = set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", app_js))
+    html_ids = set(re.findall(r"id=[\"']([^\"']+)[\"']", index_html))
+    dynamic_ids = {"clientWalkRatingComment", "clientWalkRatingRating"}
+    assert js_ids - html_ids <= dynamic_ids
+
+    assert "cliente-session-refresh-v2" in index_html
+    assert "cliente-session-refresh-v2" in sw_js
+    assert "cliente-session-refresh-v2" in pwa_js

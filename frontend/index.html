@@ -55,16 +55,61 @@
         </div>
 
         <div class="auth-card" id="authCard">
-          <div id="loginPanel" class="auth-panel active premium-login-panel">
-            <h3>Entrar com Google</h3>
-            <p>Acesse sua conta de cliente com rapidez e segurança usando o Google.</p>
-            <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
-            <div class="notice soft-note" style="margin-top:12px;">No primeiro acesso, sua conta de cliente será criada automaticamente.</div>
+          <div class="auth-tabs">
+            <button id="loginTab" class="active" type="button" onclick="setAuthMode('login')">Entrar</button>
+            <button id="registerTab" type="button" onclick="setAuthMode('register')">Cadastrar</button>
           </div>
 
-          <div id="forgotClientPasswordPanel" class="auth-panel hidden"></div>
-          <div id="registerPanel" class="auth-panel hidden"></div>
-          <div id="verifyPanel" class="auth-panel hidden"></div>
+          <div id="loginPanel" class="auth-panel active premium-login-panel">
+            <h3>Entrar</h3>
+            <p>Acesse sua conta de cliente com Google ou e-mail.</p>
+            <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
+            <input id="loginEmail" type="email" autocomplete="email" placeholder="E-mail" />
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Senha" />
+            <button id="loginBtn" class="full" type="button" onclick="login()">Entrar com e-mail</button>
+            <button id="forgotPasswordBtn" class="ghost full" type="button" onclick="toggleForgotPassword()">Recuperar senha</button>
+          </div>
+
+          <div id="forgotClientPasswordPanel" class="auth-panel hidden">
+            <h3>Recuperar senha</h3>
+            <input id="forgotEmail" type="email" autocomplete="email" placeholder="E-mail cadastrado" />
+            <button id="requestPasswordResetBtn" class="full" type="button" onclick="requestPasswordReset()">Gerar código de recuperação</button>
+            <input id="resetCode" inputmode="numeric" placeholder="Código recebido" />
+            <input id="resetNewPassword" type="password" autocomplete="new-password" placeholder="Nova senha" />
+            <button id="confirmPasswordResetBtn" class="full ok" type="button" onclick="confirmPasswordReset()">Alterar senha</button>
+            <button class="ghost full" type="button" onclick="setAuthMode('login')">Voltar ao login</button>
+          </div>
+
+          <div id="registerPanel" class="auth-panel hidden">
+            <h3>Criar conta de cliente</h3>
+            <label>Foto do cliente</label>
+            <input id="clientPhotoFile" type="file" accept="image/*" capture="user" onchange="handleClientPhoto(event)" />
+            <div class="photo-preview-wrap">
+              <img id="clientPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do cliente" />
+              <span id="clientPhotoStatus">Nenhuma foto selecionada</span>
+            </div>
+            <input id="registerName" autocomplete="name" placeholder="Nome completo" />
+            <input id="registerEmail" type="email" autocomplete="email" placeholder="E-mail" />
+            <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Senha" />
+            <input id="registerPhone" autocomplete="tel" placeholder="Telefone / WhatsApp" />
+            <input id="registerDocument" placeholder="CPF ou documento (opcional)" />
+            <div class="form-grid">
+              <input id="registerStreet" placeholder="Rua" />
+              <input id="registerNumber" placeholder="Número" />
+              <input id="registerNeighborhood" placeholder="Bairro" />
+              <input id="registerCity" placeholder="Cidade" />
+              <input id="registerState" placeholder="Estado" value="RJ" />
+            </div>
+            <textarea id="registerBio" placeholder="Observações de contato, portaria, preferência de horário..."></textarea>
+            <button id="registerBtn" class="full" type="button" onclick="registerClient()">Criar conta</button>
+          </div>
+
+          <div id="verifyPanel" class="auth-panel hidden">
+            <h3>Confirmação</h3>
+            <div class="notice">A confirmação por código não é necessária nesta versão.</div>
+            <button id="verifyBtn" class="full" type="button" onclick="verifyCode()">Continuar</button>
+            <button id="resendCodeBtn" class="ghost full" type="button" onclick="resendCode()">Reenviar código</button>
+          </div>
 
           <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
         </div>
@@ -351,6 +396,6 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script src="/static/config.js?v=env-config-v1"></script>
   <script src="/static/app.js?v=cliente-session-refresh-v1"></script>
-  <script src="/static/pwa.js?v=login-persistente-v3"></script>
+  <script src="/static/pwa.js?v=cliente-session-refresh-v2"></script>
 </body>
 </html>

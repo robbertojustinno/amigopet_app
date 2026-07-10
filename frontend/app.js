@@ -326,7 +326,10 @@ function setAuthMode(mode){
     const tab = $(`${name}Tab`);
     const panel = $(`${name}Panel`);
     if(tab) tab.classList.toggle('active', name === mode);
-    if(panel) panel.classList.toggle('active', name === mode);
+    if(panel){
+      panel.classList.toggle('active', name === mode);
+      panel.classList.toggle('hidden', name !== mode);
+    }
   });
 }
 
@@ -1328,25 +1331,50 @@ async function refreshAll(){
   const previousWalkerId = String($('walkerSelect')?.value || selectedWalkerId || '');
   const previousPetId = String($('petSelect')?.value || '');
 
-  try{
-    [walkers, walks, pets] = await Promise.all([
-      api('/api/users?role=walker'),
-      api('/api/walks'),
-      api(`/api/pets?owner_id=${currentUser.id}`)
-    ]);
-  }catch(e){
+  const loadPart = async (label, path) => {
+    try{
+      const data = await api(path);
+      return Array.isArray(data) ? data : [];
+    }catch(e){
+      e.listLabel = label;
+      throw e;
+    }
+  };
+
+  const results = await Promise.allSettled([
+    loadPart('passeadores', '/api/users?role=walker'),
+    loadPart('pedidos', '/api/walks'),
+    loadPart('pets', `/api/pets?owner_id=${currentUser.id}`)
+  ]);
+
+  const authFailure = results.find(result => result.status === 'rejected' && isAuthError(result.reason));
+  if(authFailure){
+    const e = authFailure.reason;
     console.error('[AmigoPet] Falha ao carregar dados do cliente', {
       status: e.status,
       path: e.path,
       message: e.message
     });
-    if(isAuthError(e)){
-      expireClientSession('Sessão expirada. Faça login novamente para carregar pets, passeadores e pedidos.');
-      return;
-    }
-    resetClientDataViews('Não foi possível carregar pets, passeadores e pedidos agora. Tente novamente em instantes.');
+    expireClientSession('Sessão expirada. Faça login novamente para carregar pets, passeadores e pedidos.');
     return;
   }
+
+  const failedParts = results
+    .map((result, index) => ({result, label: ['passeadores', 'pedidos', 'pets'][index]}))
+    .filter(item => item.result.status === 'rejected');
+
+  if(failedParts.length){
+    console.error('[AmigoPet] Falha parcial ao carregar dados do cliente', failedParts.map(item => ({
+      label: item.label,
+      status: item.result.reason?.status,
+      path: item.result.reason?.path,
+      message: item.result.reason?.message
+    })));
+  }
+
+  walkers = results[0].status === 'fulfilled' ? results[0].value : [];
+  walks = results[1].status === 'fulfilled' ? results[1].value : [];
+  pets = results[2].status === 'fulfilled' ? results[2].value : [];
 
   const availableWalkerList = walkers.filter(w => w.available !== false);
 
@@ -1354,9 +1382,13 @@ async function refreshAll(){
   renderPets(pets);
 
   if($('walkerSelect')){
-    setSafeHTML($('walkerSelect'), `<option value="">Escolha um passeador</option>` + availableWalkerList.map(w =>
-      `<option value="${w.id}">${w.full_name} • ⭐ ${w.rating} • ${w.neighborhood || '-'}</option>`
-    ).join(''));
+    if(results[0].status === 'rejected'){
+      setSafeHTML($('walkerSelect'), '<option value="">Não foi possível carregar passeadores</option>');
+    }else{
+      setSafeHTML($('walkerSelect'), `<option value="">Escolha um passeador</option>` + availableWalkerList.map(w =>
+        `<option value="${w.id}">${w.full_name} • ⭐ ${w.rating} • ${w.neighborhood || '-'}</option>`
+      ).join(''));
+    }
     if(previousWalkerId && availableWalkerList.some(w => String(w.id) === previousWalkerId)){
       $('walkerSelect').value = previousWalkerId;
       selectedWalkerId = Number(previousWalkerId);
@@ -1364,8 +1396,11 @@ async function refreshAll(){
   }
 
   if($('walkerCards')){
-    const visibleWalkers = availableWalkerList.slice(0, 6);
-    setSafeHTML($('walkerCards'), `
+    if(results[0].status === 'rejected'){
+      setSafeHTML($('walkerCards'), '<div class="notice">Não foi possível carregar passeadores agora. Tente novamente em instantes.</div>');
+    }else{
+      const visibleWalkers = availableWalkerList.slice(0, 6);
+      setSafeHTML($('walkerCards'), `
       <div class="notice walker-premium-notice">
         <strong>${availableWalkerList.length}</strong> passeador(es) disponíveis perto de você.
       </div>
@@ -1408,12 +1443,17 @@ async function refreshAll(){
           </div>`;
         }).join('')}
       </div>`);
+    }
   }
 
   if($('petSelect')){
-    setSafeHTML($('petSelect'), `<option value="">Escolha o pet</option>` + pets.map(p =>
-      `<option value="${p.id}">${p.name} • ${p.size}</option>`
-    ).join(''));
+    if(results[2].status === 'rejected'){
+      setSafeHTML($('petSelect'), '<option value="">Não foi possível carregar pets</option>');
+    }else{
+      setSafeHTML($('petSelect'), `<option value="">Escolha o pet</option>` + pets.map(p =>
+        `<option value="${p.id}">${p.name} • ${p.size}</option>`
+      ).join(''));
+    }
     if(previousPetId && pets.some(p => String(p.id) === previousPetId)){
       $('petSelect').value = previousPetId;
     }
@@ -1422,7 +1462,11 @@ async function refreshAll(){
   const myWalks = walks.filter(w => w.client_id === currentUser.id);
 
   if($('myWalks')){
-    setSafeHTML($('myWalks'), myWalks.length ? myWalks.map(walkItem).join('') : '<div class="notice">Nenhum pedido criado ainda.</div>');
+    if(results[1].status === 'rejected'){
+      setSafeHTML($('myWalks'), '<div class="notice">Não foi possível carregar pedidos agora. Tente novamente em instantes.</div>');
+    }else{
+      setSafeHTML($('myWalks'), myWalks.length ? myWalks.map(walkItem).join('') : '<div class="notice">Nenhum pedido criado ainda.</div>');
+    }
   }
 
   if(!lastWalk && myWalks[0]){
