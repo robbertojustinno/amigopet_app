@@ -1292,14 +1292,30 @@ async function refreshAll(){
   const previousWalkerId = String($('walkerSelect')?.value || selectedWalkerId || '');
   const previousPetId = String($('petSelect')?.value || '');
 
-  try{
-    [walkers, walks, pets] = await Promise.all([
-      api('/api/users?role=walker'),
-      api('/api/walks'),
-      api(`/api/pets?owner_id=${currentUser.id}`)
-    ]);
-  }catch(e){
-    return;
+  const [walkersResult, walksResult, petsResult] = await Promise.allSettled([
+    api('/api/users?role=walker'),
+    api('/api/walks'),
+    api(`/api/pets?owner_id=${currentUser.id}`)
+  ]);
+
+  if(walkersResult.status === 'fulfilled' && Array.isArray(walkersResult.value)){
+    walkers = walkersResult.value;
+  }else{
+    console.error('Falha ao carregar passeadores:', walkersResult.reason);
+    setInviteStatus('Não foi possível carregar os passeadores. Atualize a página e tente novamente.', true);
+  }
+
+  if(walksResult.status === 'fulfilled' && Array.isArray(walksResult.value)){
+    walks = walksResult.value;
+  }else{
+    console.error('Falha ao carregar pedidos:', walksResult.reason);
+  }
+
+  if(petsResult.status === 'fulfilled' && Array.isArray(petsResult.value)){
+    pets = petsResult.value;
+  }else{
+    console.error('Falha ao carregar pets:', petsResult.reason);
+    setInviteStatus('Não foi possível carregar seus pets. Atualize a página e tente novamente.', true);
   }
 
   const availableWalkerList = walkers.filter(w => w.available !== false);
