@@ -131,12 +131,18 @@ function setInviteStatus(message, isError=false){
   el.style.color = isError ? '#92400e' : '';
 }
 
-function friendlyWalkSubmitError(message){
-  const text = String(message || '');
+function isCsrfError(err){
+  const text = String(err?.message || err || '').toLowerCase();
+  return err?.status === 403 && text.includes('csrf');
+}
+
+function friendlyWalkSubmitError(error){
+  const text = String(error?.message || error || '');
   const lower = text.toLowerCase();
-  if(lower.includes('csrf') || lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401') || lower.includes('403')){
+  if(error?.status === 401 || lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401')){
     return 'Sessão expirada. Faça login novamente e tente enviar o convite.';
   }
+  if(isCsrfError(error)) return 'Não foi possível validar a segurança da requisição. Atualize a página e tente novamente.';
   if(lower.includes('pet')){
     return 'Não foi possível validar o pet selecionado. Escolha o pet novamente.';
   }
@@ -293,7 +299,7 @@ function clearSessions(){
 function isAuthError(err){
   const message = String(err?.message || '').toLowerCase();
   return err?.status === 401
-    || err?.status === 403
+    || isCsrfError(err)
     || message.includes('csrf')
     || message.includes('autentica')
     || message.includes('sessão')
@@ -465,6 +471,10 @@ function getCookie(name){
 }
 
 async function api(path, options={}){
+  return apiRequest(path, options, false);
+}
+
+async function apiRequest(path, options={}, csrfRetried=false){
   const method = String(options.method || 'GET').toUpperCase();
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if(['POST','PUT','PATCH','DELETE'].includes(method)){
@@ -503,6 +513,10 @@ async function api(path, options={}){
     error.status = res.status;
     error.path = path;
     error.data = data;
+    if(options.csrfRetry && method === 'POST' && !csrfRetried && isCsrfError(error)){
+      await apiRequest('/api/auth/session/current', {method:'GET'}, true);
+      return apiRequest(path, options, true);
+    }
     throw error;
   }
 
@@ -1080,6 +1094,7 @@ async function createWalk(){
 
     const walk = await api('/api/walks', {
       method:'POST',
+      csrfRetry: true,
       body: JSON.stringify(data)
     });
 
@@ -1092,10 +1107,11 @@ async function createWalk(){
     setInviteStatus(`Convite #${walk.id} enviado ao passeador.`);
     showView('tracking', true);
   }catch(err){
-    const message = friendlyWalkSubmitError(err.message);
+    const message = friendlyWalkSubmitError(err);
     console.error('[AmigoPet] Falha ao enviar convite /api/walks', {
       message,
       detail: err.message || '',
+      status: err.status || null,
       payload: data ? {...data, credit_card: data.credit_card ? '[dados protegidos]' : undefined} : null,
       csrfPresente: Boolean(getCookie('amigopet_csrf')),
       clienteLogado: Boolean(currentUser && currentUser.role === 'client')
