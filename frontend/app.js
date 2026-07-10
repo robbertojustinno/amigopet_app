@@ -130,6 +130,65 @@ function setInviteStatus(message, isError=false){
   el.style.color = isError ? '#92400e' : '';
 }
 
+function friendlyWalkSubmitError(message){
+  const text = String(message || '');
+  const lower = text.toLowerCase();
+  if(lower.includes('csrf') || lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401') || lower.includes('403')){
+    return 'Sessão expirada. Faça login novamente e tente enviar o convite.';
+  }
+  if(lower.includes('pet')){
+    return 'Não foi possível validar o pet selecionado. Escolha o pet novamente.';
+  }
+  if(lower.includes('passeador')){
+    return 'Não foi possível validar o passeador selecionado. Escolha o passeador novamente.';
+  }
+  if(lower.includes('rate') || lower.includes('429')){
+    return 'Muitas tentativas em pouco tempo. Aguarde um minuto e tente novamente.';
+  }
+  return text || 'Não foi possível enviar o convite. Tente novamente.';
+}
+
+function digitsOnly(value){
+  return String(value || '').replace(/\D/g, '');
+}
+
+function selectedPaymentMethod(){
+  return String($('paymentMethod')?.value || 'PIX').toUpperCase() === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX';
+}
+
+function toggleCreditCardFields(){
+  const isCard = selectedPaymentMethod() === 'CREDIT_CARD';
+  const box = $('creditCardBox');
+  if(box) box.style.display = isCard ? 'block' : 'none';
+}
+
+function collectCreditCardData(){
+  return {
+    holder_name: String($('cardHolderName')?.value || '').trim(),
+    number: digitsOnly($('cardNumber')?.value),
+    expiry_month: digitsOnly($('cardExpiryMonth')?.value),
+    expiry_year: digitsOnly($('cardExpiryYear')?.value),
+    ccv: digitsOnly($('cardCcv')?.value),
+    cpf_cnpj: digitsOnly($('cardCpfCnpj')?.value || currentUser?.document || ''),
+    postal_code: digitsOnly($('cardPostalCode')?.value || currentUser?.zip_code || ''),
+    address_number: String($('cardAddressNumber')?.value || currentUser?.number || '').trim(),
+    phone: digitsOnly($('cardPhone')?.value || currentUser?.phone || '')
+  };
+}
+
+function validateCreditCardData(card){
+  if(!card.holder_name) return 'Informe o nome impresso no cartão.';
+  if(card.number.length < 13) return 'Informe um número de cartão válido.';
+  if(card.expiry_month.length !== 2) return 'Informe o mês de vencimento do cartão.';
+  if(!['01','02','03','04','05','06','07','08','09','10','11','12'].includes(card.expiry_month)) return 'Informe um mês de vencimento válido.';
+  if(![2, 4].includes(card.expiry_year.length)) return 'Informe o ano de vencimento do cartão.';
+  if(card.ccv.length < 3) return 'Informe o CVV do cartão.';
+  if(![11, 14].includes(card.cpf_cnpj.length)) return 'Informe o CPF/CNPJ do titular do cartão.';
+  if(card.postal_code.length < 8) return 'Informe o CEP do titular do cartão.';
+  if(!card.address_number) return 'Informe o número do endereço do titular.';
+  return '';
+}
+
 
 function clientTermsAccepted(user){
   return Boolean(user?.client_terms_accepted) && String(user?.client_terms_version || '') === CLIENT_TERMS_VERSION;
@@ -941,6 +1000,7 @@ async function createWalk(){
     const duration = Number($('duration')?.value || 30);
     const dogsCount = Math.max(1, Number($('dogsCount')?.value || 1));
     const address = String($('address')?.value || '').trim();
+    const paymentMethod = selectedPaymentMethod();
 
     data = {
       client_id: currentUser.id,
@@ -951,7 +1011,8 @@ async function createWalk(){
       pickup_lng: Number(currentUser.lng || -43.1847),
       duration_minutes: [30, 45, 60].includes(duration) ? duration : 30,
       dogs_count: dogsCount,
-      notes: 'Convite criado pelo cliente.'
+      notes: 'Convite criado pelo cliente.',
+      payment_method: paymentMethod
     };
 
     if(!data.pet_id){
@@ -966,8 +1027,17 @@ async function createWalk(){
       setInviteStatus('Informe o endereço de retirada antes de enviar o convite.', true);
       return toast('Informe o endereço.');
     }
+    if(paymentMethod === 'CREDIT_CARD'){
+      const card = collectCreditCardData();
+      const cardError = validateCreditCardData(card);
+      if(cardError){
+        setInviteStatus(cardError, true);
+        return toast(cardError);
+      }
+      data.credit_card = card;
+    }
 
-    console.info('[AmigoPet] Enviando convite /api/walks', data);
+    console.info('[AmigoPet] Enviando convite /api/walks', {...data, credit_card: data.credit_card ? '[dados protegidos]' : undefined});
 
     const walk = await api('/api/walks', {
       method:'POST',
@@ -983,10 +1053,11 @@ async function createWalk(){
     setInviteStatus(`Convite #${walk.id} enviado ao passeador.`);
     showView('tracking', true);
   }catch(err){
-    const message = err.message || 'Não foi possível enviar o convite. Tente novamente.';
+    const message = friendlyWalkSubmitError(err.message);
     console.error('[AmigoPet] Falha ao enviar convite /api/walks', {
       message,
-      payload: data,
+      detail: err.message || '',
+      payload: data ? {...data, credit_card: data.credit_card ? '[dados protegidos]' : undefined} : null,
       csrfPresente: Boolean(getCookie('amigopet_csrf')),
       clienteLogado: Boolean(currentUser && currentUser.role === 'client')
     });
@@ -1118,9 +1189,10 @@ function renderCurrentWalk(w){
 
   const pixBox = $('pixBox');
   if(pixBox){
+    const isCard = String(w.payment_method || '').toUpperCase() === 'CREDIT_CARD';
     const pixData = w.pixQrCode || w.pix_qr_code || w.asaas_pix || {};
-    const copy = w.pix_code || w.mp_qr_code || w.qr_code || w.qrCode || pixData.payload || pixData.copyPaste || pixData.encodedPayload || '';
-    const base64 = w.mp_qr_code_base64 || w.qr_code_base64 || w.qrCodeBase64 || pixData.encodedImage || '';
+    const copy = isCard ? '' : (w.pix_code || w.mp_qr_code || w.qr_code || w.qrCode || pixData.payload || pixData.copyPaste || pixData.encodedPayload || '');
+    const base64 = isCard ? '' : (w.mp_qr_code_base64 || w.qr_code_base64 || w.qrCodeBase64 || pixData.encodedImage || '');
     const ticketUrl = w.mp_ticket_url || w.invoiceUrl || w.invoice_url || w.payment_url || w.bankSlipUrl || '';
     const errorText = w.mp_status_detail && String(w.mp_status_detail).toLowerCase() !== 'pix' ? `<div class="notice" style="margin-top:10px;color:#92400e;">Retorno do pagamento: ${escapeHtml(w.mp_status_detail)}</div>` : '';
     let qrImg = '';
@@ -1131,10 +1203,11 @@ function renderCurrentWalk(w){
       qrImg = `<img alt="QR Code PIX" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(copy)}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
     }
     const ticket = ticketUrl ? `<br><a href="${escapeHtml(ticketUrl)}" target="_blank" rel="noopener">Abrir pagamento Asaas</a>` : '';
-    const copyText = copy || 'Aguardando geração do PIX Asaas. Clique em Verificar/Gerar PIX.';
+    const copyText = isCard ? 'Pagamento por cartão enviado ao Asaas. Aguarde a confirmação.' : (copy || 'Aguardando geração do PIX Asaas. Clique em Verificar/Gerar PIX.');
     const safeCopy = String(copy).replace(/`/g, '').replace(/\\/g, '\\\\');
     const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${safeCopy}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
-    const payButton = w.id && w.payment_status !== 'pago' ? `<button type="button" class="warn" style="margin-top:10px;margin-left:8px" onclick="payWalk(${w.id})">Verificar/Gerar PIX</button>` : '';
+    const payButtonLabel = isCard ? 'Verificar cartão' : 'Verificar/Gerar PIX';
+    const payButton = w.id && w.payment_status !== 'pago' ? `<button type="button" class="warn" style="margin-top:10px;margin-left:8px" onclick="payWalk(${w.id})">${payButtonLabel}</button>` : '';
     setSafeHTML(pixBox, `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${payButton}${ticket}${errorText}`);
   }
   renderMap(w);
@@ -1216,6 +1289,8 @@ async function refreshAll(){
   let walkers = [];
   let walks = [];
   let pets = [];
+  const previousWalkerId = String($('walkerSelect')?.value || selectedWalkerId || '');
+  const previousPetId = String($('petSelect')?.value || '');
 
   try{
     [walkers, walks, pets] = await Promise.all([
@@ -1236,6 +1311,10 @@ async function refreshAll(){
     setSafeHTML($('walkerSelect'), `<option value="">Escolha um passeador</option>` + availableWalkerList.map(w =>
       `<option value="${w.id}">${w.full_name} • ⭐ ${w.rating} • ${w.neighborhood || '-'}</option>`
     ).join(''));
+    if(previousWalkerId && availableWalkerList.some(w => String(w.id) === previousWalkerId)){
+      $('walkerSelect').value = previousWalkerId;
+      selectedWalkerId = Number(previousWalkerId);
+    }
   }
 
   if($('walkerCards')){
@@ -1289,6 +1368,9 @@ async function refreshAll(){
     setSafeHTML($('petSelect'), `<option value="">Escolha o pet</option>` + pets.map(p =>
       `<option value="${p.id}">${p.name} • ${p.size}</option>`
     ).join(''));
+    if(previousPetId && pets.some(p => String(p.id) === previousPetId)){
+      $('petSelect').value = previousPetId;
+    }
   }
 
   const myWalks = walks.filter(w => w.client_id === currentUser.id);
@@ -1662,6 +1744,12 @@ async function loadPricing(){
     bindById('btnCreateWalk', createWalk);
     bindById('updateClientBtn', updateClientProfile);
     bindById('btnUpdateClient', updateClientProfile);
+    const paymentMethod = $('paymentMethod');
+    if(paymentMethod && !paymentMethod.dataset.boundAmigopetPayment){
+      paymentMethod.dataset.boundAmigopetPayment = '1';
+      paymentMethod.addEventListener('change', toggleCreditCardFields);
+      toggleCreditCardFields();
+    }
 
     bindByText('entrar com google', loginWithGoogle);
     bindByText('gerar código de recuperação', requestPasswordReset);

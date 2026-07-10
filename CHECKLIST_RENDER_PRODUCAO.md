@@ -4,9 +4,9 @@ Data da checagem: 2026-07-10
 
 ## Resultado Geral
 
-Status: quase pronto para Render, com pontos obrigatorios a conferir no painel antes do deploy.
+Status: pronto estruturalmente para deploy no Render, desde que as variaveis obrigatorias estejam configuradas corretamente no painel do Render.
 
-Validacoes locais executadas:
+Validacoes executadas localmente:
 
 ```powershell
 python -m alembic heads
@@ -16,29 +16,43 @@ python -m pytest
 
 Resultado:
 
-- Alembic head encontrado: `20260709_0001`.
+- Alembic head: `20260709_0001 (head)`.
 - Alembic carregou a configuracao local sem erro.
-- Testes: `18 passed`.
+- Testes: `19 passed`.
+- `git status --short`: limpo antes da geracao deste checklist.
 
-## Configuracao Render Encontrada
+## Build Command
 
 Arquivo principal: `render.yaml`
 
 ```yaml
-services:
-  - type: web
-    name: amigopet
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+buildCommand: pip install -r requirements.txt
 ```
 
 Status:
 
-- Build command: correto para o layout atual, pois usa o `requirements.txt` da raiz.
-- Start command: correto, pois roda `alembic upgrade head` antes do Uvicorn.
-- Porta: correta, usa `$PORT` do Render.
-- App import path: correto, `backend.app.main:app`.
+- Correto para o deploy Python nativo pela raiz do repositorio.
+- Instala o `requirements.txt` da raiz, nao `backend/requirements.txt`.
+
+Risco:
+
+- Existe `backend/requirements.txt` com dependencias extras (`uvicorn[standard]`, `websockets`, `wsproto`).
+- Se o WebSocket apresentar problema no Render, alinhar o `requirements.txt` da raiz com o `backend/requirements.txt`.
+
+## Start Command
+
+Arquivo principal: `render.yaml`
+
+```yaml
+startCommand: alembic upgrade head && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Status:
+
+- Correto.
+- Executa migrations antes de subir o app.
+- Usa `$PORT`, exigido pelo Render.
+- Importa corretamente `backend.app.main:app`.
 
 Arquivo secundario: `Procfile`
 
@@ -48,14 +62,31 @@ web: alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 
 
 Status:
 
-- Coerente com o `render.yaml`.
-- Deve ser tratado como fallback. O `render.yaml` deve ser a fonte principal.
+- Coerente com `render.yaml`.
+- Deve ser tratado como fallback. O Render deve usar `render.yaml` como fonte principal.
 
-## Variaveis Obrigatorias
+## Runtime
 
-Configure no Render em `Environment`.
+Arquivos encontrados:
 
-### Ambiente
+- `runtime.txt`
+- `backend/runtime.txt`
+
+Conteudo:
+
+```txt
+python-3.11.9
+```
+
+Status:
+
+- Correto e consistente entre raiz e `backend/`.
+
+## Variaveis Obrigatorias No Render
+
+Configure no painel do Render em `Environment`.
+
+### APP_ENV
 
 Obrigatorio:
 
@@ -63,46 +94,47 @@ Obrigatorio:
 APP_ENV=production
 ```
 
-Observacao:
+Observacoes:
 
-- O backend tambem aceita `ENV=production`, mas padronize `APP_ENV=production`.
-- Se `RENDER_EXTERNAL_URL` estiver definido pelo Render, o backend tambem considera ambiente de producao.
+- O backend tambem aceita `ENV=production`.
+- Padrao recomendado: `APP_ENV=production`.
+- Se `RENDER_EXTERNAL_URL` existir, o backend tambem considera ambiente de producao.
 
 ### SESSION_SECRET
 
-Obrigatorio em producao:
+Obrigatorio:
 
 ```env
 SESSION_SECRET=valor_aleatorio_com_32_ou_mais_caracteres
 ```
 
-Regra no backend:
+Regra validada no backend:
 
-- Em producao, se `SESSION_SECRET` tiver menos de 32 caracteres, a aplicacao falha ao iniciar.
+- Em producao, a aplicacao falha ao iniciar se `SESSION_SECRET` tiver menos de 32 caracteres.
 
 Risco:
 
-- `.env.example` ainda usa `SECRET_KEY`, mas o backend atual exige `SESSION_SECRET`.
-- No Render, use `SESSION_SECRET`, nao `SECRET_KEY`.
+- `.env.example` ainda mostra `SECRET_KEY`, mas o backend atual exige `SESSION_SECRET`.
+- No Render, configurar `SESSION_SECRET`; `SECRET_KEY` nao atende essa validacao.
 
 ### CORS_ORIGINS
 
-Obrigatorio em producao:
+Obrigatorio:
 
 ```env
 CORS_ORIGINS=https://SEU-SERVICO.onrender.com
 ```
 
-Se houver dominio proprio:
+Com dominio proprio:
 
 ```env
 CORS_ORIGINS=https://SEU-SERVICO.onrender.com,https://seudominio.com
 ```
 
-Regras no backend:
+Regras validada no backend:
 
-- Em producao, `CORS_ORIGINS` nao pode ficar vazio.
-- Em producao, `CORS_ORIGINS` nao pode usar wildcard `*`.
+- Em producao, nao pode ficar vazio.
+- Em producao, nao pode usar wildcard `*`.
 
 ### DATABASE_URL
 
@@ -114,18 +146,18 @@ DATABASE_URL=postgresql://usuario:senha@host:5432/banco
 
 Status:
 
-- `backend/app/main.py` le `DATABASE_URL`.
-- `migrations/env.py` tambem le `DATABASE_URL`.
-- `postgres://` e normalizado para `postgresql://`.
-- Se `DATABASE_URL` nao existir, o app cai para SQLite local `sqlite:///./amigopet_v6.db`, o que nao e adequado para producao Render.
+- `backend/app/main.py` usa `DATABASE_URL`.
+- `migrations/env.py` usa `DATABASE_URL`.
+- URLs `postgres://` sao normalizadas para `postgresql://`.
 
 Risco:
 
-- Sem PostgreSQL persistente, dados podem ser perdidos entre deploys/restarts.
+- Se `DATABASE_URL` nao existir, o app cai para SQLite local `sqlite:///./amigopet_v6.db`.
+- SQLite local no Render nao e adequado para producao porque dados podem ser perdidos em restart/deploy.
 
 ### PUBLIC_BASE_URL
 
-Obrigatorio para URLs publicas e callbacks:
+Obrigatorio recomendado:
 
 ```env
 PUBLIC_BASE_URL=https://SEU-SERVICO.onrender.com
@@ -133,52 +165,97 @@ PUBLIC_BASE_URL=https://SEU-SERVICO.onrender.com
 
 Status:
 
-- Se `PUBLIC_BASE_URL` nao existir, o backend tenta usar `RENDER_EXTERNAL_URL`.
-- Recomendado configurar explicitamente para evitar callbacks incorretos.
+- Se ausente, o backend tenta usar `RENDER_EXTERNAL_URL`.
+- Recomendado configurar explicitamente para callbacks e webhooks.
 
-### Google OAuth
+### ASAAS_API_KEY
 
-Obrigatorio se login Google estiver ativo:
+Obrigatorio se PIX/Asaas estiver ativo:
 
 ```env
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=https://SEU-SERVICO.onrender.com/api/auth/google/callback
+ASAAS_API_KEY=...
 ```
 
 Status:
 
-- `GOOGLE_REDIRECT_URI` e derivado de `PUBLIC_BASE_URL` se nao for informado.
-- Para evitar divergencia com o Google Cloud, configure explicitamente.
+- Exigido para criar cobranca PIX, consultar pagamento e fazer repasse.
 
-Riscos:
+Risco:
 
-- Redirect URI no Google Cloud deve ser exatamente igual ao valor no Render.
-- Para APK Android com navegador externo, o dominio deve bater com o dominio publico do Render.
+- Sem `ASAAS_API_KEY`, o convite pode ser criado, mas a geracao/consulta PIX real falhara.
 
-### Asaas
+### ASAAS_WEBHOOK_TOKEN
 
-Obrigatorio se PIX/repasse real estiver ativo:
+Obrigatorio para webhook Asaas em producao:
 
 ```env
-ASAAS_API_KEY=...
 ASAAS_WEBHOOK_TOKEN=...
+```
+
+Status:
+
+- Usado para validar o header recebido do Asaas.
+
+Risco:
+
+- Sem token correto, webhooks validos podem ser recusados ou ambiente pode ficar inseguro se configurado incorretamente.
+
+### ASAAS_ENV e ASAAS_BASE_URL
+
+Recomendado em producao:
+
+```env
 ASAAS_ENV=production
 ASAAS_BASE_URL=https://api.asaas.com/v3
 ```
 
 Status:
 
-- `ASAAS_API_KEY` e exigida quando o app cria cobrancas, consulta pagamentos ou faz repasses.
-- `ASAAS_WEBHOOK_TOKEN` e exigido para validar webhook em producao.
 - `ASAAS_BASE_URL` tem default de producao.
+- Em sandbox/test, o backend troca para `https://api-sandbox.asaas.com/v3` quando aplicavel.
 
-Riscos:
+### GOOGLE_CLIENT_ID
 
-- Sem `ASAAS_API_KEY`, fluxos de PIX real falham.
-- Sem `ASAAS_WEBHOOK_TOKEN`, webhooks em producao nao devem ser aceitos.
+Obrigatorio se login Google estiver ativo:
 
-### Redis
+```env
+GOOGLE_CLIENT_ID=...
+```
+
+Status:
+
+- Necessario para iniciar OAuth.
+
+### GOOGLE_CLIENT_SECRET
+
+Obrigatorio se login Google estiver ativo:
+
+```env
+GOOGLE_CLIENT_SECRET=...
+```
+
+Status:
+
+- Necessario para trocar `code` por token no callback.
+
+### GOOGLE_REDIRECT_URI
+
+Obrigatorio recomendado:
+
+```env
+GOOGLE_REDIRECT_URI=https://SEU-SERVICO.onrender.com/api/auth/google/callback
+```
+
+Status:
+
+- Se ausente, e derivado de `PUBLIC_BASE_URL`.
+
+Risco:
+
+- Deve bater exatamente com o redirect cadastrado no Google Cloud.
+- Divergencia causa falha no login Google.
+
+### REDIS_URL
 
 Opcional:
 
@@ -188,13 +265,14 @@ REDIS_URL=redis://usuario:senha@host:6379/0
 
 Status:
 
-- Rate limit tem fallback em memoria se Redis estiver ausente ou indisponivel.
-- WebSocket/eventos usam Redis quando `REDIS_URL` existe.
+- Rate limit usa Redis se disponivel.
+- Se Redis nao existir ou falhar, rate limit cai para memoria.
+- WebSocket/eventos usam Redis quando disponivel.
 
 Risco:
 
-- Sem Redis, eventos em tempo real ficam limitados a memoria da instancia atual.
-- Para mais de uma instancia no Render, Redis e recomendado.
+- Sem Redis, eventos em tempo real ficam limitados a memoria da instancia.
+- Para multiplas instancias no Render, Redis e recomendado.
 
 ## Alembic
 
@@ -208,10 +286,10 @@ Status:
 
 - `script_location = migrations`.
 - `migrations/env.py` injeta `DATABASE_URL` no Alembic.
-- Existe uma revision head: `20260709_0001`.
-- `render.yaml` executa `alembic upgrade head` antes de iniciar o backend.
+- Existe uma unica revision head: `20260709_0001`.
+- `render.yaml` roda `alembic upgrade head` antes do app iniciar.
 
-Validacao executada:
+Validacao local:
 
 ```txt
 20260709_0001 (head)
@@ -219,121 +297,96 @@ Validacao executada:
 
 Riscos:
 
-- Se `DATABASE_URL` apontar para banco errado, Alembic migrara o banco errado.
-- Se a migration falhar, o servico nao sobe, porque ela roda no start command.
-
-## Requirements
-
-Arquivo usado pelo Render atual:
-
-```txt
-requirements.txt
-```
-
-Status:
-
-- Inclui `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `redis`, `alembic`, `pytest`, `httpx`.
-
-Duplicidade:
-
-- Existe tambem `backend/requirements.txt`.
-- `backend/requirements.txt` inclui `uvicorn[standard]`, `websockets` e `wsproto`.
-- `requirements.txt` da raiz usa apenas `uvicorn`.
-
-Risco:
-
-- Como `render.yaml` instala o `requirements.txt` da raiz, dependencias extras de WebSocket presentes apenas em `backend/requirements.txt` podem nao ser instaladas no Render.
-- Se WebSocket falhar em producao, alinhar os dois requirements ou usar `uvicorn[standard]` no arquivo da raiz.
-
-## Runtime
-
-Arquivos:
-
-- `runtime.txt`
-- `backend/runtime.txt`
-
-Status:
-
-- Ambos usam `python-3.11.9`.
-- Coerente para Render Python runtime.
+- Migration falhando impede o app de iniciar, pois roda no start command.
+- `DATABASE_URL` incorreto migrara o banco errado.
 
 ## Arquivos Duplicados Ou Potencialmente Confusos
 
-Duplicidades relevantes:
+Duplicidades relevantes encontradas:
 
 - `requirements.txt` e `backend/requirements.txt`.
 - `runtime.txt` e `backend/runtime.txt`.
-- `Procfile` e `render.yaml`.
+- `render.yaml` e `Procfile`.
+- `backend/Dockerfile` e `render.yaml` Python nativo.
+- `backend/start.sh` e start command do Render.
 - `app.js` na raiz e `frontend/app.js`.
 - `index.html` na raiz e `frontend/index.html`.
 - `styles.css` na raiz e `frontend/styles.css`.
 - `backend/app/main.py`, `backend/app/main_backup_google.py` e `backend_patch/app/main.py`.
-- Zips de patches e backups na raiz.
-- Build Android gerado em `cliente/build/` e `passeador/build/`.
+- Arquivos `.zip` de patches/backups na raiz.
+- Pastas de patch locais: `amigopet_fix_payout_error_patch`, `amigopet_wallet_clean_patch`.
 
 Impacto:
 
-- O deploy Python via `render.yaml` usa a raiz do repositorio.
-- O backend serve arquivos de `frontend/`, nao os HTML/CSS/JS duplicados da raiz.
-- Backups e patches nao devem ser usados pelo Render, mas aumentam risco de confusao e tamanho do repositorio.
-
-Recomendacao operacional:
-
-- Antes de deploy, revisar `git status --short`.
-- Nao commitar bancos SQLite locais, builds Android, zips temporarios ou pastas de build.
+- O deploy atual pelo `render.yaml` usa a raiz do repositorio.
+- O backend serve o frontend de `frontend/`.
+- Arquivos web duplicados na raiz nao sao a fonte servida pelo backend.
+- Backups, zips e patches podem aumentar tempo de build e causar confusao operacional.
 
 ## Riscos De Deploy
 
-1. Variaveis de producao ausentes
+1. Variaveis obrigatorias ausentes
 
-- Sem `SESSION_SECRET` valido, app nao inicia.
-- Sem `CORS_ORIGINS`, app nao inicia em producao.
-- Sem `DATABASE_URL`, app usa SQLite local, inadequado para Render.
+- `SESSION_SECRET` ausente/curto: app nao inicia.
+- `CORS_ORIGINS` ausente em producao: app nao inicia.
+- `DATABASE_URL` ausente: app usa SQLite local, inadequado para producao.
 
 2. `.env.example` desatualizado
 
 - Mostra `SECRET_KEY`, mas o backend exige `SESSION_SECRET`.
-- Mostra SQLite antigo `amigopet.db`, mas o backend usa fallback `amigopet_v6.db`.
+- Mostra `sqlite:///./amigopet.db`, enquanto o fallback atual e `sqlite:///./amigopet_v6.db`.
 
 3. Requirements duplicados
 
-- Render usa `requirements.txt` da raiz.
-- `backend/requirements.txt` tem dependencias extras de WebSocket.
+- Render instala `requirements.txt` da raiz.
+- Dependencias extras de WebSocket existem apenas em `backend/requirements.txt`.
 
-4. Artefatos e backups no repositorio
+4. Artefatos no repositorio
 
-- Zips, backups e builds podem aumentar tempo de build e confundir manutencao.
+- Zips, backups, builds Android e arquivos duplicados podem aumentar tempo de build.
+- Antes de push/deploy, revisar `git status --short`.
 
 5. Alembic no start command
 
-- E correto para garantir schema atualizado.
-- Mas se migration falhar, o app nao sobe. Verificar logs do Render imediatamente apos deploy.
+- Correto para garantir schema atualizado.
+- Se migration falhar, deploy fica indisponivel ate corrigir banco/migration.
 
 6. Redis opcional
 
-- Rate limit nao deve bloquear login por falta de Redis.
-- WebSocket multi-instancia fica limitado sem Redis.
+- Rate limit nao deve bloquear login por ausencia de Redis.
+- WebSocket multi-instancia exige Redis para consistencia entre instancias.
+
+7. Asaas
+
+- Sem `ASAAS_API_KEY`, convites podem ser criados, mas PIX real falha.
+- Sem `ASAAS_WEBHOOK_TOKEN`, confirmacao automatica por webhook falha em producao.
+
+8. Google OAuth
+
+- `GOOGLE_REDIRECT_URI` precisa ser identico no Render e Google Cloud.
+- Para APK Android com navegador externo, o host publico precisa ser o mesmo dominio configurado.
 
 ## Checklist Antes Do Deploy
 
-- [ ] `APP_ENV=production` configurado.
-- [ ] `SESSION_SECRET` configurado com 32+ caracteres.
-- [ ] `CORS_ORIGINS` configurado sem wildcard.
-- [ ] `DATABASE_URL` apontando para PostgreSQL persistente.
-- [ ] `PUBLIC_BASE_URL` apontando para o dominio publico final.
-- [ ] `ASAAS_API_KEY` configurada se PIX real estiver ativo.
-- [ ] `ASAAS_WEBHOOK_TOKEN` configurado se webhook Asaas estiver ativo.
-- [ ] `GOOGLE_CLIENT_ID` configurado se login Google estiver ativo.
-- [ ] `GOOGLE_CLIENT_SECRET` configurado se login Google estiver ativo.
-- [ ] `GOOGLE_REDIRECT_URI` registrado no Google Cloud e igual ao Render.
-- [ ] `REDIS_URL` configurado se precisar WebSocket/eventos multi-instancia.
-- [ ] Render conectado ao GitHub na branch `main`.
-- [ ] Auto deploy habilitado no Render.
-- [ ] Build command igual a `pip install -r requirements.txt`.
-- [ ] Start command igual a `alembic upgrade head && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`.
-- [ ] `python -m pytest` passando localmente.
-- [ ] `python -m alembic heads` retornando `20260709_0001 (head)`.
-- [ ] `git status --short` revisado antes do push.
+- [ ] `APP_ENV=production`
+- [ ] `SESSION_SECRET` com 32+ caracteres
+- [ ] `CORS_ORIGINS` sem wildcard e apontando para dominio real
+- [ ] `DATABASE_URL` PostgreSQL persistente
+- [ ] `PUBLIC_BASE_URL` com URL publica final
+- [ ] `ASAAS_API_KEY` configurada se PIX real estiver ativo
+- [ ] `ASAAS_WEBHOOK_TOKEN` configurado se webhook Asaas estiver ativo
+- [ ] `ASAAS_ENV=production`
+- [ ] `GOOGLE_CLIENT_ID` configurado se login Google estiver ativo
+- [ ] `GOOGLE_CLIENT_SECRET` configurado se login Google estiver ativo
+- [ ] `GOOGLE_REDIRECT_URI` registrado no Google Cloud
+- [ ] `REDIS_URL` configurado se precisar WebSocket/eventos multi-instancia
+- [ ] Render conectado ao GitHub na branch `main`
+- [ ] Auto deploy habilitado no Render
+- [ ] Build command: `pip install -r requirements.txt`
+- [ ] Start command: `alembic upgrade head && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
+- [ ] `python -m pytest` passando localmente
+- [ ] `python -m alembic heads` retornando `20260709_0001 (head)`
+- [ ] `git status --short` revisado antes do push
 
 ## Comandos De Validacao Local
 
@@ -346,11 +399,11 @@ python -m alembic current
 
 ## Conclusao
 
-O projeto esta estruturalmente preparado para deploy no Render via `render.yaml`, desde que as variaveis de producao sejam configuradas corretamente no painel do Render.
+O projeto esta pronto para deploy no Render pelo `render.yaml` da raiz, desde que as variaveis de producao sejam configuradas no painel do Render.
 
-Os principais pontos de atencao antes do deploy sao:
+Prioridades antes do deploy:
 
-- configurar `SESSION_SECRET`, `CORS_ORIGINS`, `DATABASE_URL` e `PUBLIC_BASE_URL`;
-- configurar Asaas e Google se esses fluxos estiverem ativos;
-- revisar duplicidade de `requirements.txt` se WebSocket apresentar problema no Render;
-- evitar commitar artefatos locais, bancos SQLite, zips e builds gerados.
+1. Configurar `SESSION_SECRET`, `CORS_ORIGINS`, `DATABASE_URL` e `PUBLIC_BASE_URL`.
+2. Configurar Asaas e Google se os fluxos estiverem ativos.
+3. Confirmar Auto Deploy na branch `main`.
+4. Revisar duplicidades/artefatos antes de commitar para evitar enviar arquivos desnecessarios.

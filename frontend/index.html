@@ -186,6 +186,29 @@
 
           <label>Quantidade de cães</label>
           <input id="dogsCount" type="number" min="1" value="1" />
+
+          <label>Forma de pagamento</label>
+          <select id="paymentMethod">
+            <option value="PIX">PIX</option>
+            <option value="CREDIT_CARD">Cartão de crédito</option>
+          </select>
+
+          <div id="creditCardBox" class="notice" style="display:none;margin-top:10px;">
+            <strong>Cartão de crédito</strong>
+            <input id="cardHolderName" autocomplete="cc-name" placeholder="Nome impresso no cartão" />
+            <input id="cardNumber" autocomplete="cc-number" inputmode="numeric" placeholder="Número do cartão" />
+            <div class="grid two">
+              <input id="cardExpiryMonth" autocomplete="cc-exp-month" inputmode="numeric" maxlength="2" placeholder="Mês" />
+              <input id="cardExpiryYear" autocomplete="cc-exp-year" inputmode="numeric" maxlength="4" placeholder="Ano" />
+            </div>
+            <input id="cardCcv" autocomplete="cc-csc" inputmode="numeric" maxlength="4" placeholder="CVV" />
+            <input id="cardCpfCnpj" inputmode="numeric" placeholder="CPF/CNPJ do titular" />
+            <input id="cardPostalCode" inputmode="numeric" placeholder="CEP do titular" />
+            <input id="cardAddressNumber" placeholder="Número do endereço do titular" />
+            <input id="cardPhone" inputmode="tel" placeholder="Telefone do titular" />
+            <small>Os dados do cartão são enviados ao Asaas apenas para esta cobrança e não são salvos no AmigoPet.</small>
+          </div>
+
           <button class="full" type="button" onclick="createWalk()">Enviar convite ao passeador</button>
           <div id="inviteStatus" class="notice" style="display:none;margin-top:10px;"></div>
         </div>
