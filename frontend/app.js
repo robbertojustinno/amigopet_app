@@ -133,7 +133,10 @@ function setInviteStatus(message, isError=false){
 function friendlyWalkSubmitError(message){
   const text = String(message || '');
   const lower = text.toLowerCase();
-  if(lower.includes('csrf') || lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401') || lower.includes('403')){
+  if(lower.includes('csrf')){
+    return 'A proteção da sessão foi renovada. Tente enviar o convite novamente.';
+  }
+  if(lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401')){
     return 'Sessão expirada. Faça login novamente e tente enviar o convite.';
   }
   if(lower.includes('pet')){
@@ -429,33 +432,53 @@ function getCookie(name){
   return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
 }
 
-async function api(path, options={}){
+async function api(path, options={}, retryCsrf=true){
   const method = String(options.method || 'GET').toUpperCase();
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if(['POST','PUT','PATCH','DELETE'].includes(method)){
-    const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
-    if(csrf) headers['X-CSRF-Token'] = csrf;
-  }
-  const res = await fetch(API + path, {
-    ...options,
-    headers,
-    credentials: 'include',
-    cache: 'no-store'
-  });
 
-  let data = null;
+  const doRequest = async () => {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if(['POST','PUT','PATCH','DELETE'].includes(method)){
+      const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
+      if(csrf) headers['X-CSRF-Token'] = csrf;
+    }
 
-  try{
-    data = await res.json();
-  }catch(e){
-    data = {};
+    const res = await fetch(API + path, {
+      ...options,
+      headers,
+      credentials: 'include',
+      cache: 'no-store'
+    });
+
+    let data = null;
+    try{
+      data = await res.json();
+    }catch(e){
+      data = {};
+    }
+    return {res, data};
+  };
+
+  let {res, data} = await doRequest();
+
+  const detailText = Array.isArray(data?.detail)
+    ? data.detail.map(e => e.msg).join(' | ')
+    : (typeof data?.detail === 'string' ? data.detail : '');
+
+  const isCsrfFailure = res.status === 403 && /csrf/i.test(detailText);
+
+  if(isCsrfFailure && retryCsrf && path !== '/api/auth/session/current'){
+    try{
+      await api('/api/auth/session/current', {method:'GET'}, false);
+      ({res, data} = await doRequest());
+    }catch(refreshError){
+      console.error('Falha ao renovar CSRF:', refreshError);
+    }
   }
 
   if(!res.ok){
-    console.error('ERRO API:', path, data); // 👈 LOG REAL
+    console.error('ERRO API:', path, data);
 
     let detail = 'Erro na requisição';
-
     if(Array.isArray(data?.detail)){
       detail = data.detail.map(e => e.msg).join(' | ');
     }else if(typeof data?.detail === 'string'){
@@ -464,7 +487,10 @@ async function api(path, options={}){
       detail = JSON.stringify(data);
     }
 
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = res.status;
+    error.data = data;
+    throw error;
   }
 
   return data;
@@ -1292,30 +1318,14 @@ async function refreshAll(){
   const previousWalkerId = String($('walkerSelect')?.value || selectedWalkerId || '');
   const previousPetId = String($('petSelect')?.value || '');
 
-  const [walkersResult, walksResult, petsResult] = await Promise.allSettled([
-    api('/api/users?role=walker'),
-    api('/api/walks'),
-    api(`/api/pets?owner_id=${currentUser.id}`)
-  ]);
-
-  if(walkersResult.status === 'fulfilled' && Array.isArray(walkersResult.value)){
-    walkers = walkersResult.value;
-  }else{
-    console.error('Falha ao carregar passeadores:', walkersResult.reason);
-    setInviteStatus('Não foi possível carregar os passeadores. Atualize a página e tente novamente.', true);
-  }
-
-  if(walksResult.status === 'fulfilled' && Array.isArray(walksResult.value)){
-    walks = walksResult.value;
-  }else{
-    console.error('Falha ao carregar pedidos:', walksResult.reason);
-  }
-
-  if(petsResult.status === 'fulfilled' && Array.isArray(petsResult.value)){
-    pets = petsResult.value;
-  }else{
-    console.error('Falha ao carregar pets:', petsResult.reason);
-    setInviteStatus('Não foi possível carregar seus pets. Atualize a página e tente novamente.', true);
+  try{
+    [walkers, walks, pets] = await Promise.all([
+      api('/api/users?role=walker'),
+      api('/api/walks'),
+      api(`/api/pets?owner_id=${currentUser.id}`)
+    ]);
+  }catch(e){
+    return;
   }
 
   const availableWalkerList = walkers.filter(w => w.available !== false);
