@@ -133,10 +133,7 @@ function setInviteStatus(message, isError=false){
 function friendlyWalkSubmitError(message){
   const text = String(message || '');
   const lower = text.toLowerCase();
-  if(lower.includes('csrf')){
-    return 'A proteção da sessão foi renovada. Tente enviar o convite novamente.';
-  }
-  if(lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401')){
+  if(lower.includes('csrf') || lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401') || lower.includes('403')){
     return 'Sessão expirada. Faça login novamente e tente enviar o convite.';
   }
   if(lower.includes('pet')){
@@ -432,53 +429,33 @@ function getCookie(name){
   return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
 }
 
-async function api(path, options={}, retryCsrf=true){
+async function api(path, options={}){
   const method = String(options.method || 'GET').toUpperCase();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if(['POST','PUT','PATCH','DELETE'].includes(method)){
+    const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
+    if(csrf) headers['X-CSRF-Token'] = csrf;
+  }
+  const res = await fetch(API + path, {
+    ...options,
+    headers,
+    credentials: 'include',
+    cache: 'no-store'
+  });
 
-  const doRequest = async () => {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-    if(['POST','PUT','PATCH','DELETE'].includes(method)){
-      const csrf = decodeURIComponent(getCookie('amigopet_csrf'));
-      if(csrf) headers['X-CSRF-Token'] = csrf;
-    }
+  let data = null;
 
-    const res = await fetch(API + path, {
-      ...options,
-      headers,
-      credentials: 'include',
-      cache: 'no-store'
-    });
-
-    let data = null;
-    try{
-      data = await res.json();
-    }catch(e){
-      data = {};
-    }
-    return {res, data};
-  };
-
-  let {res, data} = await doRequest();
-
-  const detailText = Array.isArray(data?.detail)
-    ? data.detail.map(e => e.msg).join(' | ')
-    : (typeof data?.detail === 'string' ? data.detail : '');
-
-  const isCsrfFailure = res.status === 403 && /csrf/i.test(detailText);
-
-  if(isCsrfFailure && retryCsrf && path !== '/api/auth/session/current'){
-    try{
-      await api('/api/auth/session/current', {method:'GET'}, false);
-      ({res, data} = await doRequest());
-    }catch(refreshError){
-      console.error('Falha ao renovar CSRF:', refreshError);
-    }
+  try{
+    data = await res.json();
+  }catch(e){
+    data = {};
   }
 
   if(!res.ok){
-    console.error('ERRO API:', path, data);
+    console.error('ERRO API:', path, data); // 👈 LOG REAL
 
     let detail = 'Erro na requisição';
+
     if(Array.isArray(data?.detail)){
       detail = data.detail.map(e => e.msg).join(' | ');
     }else if(typeof data?.detail === 'string'){
@@ -487,10 +464,7 @@ async function api(path, options={}, retryCsrf=true){
       detail = JSON.stringify(data);
     }
 
-    const error = new Error(detail);
-    error.status = res.status;
-    error.data = data;
-    throw error;
+    throw new Error(detail);
   }
 
   return data;
@@ -1618,19 +1592,29 @@ async function restoreClientSession(){
       return true;
     }
   }catch(e){
-    if(!savedUser){
-      localStorage.removeItem('amigopet_cliente_user');
-      localStorage.removeItem('amigopet_user');
-    }
-  }
-
-  if(!currentUser || currentUser.role !== 'client'){
+    // O localStorage é apenas cache visual. Sem sessão válida no servidor,
+    // não mantemos o usuário como autenticado, pois as APIs protegidas
+    // retornariam 401 e deixariam as telas vazias.
+    currentUser = null;
+    localStorage.removeItem('amigopet_cliente_user');
+    localStorage.removeItem('amigopet_user');
     setLoggedUI();
     showView('home', true);
     return false;
   }
 
-  refreshAll().catch(()=>{});
+  if(!currentUser || currentUser.role !== 'client'){
+    currentUser = null;
+    localStorage.removeItem('amigopet_cliente_user');
+    localStorage.removeItem('amigopet_user');
+    setLoggedUI();
+    showView('home', true);
+    return false;
+  }
+
+  await refreshAll().catch((error) => {
+    console.error('Falha ao carregar dados do cliente:', error);
+  });
   return true;
 }
 
