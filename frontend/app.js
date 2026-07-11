@@ -470,6 +470,19 @@ function getCookie(name){
   return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
 }
 
+function waitForCookie(name, previousValue='', timeoutMs=600){
+  const started = Date.now();
+  return new Promise(resolve => {
+    const check = () => {
+      const value = getCookie(name);
+      if(value && (!previousValue || value !== previousValue)) return resolve(value);
+      if(Date.now() - started >= timeoutMs) return resolve(value);
+      setTimeout(check, 25);
+    };
+    check();
+  });
+}
+
 async function api(path, options={}){
   return apiRequest(path, options, false);
 }
@@ -514,7 +527,9 @@ async function apiRequest(path, options={}, csrfRetried=false){
     error.path = path;
     error.data = data;
     if(options.csrfRetry && method === 'POST' && !csrfRetried && isCsrfError(error)){
+      const previousCsrf = getCookie('amigopet_csrf');
       await apiRequest('/api/auth/session/current', {method:'GET'}, true);
+      await waitForCookie('amigopet_csrf', previousCsrf);
       return apiRequest(path, options, true);
     }
     throw error;

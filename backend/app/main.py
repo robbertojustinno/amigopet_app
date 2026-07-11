@@ -751,10 +751,15 @@ def read_csrf_user_id(token: str) -> Optional[int]:
         return None
 
 
-def attach_csrf_cookie(response: Response, user_id: int) -> Response:
+def csrf_token_belongs_to_user(token: str, user_id: int) -> bool:
+    return read_csrf_user_id(token) == int(user_id)
+
+
+def attach_csrf_cookie(response: Response, user_id: int, existing_token: str = "") -> Response:
+    token = existing_token if csrf_token_belongs_to_user(existing_token, user_id) else make_csrf_token(user_id)
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
-        value=make_csrf_token(user_id),
+        value=token,
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=False,
         secure=True,
@@ -2104,7 +2109,7 @@ def current_session(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Sessão expirada ou não encontrada")
     response = JSONResponse(user_to_dict(user))
-    attach_csrf_cookie(response, user.id)
+    attach_csrf_cookie(response, user.id, request.cookies.get(CSRF_COOKIE_NAME, ""))
     return response
 
 

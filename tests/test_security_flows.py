@@ -260,6 +260,77 @@ def test_client_gets_work_and_walk_post_requires_valid_session_and_csrf(client):
     assert client.post("/api/walks", json=payload, headers=valid_headers).status_code == 401
 
 
+def test_current_session_reuses_valid_csrf_token(client):
+    register_client(client, "csrf-reuse@example.com")
+    first = (client.cookies.get("amigopet_csrf") or "").strip('"')
+    assert first
+
+    assert client.get("/api/auth/session/current").status_code == 200
+    second = (client.cookies.get("amigopet_csrf") or "").strip('"')
+    assert second == first
+
+    assert client.get("/api/auth/session/current").status_code == 200
+    third = (client.cookies.get("amigopet_csrf") or "").strip('"')
+    assert third == first
+
+
+def test_current_session_generates_csrf_when_missing_or_invalid(client, app_module):
+    register_client(client, "csrf-refresh@example.com")
+    session = (client.cookies.get("amigopet_session") or "").strip('"')
+    valid = (client.cookies.get("amigopet_csrf") or "").strip('"')
+    assert session and valid
+
+    missing = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session}"})
+    assert missing.status_code == 200
+    generated = (missing.cookies.get("amigopet_csrf") or "").strip('"')
+    assert generated
+    assert app_module.read_csrf_user_id(generated) == app_module.read_session_user_id(session)
+
+    invalid = "csrf-invalido"
+    refreshed = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session}; amigopet_csrf={invalid}"})
+    assert refreshed.status_code == 200
+    refreshed_token = (refreshed.cookies.get("amigopet_csrf") or "").strip('"')
+    assert refreshed_token and refreshed_token != invalid
+    assert app_module.read_csrf_user_id(refreshed_token) == app_module.read_session_user_id(session)
+
+
+def test_csrf_token_from_another_user_is_rejected_and_rotated_on_session_current(client, app_module):
+    user_a = register_client(client, "csrf-user-a@example.com")
+    session_a = (client.cookies.get("amigopet_session") or "").strip('"')
+
+    user_b = register_client(client, "csrf-user-b@example.com")
+    csrf_b = (client.cookies.get("amigopet_csrf") or "").strip('"')
+    assert session_a and csrf_b
+    assert app_module.read_csrf_user_id(csrf_b) == user_b["id"]
+
+    payload = {
+        "client_id": user_a["id"],
+        "walker_id": None,
+        "pet_id": None,
+        "address": "Rua Teste, 123",
+        "pickup_lat": -22.58,
+        "pickup_lng": -43.18,
+        "duration_minutes": 30,
+        "dogs_count": 1,
+        "payment_method": "PIX",
+    }
+    rejected = client.post(
+        "/api/walks",
+        json=payload,
+        headers={
+            "cookie": f"amigopet_session={session_a}; amigopet_csrf={csrf_b}",
+            "x-csrf-token": csrf_b,
+        },
+    )
+    assert rejected.status_code == 403
+
+    rotated = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session_a}; amigopet_csrf={csrf_b}"})
+    assert rotated.status_code == 200
+    csrf_a = (rotated.cookies.get("amigopet_csrf") or "").strip('"')
+    assert csrf_a and csrf_a != csrf_b
+    assert app_module.read_csrf_user_id(csrf_a) == user_a["id"]
+
+
 def test_admin_endpoints_require_real_admin_role(client):
     assert client.get("/api/admin/payout-settings").status_code == 401
 
@@ -846,8 +917,10 @@ def test_client_frontend_static_ids_and_cache_versions_are_consistent():
 def test_client_frontend_retries_walk_post_once_after_csrf_refresh():
     content = open("frontend/app.js", encoding="utf-8").read()
     assert "function isCsrfError" in content
+    assert "function waitForCookie" in content
     assert "options.csrfRetry" in content
     assert "apiRequest('/api/auth/session/current', {method:'GET'}, true)" in content
+    assert "await waitForCookie('amigopet_csrf', previousCsrf)" in content
     assert "return apiRequest(path, options, true)" in content
     assert "csrfRetry: true" in content
     assert "err?.status === 403" not in content[content.index("function isAuthError"):content.index("function resetClientDataViews")]
