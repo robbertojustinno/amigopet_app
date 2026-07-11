@@ -261,16 +261,13 @@ async function handleGoogleLoginCallback(){
   if(googleLogin !== 'success') return;
 
   try{
-    const user = await api('/api/auth/session/current');
+    const user = await confirmWalkerSession();
     if(user.role !== 'walker'){
       toast('Esta área é exclusiva para passeadores. Use o app Cliente.');
       if(history.replaceState) history.replaceState({}, document.title, window.location.pathname);
       return;
     }
 
-    currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    setLoggedUI();
     if(needsWalkerTerms()){
       showWalkerTermsModal();
       toast('Leia e aceite o Termo de Responsabilidade para continuar.');
@@ -306,6 +303,30 @@ function requireWalker(){
   toast('Faça login como passeador.');
   showView('login', true);
   return false;
+}
+
+function clearWalkerLocalSession(){
+  currentUser = null;
+  currentWalk = null;
+  availableWalks = [];
+  localStorage.removeItem('amigopet_walker_user');
+  hideWalkerTermsModal();
+  setLoggedUI();
+  renderAvailableWalks();
+  renderCurrentWalk();
+}
+
+async function confirmWalkerSession(){
+  const user = await api('/api/auth/session/current');
+  if(!user || user.role !== 'walker'){
+    clearWalkerLocalSession();
+    showView('login', true);
+    throw new Error('Esta area e exclusiva para passeadores.');
+  }
+  currentUser = user;
+  localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
+  setLoggedUI();
+  return user;
 }
 
 function setLoggedUI(){
@@ -503,9 +524,7 @@ async function registerWalker(){
       body: JSON.stringify(data)
     });
 
-    currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    setLoggedUI();
+    await confirmWalkerSession();
     showWalkerTermsModal();
     toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
   }catch(err){
@@ -642,9 +661,7 @@ async function registerWalker(){
       body: JSON.stringify(data)
     });
 
-    currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    setLoggedUI();
+    await confirmWalkerSession();
     showWalkerTermsModal();
     toast('Conta criada. Leia e aceite o Termo de Responsabilidade para continuar.');
   }catch(err){
@@ -735,12 +752,14 @@ async function login(){
     if(!email || !password) return toast('Preencha e-mail e senha.');
 
     const user = await api('/api/auth/login', {method:'POST', body: JSON.stringify({email, password})});
+    if(user.role !== 'walker'){
+      clearWalkerLocalSession();
+      showView('login', true);
+    }
 
     if(user.role !== 'walker') throw new Error('Esta área é exclusiva para passeadores.');
 
-    currentUser = user;
-    localStorage.setItem('amigopet_walker_user', JSON.stringify(user));
-    setLoggedUI();
+    await confirmWalkerSession();
     await refreshAll();
     showView('pedidos', true);
     toast('Passeador conectado.');
@@ -1161,6 +1180,7 @@ function renderCurrentWalk(){
 
 async function refreshAll(){
   if(!currentUser) return;
+  await confirmWalkerSession();
   if(needsWalkerTerms()) return;
   try{
     const walks = await api('/api/walks');
@@ -1184,6 +1204,7 @@ function selectWalk(id){
 async function acceptWalk(id){
   try{
     if(!requireWalker()) return;
+    await confirmWalkerSession();
     const selected = availableWalks.find(w => w.id === id) || currentWalk;
     if(selected && selected.payment_status !== 'pago') return toast('Aguardando pagamento PIX confirmado pelo Asaas.');
     const walk = await api(`/api/walks/${id}/accept?walker_id=${currentUser.id}`, {method:'POST'});
@@ -1367,58 +1388,21 @@ function connectWS(){
 }
 
 async function restoreSession(){
-  let savedUser = null;
-
   try{
-    const saved = localStorage.getItem('amigopet_walker_user');
-    if(saved){
-      savedUser = JSON.parse(saved);
-      if(savedUser && savedUser.role === 'walker'){
-        currentUser = savedUser;
-        setLoggedUI();
-        if(needsWalkerTerms()){
-          showView('login', true);
-          showWalkerTermsModal();
-        }else{
-          showView('pedidos', true);
-        }
-      }
+    await confirmWalkerSession();
+    if(needsWalkerTerms()){
+      showView('login', true);
+      showWalkerTermsModal();
+    }else{
+      await refreshAll().catch(()=>{});
+      showView('pedidos', true);
     }
+    return true;
   }catch(e){
-    localStorage.removeItem('amigopet_walker_user');
-    savedUser = null;
-  }
-
-  try{
-    const freshUser = await api('/api/auth/session/current');
-
-    if(freshUser && freshUser.role === 'walker'){
-      currentUser = freshUser;
-      localStorage.setItem('amigopet_walker_user', JSON.stringify(freshUser));
-      setLoggedUI();
-      if(needsWalkerTerms()){
-        showView('login', true);
-        showWalkerTermsModal();
-      }else{
-        await refreshAll().catch(()=>{});
-        showView('pedidos', true);
-      }
-      return true;
-    }
-  }catch(e){
-    if(!savedUser){
-      localStorage.removeItem('amigopet_walker_user');
-    }
-  }
-
-  if(!currentUser || currentUser.role !== 'walker'){
-    setLoggedUI();
+    clearWalkerLocalSession();
     showView('login', true);
     return false;
   }
-
-  refreshAll().catch(()=>{});
-  return true;
 }
 
 async function bootstrapWalkerApp(){

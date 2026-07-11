@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from starlette.requests import Request
 from starlette.websockets import WebSocketDisconnect
@@ -331,6 +333,55 @@ def test_walk_state_operations_require_walker_participation_and_payment(client, 
     login(client, "cliente@amigopet.com")
     client_headers = csrf_headers(client)
     assert client.post(f"/api/walks/{paid.id}/finish", headers=client_headers).status_code == 403
+
+
+def test_client_session_cannot_accept_walk(client, app_module, db):
+    client_user, client_headers = auth_headers(client, "cliente@amigopet.com")
+    walker = register_walker(client, "client-cannot-accept-walker@example.com")
+    walk = make_paid_walk(app_module, db, client_user["id"], walker["id"])
+
+    login(client, "cliente@amigopet.com")
+    client_headers = csrf_headers(client)
+    response = client.post(f"/api/walks/{walk.id}/accept?walker_id={walker['id']}", headers=client_headers)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Acesso exclusivo para passeadores"
+
+
+def test_walker_session_can_accept_paid_walk(client, app_module, db):
+    client_user, _ = auth_headers(client, "cliente@amigopet.com")
+    walker = register_walker(client, "walker-can-accept-paid@example.com")
+    walk = make_paid_walk(app_module, db, client_user["id"], walker["id"])
+
+    login(client, "walker-can-accept-paid@example.com")
+    walker_headers = csrf_headers(client)
+    response = client.post(f"/api/walks/{walk.id}/accept?walker_id={walker['id']}", headers=walker_headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "aceito"
+    assert response.json()["walker_id"] == walker["id"]
+
+
+def test_walker_frontend_does_not_restore_from_localstorage_as_authority():
+    source = Path("frontend/walker.js").read_text(encoding="utf-8")
+    confirm_source = source.split("async function confirmWalkerSession(){", 1)[1].split("function setLoggedUI()", 1)[0]
+    restore_source = source.split("async function restoreSession(){", 1)[1].split("async function bootstrapWalkerApp()", 1)[0]
+
+    assert "api('/api/auth/session/current')" in confirm_source
+    assert "await confirmWalkerSession();" in restore_source
+    assert "localStorage.getItem('amigopet_walker_user')" not in restore_source
+    assert "currentUser = savedUser" not in restore_source
+    assert "clearWalkerLocalSession();" in restore_source
+
+
+def test_walker_frontend_revalidates_session_before_accepting_walk():
+    source = Path("frontend/walker.js").read_text(encoding="utf-8")
+    accept_source = source.split("async function acceptWalk(id){", 1)[1].split("async function rejectWalk", 1)[0]
+    refresh_source = source.split("async function refreshAll(){", 1)[1].split("function selectWalk", 1)[0]
+
+    assert "await confirmWalkerSession();" in accept_source
+    assert "walker_id=${currentUser.id}" in accept_source
+    assert "await confirmWalkerSession();" in refresh_source
 
 
 def test_finish_walk_is_idempotent_and_does_not_duplicate_payout(client, app_module, db, monkeypatch):
