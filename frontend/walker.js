@@ -865,10 +865,10 @@ async function loadWallet(){
       api(`/api/wallet/${currentUser.id}`),
       api(`/api/wallet/${currentUser.id}/history`)
     ]);
-    renderWallet(summary, history);
+    renderWallet(summary?.summary || summary || {}, Array.isArray(history) ? history : (history?.history || history?.transactions || []));
   }catch(err){
     const box = $('walletSummary');
-    if(box) setSafeHTML(box, `<div class="notice">${err.message || 'Não foi possível carregar a carteira.'}</div>`);
+    if(box) setSafeHTML(box, `<div class="notice">${escapeHtml(err.message || 'Não foi possível carregar a carteira.')}</div>`);
   }
 }
 
@@ -1363,28 +1363,6 @@ function connectWS(){
 }
 
 async function restoreSession(){
-  let savedUser = null;
-
-  try{
-    const saved = localStorage.getItem('amigopet_walker_user');
-    if(saved){
-      savedUser = JSON.parse(saved);
-      if(savedUser && savedUser.role === 'walker'){
-        currentUser = savedUser;
-        setLoggedUI();
-        if(needsWalkerTerms()){
-          showView('login', true);
-          showWalkerTermsModal();
-        }else{
-          showView('pedidos', true);
-        }
-      }
-    }
-  }catch(e){
-    localStorage.removeItem('amigopet_walker_user');
-    savedUser = null;
-  }
-
   try{
     const freshUser = await api('/api/auth/session/current');
 
@@ -1402,19 +1380,15 @@ async function restoreSession(){
       return true;
     }
   }catch(e){
-    if(!savedUser){
-      localStorage.removeItem('amigopet_walker_user');
-    }
+    localStorage.removeItem('amigopet_walker_user');
   }
 
-  if(!currentUser || currentUser.role !== 'walker'){
-    setLoggedUI();
-    showView('login', true);
-    return false;
-  }
-
-  refreshAll().catch(()=>{});
-  return true;
+  currentUser = null;
+  currentWalk = null;
+  availableWalks = [];
+  setLoggedUI();
+  showView('login', true);
+  return false;
 }
 
 async function bootstrapWalkerApp(){
