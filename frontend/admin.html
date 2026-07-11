@@ -60,7 +60,7 @@
           <select id="quickLogin" onchange="fillLogin()">
             <option value="admin@amigopet.com" data-role="admin">Administrador</option>
           </select>
-          <input id="loginEmail" type="email" autocomplete="username" placeholder="admin@dominio.com" />
+          <input id="loginEmail" placeholder="E-mail" value="admin@amigopet.com" />
           <input id="loginPassword" placeholder="Senha" type="password" />
           <button onclick="login()">Entrar como Admin</button>
         </div>
@@ -252,7 +252,7 @@
         throw e;
       }
     }
-    function fillLogin(){ $('loginEmail').value = $('quickLogin').value || ''; $('loginPassword').value = ''; }
+    function fillLogin(){ $('loginEmail').value = $('quickLogin').value; $('loginPassword').value = ''; }
     function setNav(){
       const logged = adminUser && adminUser.role === 'admin';
       document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('admin-hide', !logged));

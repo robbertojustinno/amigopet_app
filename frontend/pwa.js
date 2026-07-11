@@ -1,6 +1,6 @@
 (function(){
   const APP_NAME = 'AmigoPet';
-  const SW_VERSION = 'cliente-session-refresh-v2';
+  const SW_VERSION = 'recovery-3769860-v1';
 
   async function registerServiceWorker(){
     if (!('serviceWorker' in navigator)) return null;

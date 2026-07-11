@@ -1,13 +1,13 @@
-const CACHE_NAME = 'amigopet-pwa-v15-cliente-flow';
+const CACHE_NAME = 'amigopet-pwa-recovery-3769860-v1';
 const APP_SHELL = [
   '/',
   '/passeador',
   '/manifest.webmanifest',
   '/static/styles.css?v=login-persistente-v3',
   '/static/config.js?v=env-config-v1',
-  '/static/app.js?v=cliente-session-refresh-v1',
-  '/static/walker.js?v=login-persistente-v3',
-  '/static/pwa.js?v=cliente-session-refresh-v2',
+  '/static/app.js?v=recovery-3769860-v1',
+  '/static/walker.js?v=recovery-3769860-v1',
+  '/static/pwa.js?v=recovery-3769860-v1',
   '/static/assets/amigopet-icon.svg',
   '/static/assets/logo.png'
 ];

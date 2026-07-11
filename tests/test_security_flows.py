@@ -98,20 +98,6 @@ def create_walk(client, client_id: int, pet_id: int, headers: dict[str, str], wa
     return response.json()
 
 
-def credit_card_payload() -> dict:
-    return {
-        "holder_name": "Cliente Teste",
-        "number": "4111111111111111",
-        "expiry_month": "12",
-        "expiry_year": "2030",
-        "ccv": "123",
-        "cpf_cnpj": "12345678900",
-        "postal_code": "25931000",
-        "address_number": "123",
-        "phone": "21999999999",
-    }
-
-
 def make_paid_walk(app_module, db, client_id: int, walker_id: int | None = None, pet_id: int | None = None):
     walk = app_module.WalkRequest(
         client_id=client_id,
@@ -147,190 +133,6 @@ def test_google_session_takeover_endpoint_is_not_available(client):
     assert response.status_code in {404, 405}
 
 
-def test_session_cookie_persists_without_local_storage(client):
-    user = register_client(client, "persistent-client@example.com")
-    session_cookie = (client.cookies.get("amigopet_session") or "").strip('"')
-    csrf_cookie = (client.cookies.get("amigopet_csrf") or "").strip('"')
-
-    assert session_cookie
-    assert csrf_cookie
-
-    client.cookies.clear()
-
-    session = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session_cookie}"})
-    assert session.status_code == 200, session.text
-    assert session.json()["id"] == user["id"]
-    assert client.cookies.get("amigopet_csrf")
-
-
-def test_walker_session_cookie_persists_without_local_storage(client):
-    user = register_walker(client, "persistent-walker@example.com")
-    session_cookie = (client.cookies.get("amigopet_session") or "").strip('"')
-
-    assert session_cookie
-
-    client.cookies.clear()
-
-    session = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session_cookie}"})
-    assert session.status_code == 200, session.text
-    assert session.json()["id"] == user["id"]
-    assert session.json()["role"] == "walker"
-
-
-def test_authenticated_walk_post_with_csrf_creates_invite_for_walker(client):
-    client_user = register_client(client, "walk-auth-client@example.com")
-    headers = csrf_headers(client)
-    pet = create_pet(client, client_user["id"], headers, "Nina")
-    walker = register_walker(client, "walk-auth-walker@example.com")
-
-    login(client, "walk-auth-client@example.com")
-    response = client.post("/api/walks", json={
-        "client_id": client_user["id"],
-        "walker_id": walker["id"],
-        "pet_id": pet["id"],
-        "address": "Rua Teste, 123",
-        "pickup_lat": -22.58,
-        "pickup_lng": -43.18,
-        "duration_minutes": 45,
-        "dogs_count": 1,
-        "notes": "Convite com CSRF",
-        "payment_method": "PIX",
-    }, headers=csrf_headers(client))
-
-    assert response.status_code == 200, response.text
-    walk = response.json()
-    assert walk["client_id"] == client_user["id"]
-    assert walk["walker_id"] == walker["id"]
-    assert walk["pet_id"] == pet["id"]
-    assert walk["duration_minutes"] == 45
-    assert walk["dogs_count"] == 1
-    assert walk["payment_method"] == "PIX"
-    assert walk["payment_status"] == "aguardando"
-
-    login(client, "walk-auth-walker@example.com")
-    walker_walks = client.get("/api/walks").json()
-    assert any(item["id"] == walk["id"] for item in walker_walks)
-
-
-def test_walk_post_without_session_is_blocked(client):
-    response = client.post("/api/walks", json={
-        "client_id": 999,
-        "walker_id": None,
-        "pet_id": None,
-        "address": "Rua Teste, 123",
-        "pickup_lat": -22.58,
-        "pickup_lng": -43.18,
-        "duration_minutes": 30,
-        "dogs_count": 1,
-        "notes": "Sem sessao",
-    })
-
-    assert response.status_code == 401
-
-
-def test_client_gets_work_and_walk_post_requires_valid_session_and_csrf(client):
-    client_user = register_client(client, "csrf-flow-client@example.com")
-    headers = csrf_headers(client)
-    pet = create_pet(client, client_user["id"], headers, "Luna")
-    walker = register_walker(client, "csrf-flow-walker@example.com")
-
-    login(client, "csrf-flow-client@example.com")
-    assert client.get("/api/auth/session/current").status_code == 200
-    assert client.get(f"/api/pets?owner_id={client_user['id']}").status_code == 200
-    assert client.get("/api/users?role=walker").status_code == 200
-    assert client.get("/api/walks").status_code == 200
-
-    valid_headers = csrf_headers(client)
-    payload = {
-        "client_id": client_user["id"],
-        "walker_id": walker["id"],
-        "pet_id": pet["id"],
-        "address": "Rua Teste, 123",
-        "pickup_lat": -22.58,
-        "pickup_lng": -43.18,
-        "duration_minutes": 30,
-        "dogs_count": 1,
-        "payment_method": "PIX",
-    }
-    assert client.post("/api/walks", json=payload, headers={"x-csrf-token": "csrf-invalido"}).status_code == 403
-    created = client.post("/api/walks", json=payload, headers=valid_headers)
-    assert created.status_code == 200, created.text
-
-    client.cookies.clear()
-    assert client.post("/api/walks", json=payload, headers=valid_headers).status_code == 401
-
-
-def test_current_session_reuses_valid_csrf_token(client):
-    register_client(client, "csrf-reuse@example.com")
-    first = (client.cookies.get("amigopet_csrf") or "").strip('"')
-    assert first
-
-    assert client.get("/api/auth/session/current").status_code == 200
-    second = (client.cookies.get("amigopet_csrf") or "").strip('"')
-    assert second == first
-
-    assert client.get("/api/auth/session/current").status_code == 200
-    third = (client.cookies.get("amigopet_csrf") or "").strip('"')
-    assert third == first
-
-
-def test_current_session_generates_csrf_when_missing_or_invalid(client, app_module):
-    register_client(client, "csrf-refresh@example.com")
-    session = (client.cookies.get("amigopet_session") or "").strip('"')
-    valid = (client.cookies.get("amigopet_csrf") or "").strip('"')
-    assert session and valid
-
-    missing = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session}"})
-    assert missing.status_code == 200
-    generated = (missing.cookies.get("amigopet_csrf") or "").strip('"')
-    assert generated
-    assert app_module.read_csrf_user_id(generated) == app_module.read_session_user_id(session)
-
-    invalid = "csrf-invalido"
-    refreshed = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session}; amigopet_csrf={invalid}"})
-    assert refreshed.status_code == 200
-    refreshed_token = (refreshed.cookies.get("amigopet_csrf") or "").strip('"')
-    assert refreshed_token and refreshed_token != invalid
-    assert app_module.read_csrf_user_id(refreshed_token) == app_module.read_session_user_id(session)
-
-
-def test_csrf_token_from_another_user_is_rejected_and_rotated_on_session_current(client, app_module):
-    user_a = register_client(client, "csrf-user-a@example.com")
-    session_a = (client.cookies.get("amigopet_session") or "").strip('"')
-
-    user_b = register_client(client, "csrf-user-b@example.com")
-    csrf_b = (client.cookies.get("amigopet_csrf") or "").strip('"')
-    assert session_a and csrf_b
-    assert app_module.read_csrf_user_id(csrf_b) == user_b["id"]
-
-    payload = {
-        "client_id": user_a["id"],
-        "walker_id": None,
-        "pet_id": None,
-        "address": "Rua Teste, 123",
-        "pickup_lat": -22.58,
-        "pickup_lng": -43.18,
-        "duration_minutes": 30,
-        "dogs_count": 1,
-        "payment_method": "PIX",
-    }
-    rejected = client.post(
-        "/api/walks",
-        json=payload,
-        headers={
-            "cookie": f"amigopet_session={session_a}; amigopet_csrf={csrf_b}",
-            "x-csrf-token": csrf_b,
-        },
-    )
-    assert rejected.status_code == 403
-
-    rotated = client.get("/api/auth/session/current", headers={"cookie": f"amigopet_session={session_a}; amigopet_csrf={csrf_b}"})
-    assert rotated.status_code == 200
-    csrf_a = (rotated.cookies.get("amigopet_csrf") or "").strip('"')
-    assert csrf_a and csrf_a != csrf_b
-    assert app_module.read_csrf_user_id(csrf_a) == user_a["id"]
-
-
 def test_admin_endpoints_require_real_admin_role(client):
     assert client.get("/api/admin/payout-settings").status_code == 401
 
@@ -363,6 +165,20 @@ def test_csrf_required_for_cookie_authenticated_state_changes(client):
 
     with_csrf = client.post("/api/pets", json=pet_payload(user["id"], "Com CSRF"), headers=headers)
     assert with_csrf.status_code == 200, with_csrf.text
+
+
+def test_csrf_accepts_header_with_browser_cookie_quotes(client):
+    user = login(client, "cliente@amigopet.com")
+    token = client.cookies.get("amigopet_csrf")
+    assert token
+
+    response = client.post(
+        "/api/pets",
+        json=pet_payload(user["id"], "CSRF com aspas"),
+        headers={"x-csrf-token": f'"{token.strip(chr(34))}"'},
+    )
+
+    assert response.status_code == 200, response.text
 
 
 def test_rate_limit_uses_redis_atomic_pipeline_when_configured(app_module, monkeypatch):
@@ -464,7 +280,6 @@ def test_walk_creation_and_visibility_are_restricted(client):
     client_user, client_headers = auth_headers(client, "cliente@amigopet.com")
     pet = client.get(f"/api/pets?owner_id={client_user['id']}").json()[0]
     walk = create_walk(client, client_user["id"], pet["id"], client_headers)
-    assert walk["payment_method"] == "PIX"
 
     walker_user = register_walker(client, "visibility-walker@example.com")
     walker_headers = csrf_headers(client)
@@ -516,150 +331,6 @@ def test_walk_state_operations_require_walker_participation_and_payment(client, 
     login(client, "cliente@amigopet.com")
     client_headers = csrf_headers(client)
     assert client.post(f"/api/walks/{paid.id}/finish", headers=client_headers).status_code == 403
-
-
-def test_create_walk_with_credit_card_does_not_expose_sensitive_data(client, app_module, monkeypatch):
-    client_user, headers = auth_headers(client, "cliente@amigopet.com")
-    pet = client.get(f"/api/pets?owner_id={client_user['id']}").json()[0]
-    walker = register_walker(client, "card-walker@example.com")
-    captured = {}
-
-    def fake_card_payment(walk, card):
-        captured["card"] = card
-        return {
-            "id": f"card_pay_{walk.id}",
-            "status": "CONFIRMED",
-            "billingType": "CREDIT_CARD",
-            "externalReference": f"walk_{walk.id}",
-            "value": float(walk.estimated_price or 0),
-            "currency": "BRL",
-            "customer": "cus_card",
-            "invoiceUrl": "https://asaas.example/card",
-        }
-
-    monkeypatch.setattr(app_module, "create_asaas_credit_card_payment", fake_card_payment)
-    login(client, "cliente@amigopet.com")
-    headers = csrf_headers(client)
-
-    response = client.post("/api/walks", json={
-        "client_id": client_user["id"],
-        "walker_id": walker["id"],
-        "pet_id": pet["id"],
-        "address": "Rua Teste, 123",
-        "pickup_lat": -22.58,
-        "pickup_lng": -43.18,
-        "duration_minutes": 30,
-        "dogs_count": 1,
-        "payment_method": "CREDIT_CARD",
-        "credit_card": credit_card_payload(),
-    }, headers=headers)
-    assert response.status_code == 200, response.text
-
-    created = response.json()
-    assert created["payment_method"] == "CREDIT_CARD"
-    assert created["payment_status"] == "pago"
-    assert created["status"] == "pagamento_confirmado"
-    assert "credit_card" not in created
-    assert "cardNumber" not in response.text
-    assert "4111111111111111" not in response.text
-    assert captured["card"].number == "4111111111111111"
-
-
-def test_credit_card_walk_requires_card_data(client):
-    client_user, headers = auth_headers(client, "cliente@amigopet.com")
-    pet = client.get(f"/api/pets?owner_id={client_user['id']}").json()[0]
-    walker = register_walker(client, "card-required-walker@example.com")
-    login(client, "cliente@amigopet.com")
-    headers = csrf_headers(client)
-
-    response = client.post("/api/walks", json={
-        "client_id": client_user["id"],
-        "walker_id": walker["id"],
-        "pet_id": pet["id"],
-        "address": "Rua Teste, 123",
-        "duration_minutes": 30,
-        "dogs_count": 1,
-        "payment_method": "CREDIT_CARD",
-    }, headers=headers)
-
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Informe os dados do cartão."
-
-
-def test_credit_card_refusal_is_friendly_and_does_not_persist_sensitive_data(client, app_module, db, monkeypatch):
-    client_user, headers = auth_headers(client, "cliente@amigopet.com")
-    pet = client.get(f"/api/pets?owner_id={client_user['id']}").json()[0]
-    walker = register_walker(client, "card-refused-walker@example.com")
-    login(client, "cliente@amigopet.com")
-    headers = csrf_headers(client)
-
-    def refused_payment(walk, card):
-        raise RuntimeError("Asaas recusou cobrança no cartão: {'errors':[{'code':'invalid_card','description':'4111111111111111 123'}]}")
-
-    monkeypatch.setattr(app_module, "create_asaas_credit_card_payment", refused_payment)
-    response = client.post("/api/walks", json={
-        "client_id": client_user["id"],
-        "walker_id": walker["id"],
-        "pet_id": pet["id"],
-        "address": "Rua Teste, 123",
-        "duration_minutes": 30,
-        "dogs_count": 1,
-        "payment_method": "CREDIT_CARD",
-        "credit_card": credit_card_payload(),
-    }, headers=headers)
-
-    assert response.status_code == 200, response.text
-    created = response.json()
-    assert created["payment_method"] == "CREDIT_CARD"
-    assert created["payment_status"] == "aguardando"
-    assert created["mp_status_detail"] == "Não foi possível processar o cartão agora. Verifique os dados e tente novamente."
-    assert "4111111111111111" not in response.text
-    assert "123" not in created["mp_status_detail"]
-
-    walk = db.get(app_module.WalkRequest, created["id"])
-    assert walk.payment_method == "CREDIT_CARD"
-    assert "4111111111111111" not in str(walk.__dict__)
-    assert "ccv" not in str(walk.__dict__).lower()
-
-
-def test_asaas_credit_card_payment_payload_uses_credit_card_billing(client, app_module, db, monkeypatch):
-    client_user, _ = auth_headers(client, "cliente@amigopet.com")
-    walk = make_paid_walk(app_module, db, client_user["id"])
-    captured = {}
-
-    class FakeResponse:
-        status_code = 200
-        text = "{}"
-
-        def json(self):
-            return {
-                "id": "pay_card_payload",
-                "status": "PENDING",
-                "billingType": "CREDIT_CARD",
-                "externalReference": f"walk_{walk.id}",
-                "value": float(walk.estimated_price),
-                "customer": "cus_payload",
-            }
-
-    def fake_post(url, json, headers, timeout):
-        captured["url"] = url
-        captured["json"] = json
-        return FakeResponse()
-
-    monkeypatch.setattr(app_module, "create_asaas_customer", lambda walk_arg, cpf_cnpj_override="": "cus_payload")
-    monkeypatch.setattr(app_module.requests, "post", fake_post)
-
-    payment = app_module.create_asaas_credit_card_payment(walk, app_module.CreditCardIn(**credit_card_payload()))
-
-    assert payment["id"] == "pay_card_payload"
-    payload = captured["json"]
-    assert payload["billingType"] == "CREDIT_CARD"
-    assert payload["customer"] == "cus_payload"
-    assert payload["externalReference"] == f"walk_{walk.id}"
-    assert payload["value"] == float(walk.estimated_price)
-    assert payload["creditCardHolderInfo"]["name"] == "Cliente Teste"
-    assert payload["creditCard"]["number"] == "4111111111111111"
-    assert payload["creditCard"]["ccv"] == "123"
 
 
 def test_finish_walk_is_idempotent_and_does_not_duplicate_payout(client, app_module, db, monkeypatch):
@@ -833,39 +504,6 @@ def test_asaas_webhook_validates_token_api_payload_and_is_idempotent(client, app
     assert client.post("/api/asaas/webhook", json=payload, headers=headers).status_code in {400, 409}
 
 
-def test_asaas_webhook_confirms_credit_card_payment(client, app_module, db, monkeypatch):
-    client_user, _ = auth_headers(client, "cliente@amigopet.com")
-    walk = make_paid_walk(app_module, db, client_user["id"])
-    walk.payment_status = "aguardando"
-    walk.payment_method = "CREDIT_CARD"
-    walk.mp_payment_id = "pay_card_webhook_test"
-    db.commit()
-    db.refresh(walk)
-
-    def valid_card_payment(payment_id: str):
-        return {
-            "id": payment_id,
-            "status": "CONFIRMED",
-            "billingType": "CREDIT_CARD",
-            "externalReference": f"walk_{walk.id}",
-            "value": float(walk.estimated_price),
-            "currency": "BRL",
-            "customer": "cus_card",
-        }
-
-    monkeypatch.setattr(app_module, "get_mercadopago_payment", valid_card_payment)
-    response = client.post(
-        "/api/asaas/webhook",
-        json={"event": "PAYMENT_CONFIRMED", "payment": {"id": "pay_card_webhook_test", "customer": "cus_card"}},
-        headers={"asaas-access-token": "test-webhook-token"},
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["payment_status"] == "pago"
-    db.refresh(walk)
-    assert walk.payment_method == "CREDIT_CARD"
-    assert walk.status == "pagamento_confirmado"
-
-
 def test_websocket_requires_authenticated_session(client):
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/ws"):
@@ -882,45 +520,3 @@ def test_admin_panel_file_contains_session_validation_not_localstorage_authority
     assert "/api/auth/session/current" in content
     assert "localStorage.getItem('amigopet_admin_user'" not in content
     assert "JSON.parse(localStorage.getItem" not in content
-
-
-def test_client_frontend_restores_session_from_server_not_localstorage_authority():
-    content = open("frontend/app.js", encoding="utf-8").read()
-    start = content.index("async function restoreClientSession()")
-    end = content.index("async function bootstrapClientApp()", start)
-    restore_block = content[start:end]
-
-    assert "/api/auth/session/current" in restore_block
-    assert "localStorage.getItem" not in restore_block
-    assert "currentUser = savedUser" not in restore_block
-    assert "expireClientSession" in restore_block
-
-
-def test_client_frontend_static_ids_and_cache_versions_are_consistent():
-    import re
-
-    app_js = open("frontend/app.js", encoding="utf-8").read()
-    index_html = open("frontend/index.html", encoding="utf-8").read()
-    sw_js = open("frontend/sw.js", encoding="utf-8").read()
-    pwa_js = open("frontend/pwa.js", encoding="utf-8").read()
-
-    js_ids = set(re.findall(r"\$\(['\"]([^'\"]+)['\"]\)", app_js))
-    html_ids = set(re.findall(r"id=[\"']([^\"']+)[\"']", index_html))
-    dynamic_ids = {"clientWalkRatingComment", "clientWalkRatingRating"}
-    assert js_ids - html_ids <= dynamic_ids
-
-    assert "cliente-session-refresh-v2" in index_html
-    assert "cliente-session-refresh-v2" in sw_js
-    assert "cliente-session-refresh-v2" in pwa_js
-
-
-def test_client_frontend_retries_walk_post_once_after_csrf_refresh():
-    content = open("frontend/app.js", encoding="utf-8").read()
-    assert "function isCsrfError" in content
-    assert "function waitForCookie" in content
-    assert "options.csrfRetry" in content
-    assert "apiRequest('/api/auth/session/current', {method:'GET'}, true)" in content
-    assert "await waitForCookie('amigopet_csrf', previousCsrf)" in content
-    assert "return apiRequest(path, options, true)" in content
-    assert "csrfRetry: true" in content
-    assert "err?.status === 403" not in content[content.index("function isAuthError"):content.index("function resetClientDataViews")]

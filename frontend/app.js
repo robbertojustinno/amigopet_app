@@ -22,7 +22,6 @@ let chatSocket = null;
 let chatTypingTimer = null;
 let chatTypingClearTimer = null;
 let creatingWalk = false;
-let restoringClientSession = false;
 const CLIENT_TERMS_VERSION = '1.0';
 let clientTermsReadComplete = false;
 
@@ -131,71 +130,6 @@ function setInviteStatus(message, isError=false){
   el.style.color = isError ? '#92400e' : '';
 }
 
-function isCsrfError(err){
-  const text = String(err?.message || err || '').toLowerCase();
-  return err?.status === 403 && text.includes('csrf');
-}
-
-function friendlyWalkSubmitError(error){
-  const text = String(error?.message || error || '');
-  const lower = text.toLowerCase();
-  if(error?.status === 401 || lower.includes('autentica') || lower.includes('sessão') || lower.includes('sessao') || lower.includes('401')){
-    return 'Sessão expirada. Faça login novamente e tente enviar o convite.';
-  }
-  if(isCsrfError(error)) return 'Não foi possível validar a segurança da requisição. Atualize a página e tente novamente.';
-  if(lower.includes('pet')){
-    return 'Não foi possível validar o pet selecionado. Escolha o pet novamente.';
-  }
-  if(lower.includes('passeador')){
-    return 'Não foi possível validar o passeador selecionado. Escolha o passeador novamente.';
-  }
-  if(lower.includes('rate') || lower.includes('429')){
-    return 'Muitas tentativas em pouco tempo. Aguarde um minuto e tente novamente.';
-  }
-  return text || 'Não foi possível enviar o convite. Tente novamente.';
-}
-
-function digitsOnly(value){
-  return String(value || '').replace(/\D/g, '');
-}
-
-function selectedPaymentMethod(){
-  return String($('paymentMethod')?.value || 'PIX').toUpperCase() === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX';
-}
-
-function toggleCreditCardFields(){
-  const isCard = selectedPaymentMethod() === 'CREDIT_CARD';
-  const box = $('creditCardBox');
-  if(box) box.style.display = isCard ? 'block' : 'none';
-}
-
-function collectCreditCardData(){
-  return {
-    holder_name: String($('cardHolderName')?.value || '').trim(),
-    number: digitsOnly($('cardNumber')?.value),
-    expiry_month: digitsOnly($('cardExpiryMonth')?.value),
-    expiry_year: digitsOnly($('cardExpiryYear')?.value),
-    ccv: digitsOnly($('cardCcv')?.value),
-    cpf_cnpj: digitsOnly($('cardCpfCnpj')?.value || currentUser?.document || ''),
-    postal_code: digitsOnly($('cardPostalCode')?.value || currentUser?.zip_code || ''),
-    address_number: String($('cardAddressNumber')?.value || currentUser?.number || '').trim(),
-    phone: digitsOnly($('cardPhone')?.value || currentUser?.phone || '')
-  };
-}
-
-function validateCreditCardData(card){
-  if(!card.holder_name) return 'Informe o nome impresso no cartão.';
-  if(card.number.length < 13) return 'Informe um número de cartão válido.';
-  if(card.expiry_month.length !== 2) return 'Informe o mês de vencimento do cartão.';
-  if(!['01','02','03','04','05','06','07','08','09','10','11','12'].includes(card.expiry_month)) return 'Informe um mês de vencimento válido.';
-  if(![2, 4].includes(card.expiry_year.length)) return 'Informe o ano de vencimento do cartão.';
-  if(card.ccv.length < 3) return 'Informe o CVV do cartão.';
-  if(![11, 14].includes(card.cpf_cnpj.length)) return 'Informe o CPF/CNPJ do titular do cartão.';
-  if(card.postal_code.length < 8) return 'Informe o CEP do titular do cartão.';
-  if(!card.address_number) return 'Informe o número do endereço do titular.';
-  return '';
-}
-
 
 function clientTermsAccepted(user){
   return Boolean(user?.client_terms_accepted) && String(user?.client_terms_version || '') === CLIENT_TERMS_VERSION;
@@ -296,46 +230,12 @@ function clearSessions(){
   localStorage.removeItem('amigopet_cliente_user');
 }
 
-function isAuthError(err){
-  const message = String(err?.message || '').toLowerCase();
-  return err?.status === 401
-    || isCsrfError(err)
-    || message.includes('csrf')
-    || message.includes('autentica')
-    || message.includes('sessão')
-    || message.includes('sessao');
-}
-
-function resetClientDataViews(message='Faça login para carregar seus dados.'){
-  if($('myPets')) setSafeHTML($('myPets'), `<div class="notice">${escapeHtml(message)}</div>`);
-  if($('myWalks')) setSafeHTML($('myWalks'), `<div class="notice">${escapeHtml(message)}</div>`);
-  if($('walkerCards')) setSafeHTML($('walkerCards'), `<div class="notice">${escapeHtml(message)}</div>`);
-  if($('petSelect')) setSafeHTML($('petSelect'), '<option value="">Faça login para carregar seus pets</option>');
-  if($('walkerSelect')) setSafeHTML($('walkerSelect'), '<option value="">Faça login para carregar passeadores</option>');
-  setInviteStatus('');
-}
-
-function expireClientSession(message='Sessão expirada. Faça login novamente.'){
-  currentUser = null;
-  currentRequestId = null;
-  selectedWalkerId = null;
-  lastWalk = null;
-  clearSessions();
-  hideClientTermsModal();
-  resetClientDataViews(message);
-  setLoggedUI();
-  showView('home', true);
-}
-
 function setAuthMode(mode){
   ['login','register','verify','forgotClientPassword'].forEach(name => {
     const tab = $(`${name}Tab`);
     const panel = $(`${name}Panel`);
     if(tab) tab.classList.toggle('active', name === mode);
-    if(panel){
-      panel.classList.toggle('active', name === mode);
-      panel.classList.toggle('hidden', name !== mode);
-    }
+    if(panel) panel.classList.toggle('active', name === mode);
   });
 }
 
@@ -458,7 +358,7 @@ function showView(id, force=false){
   const btn = document.querySelector(`[data-view="${id}"]`);
   if(btn) btn.classList.add('active');
 
-  if(currentUser && !restoringClientSession) refreshAll().catch(()=>{});
+  if(currentUser) refreshAll().catch(()=>{});
   if(id === 'tracking') setTimeout(() => { initMap(); if(lastWalk) renderMap(lastWalk); }, 250);
 }
 
@@ -467,27 +367,14 @@ document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
 });
 
 function getCookie(name){
-  return document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
-}
-
-function waitForCookie(name, previousValue='', timeoutMs=600){
-  const started = Date.now();
-  return new Promise(resolve => {
-    const check = () => {
-      const value = getCookie(name);
-      if(value && (!previousValue || value !== previousValue)) return resolve(value);
-      if(Date.now() - started >= timeoutMs) return resolve(value);
-      setTimeout(check, 25);
-    };
-    check();
-  });
+  let value = document.cookie.split('; ').find(row => row.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
+  if((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))){
+    value = value.slice(1, -1);
+  }
+  return value;
 }
 
 async function api(path, options={}){
-  return apiRequest(path, options, false);
-}
-
-async function apiRequest(path, options={}, csrfRetried=false){
   const method = String(options.method || 'GET').toUpperCase();
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if(['POST','PUT','PATCH','DELETE'].includes(method)){
@@ -522,17 +409,7 @@ async function apiRequest(path, options={}, csrfRetried=false){
       detail = JSON.stringify(data);
     }
 
-    const error = new Error(detail);
-    error.status = res.status;
-    error.path = path;
-    error.data = data;
-    if(options.csrfRetry && method === 'POST' && !csrfRetried && isCsrfError(error)){
-      const previousCsrf = getCookie('amigopet_csrf');
-      await apiRequest('/api/auth/session/current', {method:'GET'}, true);
-      await waitForCookie('amigopet_csrf', previousCsrf);
-      return apiRequest(path, options, true);
-    }
-    throw error;
+    throw new Error(detail);
   }
 
   return data;
@@ -1068,7 +945,6 @@ async function createWalk(){
     const duration = Number($('duration')?.value || 30);
     const dogsCount = Math.max(1, Number($('dogsCount')?.value || 1));
     const address = String($('address')?.value || '').trim();
-    const paymentMethod = selectedPaymentMethod();
 
     data = {
       client_id: currentUser.id,
@@ -1079,8 +955,7 @@ async function createWalk(){
       pickup_lng: Number(currentUser.lng || -43.1847),
       duration_minutes: [30, 45, 60].includes(duration) ? duration : 30,
       dogs_count: dogsCount,
-      notes: 'Convite criado pelo cliente.',
-      payment_method: paymentMethod
+      notes: 'Convite criado pelo cliente.'
     };
 
     if(!data.pet_id){
@@ -1095,21 +970,11 @@ async function createWalk(){
       setInviteStatus('Informe o endereço de retirada antes de enviar o convite.', true);
       return toast('Informe o endereço.');
     }
-    if(paymentMethod === 'CREDIT_CARD'){
-      const card = collectCreditCardData();
-      const cardError = validateCreditCardData(card);
-      if(cardError){
-        setInviteStatus(cardError, true);
-        return toast(cardError);
-      }
-      data.credit_card = card;
-    }
 
-    console.info('[AmigoPet] Enviando convite /api/walks', {...data, credit_card: data.credit_card ? '[dados protegidos]' : undefined});
+    console.info('[AmigoPet] Enviando convite /api/walks', data);
 
     const walk = await api('/api/walks', {
       method:'POST',
-      csrfRetry: true,
       body: JSON.stringify(data)
     });
 
@@ -1122,12 +987,10 @@ async function createWalk(){
     setInviteStatus(`Convite #${walk.id} enviado ao passeador.`);
     showView('tracking', true);
   }catch(err){
-    const message = friendlyWalkSubmitError(err);
+    const message = err.message || 'Não foi possível enviar o convite. Tente novamente.';
     console.error('[AmigoPet] Falha ao enviar convite /api/walks', {
       message,
-      detail: err.message || '',
-      status: err.status || null,
-      payload: data ? {...data, credit_card: data.credit_card ? '[dados protegidos]' : undefined} : null,
+      payload: data,
       csrfPresente: Boolean(getCookie('amigopet_csrf')),
       clienteLogado: Boolean(currentUser && currentUser.role === 'client')
     });
@@ -1259,10 +1122,9 @@ function renderCurrentWalk(w){
 
   const pixBox = $('pixBox');
   if(pixBox){
-    const isCard = String(w.payment_method || '').toUpperCase() === 'CREDIT_CARD';
     const pixData = w.pixQrCode || w.pix_qr_code || w.asaas_pix || {};
-    const copy = isCard ? '' : (w.pix_code || w.mp_qr_code || w.qr_code || w.qrCode || pixData.payload || pixData.copyPaste || pixData.encodedPayload || '');
-    const base64 = isCard ? '' : (w.mp_qr_code_base64 || w.qr_code_base64 || w.qrCodeBase64 || pixData.encodedImage || '');
+    const copy = w.pix_code || w.mp_qr_code || w.qr_code || w.qrCode || pixData.payload || pixData.copyPaste || pixData.encodedPayload || '';
+    const base64 = w.mp_qr_code_base64 || w.qr_code_base64 || w.qrCodeBase64 || pixData.encodedImage || '';
     const ticketUrl = w.mp_ticket_url || w.invoiceUrl || w.invoice_url || w.payment_url || w.bankSlipUrl || '';
     const errorText = w.mp_status_detail && String(w.mp_status_detail).toLowerCase() !== 'pix' ? `<div class="notice" style="margin-top:10px;color:#92400e;">Retorno do pagamento: ${escapeHtml(w.mp_status_detail)}</div>` : '';
     let qrImg = '';
@@ -1273,11 +1135,10 @@ function renderCurrentWalk(w){
       qrImg = `<img alt="QR Code PIX" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(copy)}" style="max-width:240px;width:100%;display:block;margin:10px auto;border-radius:16px;border:1px solid #e2e8f0;">`;
     }
     const ticket = ticketUrl ? `<br><a href="${escapeHtml(ticketUrl)}" target="_blank" rel="noopener">Abrir pagamento Asaas</a>` : '';
-    const copyText = isCard ? 'Pagamento por cartão enviado ao Asaas. Aguarde a confirmação.' : (copy || 'Aguardando geração do PIX Asaas. Clique em Verificar/Gerar PIX.');
+    const copyText = copy || 'Aguardando geração do PIX Asaas. Clique em Verificar/Gerar PIX.';
     const safeCopy = String(copy).replace(/`/g, '').replace(/\\/g, '\\\\');
     const copyButton = copy ? `<button type="button" class="ghost" style="margin-top:10px" onclick="navigator.clipboard.writeText(\`${safeCopy}\`); toast('Código PIX copiado')">Copiar código PIX</button>` : '';
-    const payButtonLabel = isCard ? 'Verificar cartão' : 'Verificar/Gerar PIX';
-    const payButton = w.id && w.payment_status !== 'pago' ? `<button type="button" class="warn" style="margin-top:10px;margin-left:8px" onclick="payWalk(${w.id})">${payButtonLabel}</button>` : '';
+    const payButton = w.id && w.payment_status !== 'pago' ? `<button type="button" class="warn" style="margin-top:10px;margin-left:8px" onclick="payWalk(${w.id})">Verificar/Gerar PIX</button>` : '';
     setSafeHTML(pixBox, `${qrImg}<div style="word-break:break-all;white-space:pre-wrap;background:#0f172a;color:#d1fae5;border-radius:16px;padding:12px;font-size:12px;line-height:1.35;">${escapeHtml(copyText)}</div>${copyButton}${payButton}${ticket}${errorText}`);
   }
   renderMap(w);
@@ -1359,53 +1220,16 @@ async function refreshAll(){
   let walkers = [];
   let walks = [];
   let pets = [];
-  const previousWalkerId = String($('walkerSelect')?.value || selectedWalkerId || '');
-  const previousPetId = String($('petSelect')?.value || '');
 
-  const loadPart = async (label, path) => {
-    try{
-      const data = await api(path);
-      return Array.isArray(data) ? data : [];
-    }catch(e){
-      e.listLabel = label;
-      throw e;
-    }
-  };
-
-  const results = await Promise.allSettled([
-    loadPart('passeadores', '/api/users?role=walker'),
-    loadPart('pedidos', '/api/walks'),
-    loadPart('pets', `/api/pets?owner_id=${currentUser.id}`)
-  ]);
-
-  const authFailure = results.find(result => result.status === 'rejected' && isAuthError(result.reason));
-  if(authFailure){
-    const e = authFailure.reason;
-    console.error('[AmigoPet] Falha ao carregar dados do cliente', {
-      status: e.status,
-      path: e.path,
-      message: e.message
-    });
-    expireClientSession('Sessão expirada. Faça login novamente para carregar pets, passeadores e pedidos.');
+  try{
+    [walkers, walks, pets] = await Promise.all([
+      api('/api/users?role=walker'),
+      api('/api/walks'),
+      api(`/api/pets?owner_id=${currentUser.id}`)
+    ]);
+  }catch(e){
     return;
   }
-
-  const failedParts = results
-    .map((result, index) => ({result, label: ['passeadores', 'pedidos', 'pets'][index]}))
-    .filter(item => item.result.status === 'rejected');
-
-  if(failedParts.length){
-    console.error('[AmigoPet] Falha parcial ao carregar dados do cliente', failedParts.map(item => ({
-      label: item.label,
-      status: item.result.reason?.status,
-      path: item.result.reason?.path,
-      message: item.result.reason?.message
-    })));
-  }
-
-  walkers = results[0].status === 'fulfilled' ? results[0].value : [];
-  walks = results[1].status === 'fulfilled' ? results[1].value : [];
-  pets = results[2].status === 'fulfilled' ? results[2].value : [];
 
   const availableWalkerList = walkers.filter(w => w.available !== false);
 
@@ -1413,25 +1237,14 @@ async function refreshAll(){
   renderPets(pets);
 
   if($('walkerSelect')){
-    if(results[0].status === 'rejected'){
-      setSafeHTML($('walkerSelect'), '<option value="">Não foi possível carregar passeadores</option>');
-    }else{
-      setSafeHTML($('walkerSelect'), `<option value="">Escolha um passeador</option>` + availableWalkerList.map(w =>
-        `<option value="${w.id}">${w.full_name} • ⭐ ${w.rating} • ${w.neighborhood || '-'}</option>`
-      ).join(''));
-    }
-    if(previousWalkerId && availableWalkerList.some(w => String(w.id) === previousWalkerId)){
-      $('walkerSelect').value = previousWalkerId;
-      selectedWalkerId = Number(previousWalkerId);
-    }
+    setSafeHTML($('walkerSelect'), `<option value="">Escolha um passeador</option>` + availableWalkerList.map(w =>
+      `<option value="${w.id}">${w.full_name} • ⭐ ${w.rating} • ${w.neighborhood || '-'}</option>`
+    ).join(''));
   }
 
   if($('walkerCards')){
-    if(results[0].status === 'rejected'){
-      setSafeHTML($('walkerCards'), '<div class="notice">Não foi possível carregar passeadores agora. Tente novamente em instantes.</div>');
-    }else{
-      const visibleWalkers = availableWalkerList.slice(0, 6);
-      setSafeHTML($('walkerCards'), `
+    const visibleWalkers = availableWalkerList.slice(0, 6);
+    setSafeHTML($('walkerCards'), `
       <div class="notice walker-premium-notice">
         <strong>${availableWalkerList.length}</strong> passeador(es) disponíveis perto de você.
       </div>
@@ -1474,30 +1287,18 @@ async function refreshAll(){
           </div>`;
         }).join('')}
       </div>`);
-    }
   }
 
   if($('petSelect')){
-    if(results[2].status === 'rejected'){
-      setSafeHTML($('petSelect'), '<option value="">Não foi possível carregar pets</option>');
-    }else{
-      setSafeHTML($('petSelect'), `<option value="">Escolha o pet</option>` + pets.map(p =>
-        `<option value="${p.id}">${p.name} • ${p.size}</option>`
-      ).join(''));
-    }
-    if(previousPetId && pets.some(p => String(p.id) === previousPetId)){
-      $('petSelect').value = previousPetId;
-    }
+    setSafeHTML($('petSelect'), `<option value="">Escolha o pet</option>` + pets.map(p =>
+      `<option value="${p.id}">${p.name} • ${p.size}</option>`
+    ).join(''));
   }
 
   const myWalks = walks.filter(w => w.client_id === currentUser.id);
 
   if($('myWalks')){
-    if(results[1].status === 'rejected'){
-      setSafeHTML($('myWalks'), '<div class="notice">Não foi possível carregar pedidos agora. Tente novamente em instantes.</div>');
-    }else{
-      setSafeHTML($('myWalks'), myWalks.length ? myWalks.map(walkItem).join('') : '<div class="notice">Nenhum pedido criado ainda.</div>');
-    }
+    setSafeHTML($('myWalks'), myWalks.length ? myWalks.map(walkItem).join('') : '<div class="notice">Nenhum pedido criado ainda.</div>');
   }
 
   if(!lastWalk && myWalks[0]){
@@ -1680,7 +1481,25 @@ function connectWS(){
 
 
 async function restoreClientSession(){
-  restoringClientSession = true;
+  let savedUser = null;
+
+  try{
+    const saved = localStorage.getItem('amigopet_cliente_user') || localStorage.getItem('amigopet_user');
+    if(saved){
+      savedUser = JSON.parse(saved);
+      if(savedUser && savedUser.role === 'client'){
+        currentUser = savedUser;
+        setLoggedUI();
+        fillClientEditForm();
+        if(enforceClientTerms()) showView('pet', true);
+      }
+    }
+  }catch(e){
+    localStorage.removeItem('amigopet_cliente_user');
+    localStorage.removeItem('amigopet_user');
+    savedUser = null;
+  }
+
   try{
     const freshUser = await api('/api/auth/session/current');
 
@@ -1695,16 +1514,20 @@ async function restoreClientSession(){
       return true;
     }
   }catch(e){
-    console.info('[AmigoPet] Sessão do cliente não restaurada pelo servidor', {
-      status: e.status,
-      message: e.message
-    });
-  }finally{
-    restoringClientSession = false;
+    if(!savedUser){
+      localStorage.removeItem('amigopet_cliente_user');
+      localStorage.removeItem('amigopet_user');
+    }
   }
 
-  expireClientSession('Faça login para acessar seus pets, passeadores e pedidos.');
-  return false;
+  if(!currentUser || currentUser.role !== 'client'){
+    setLoggedUI();
+    showView('home', true);
+    return false;
+  }
+
+  refreshAll().catch(()=>{});
+  return true;
 }
 
 async function bootstrapClientApp(){
@@ -1843,12 +1666,6 @@ async function loadPricing(){
     bindById('btnCreateWalk', createWalk);
     bindById('updateClientBtn', updateClientProfile);
     bindById('btnUpdateClient', updateClientProfile);
-    const paymentMethod = $('paymentMethod');
-    if(paymentMethod && !paymentMethod.dataset.boundAmigopetPayment){
-      paymentMethod.dataset.boundAmigopetPayment = '1';
-      paymentMethod.addEventListener('change', toggleCreditCardFields);
-      toggleCreditCardFields();
-    }
 
     bindByText('entrar com google', loginWithGoogle);
     bindByText('gerar código de recuperação', requestPasswordReset);

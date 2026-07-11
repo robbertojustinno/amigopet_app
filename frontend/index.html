@@ -55,61 +55,16 @@
         </div>
 
         <div class="auth-card" id="authCard">
-          <div class="auth-tabs">
-            <button id="loginTab" class="active" type="button" onclick="setAuthMode('login')">Entrar</button>
-            <button id="registerTab" type="button" onclick="setAuthMode('register')">Cadastrar</button>
-          </div>
-
           <div id="loginPanel" class="auth-panel active premium-login-panel">
-            <h3>Entrar</h3>
-            <p>Acesse sua conta de cliente com Google ou e-mail.</p>
+            <h3>Entrar com Google</h3>
+            <p>Acesse sua conta de cliente com rapidez e segurança usando o Google.</p>
             <button class="full google-button" type="button" onclick="loginWithGoogle()">Entrar com Google</button>
-            <input id="loginEmail" type="email" autocomplete="email" placeholder="E-mail" />
-            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Senha" />
-            <button id="loginBtn" class="full" type="button" onclick="login()">Entrar com e-mail</button>
-            <button id="forgotPasswordBtn" class="ghost full" type="button" onclick="toggleForgotPassword()">Recuperar senha</button>
+            <div class="notice soft-note" style="margin-top:12px;">No primeiro acesso, sua conta de cliente será criada automaticamente.</div>
           </div>
 
-          <div id="forgotClientPasswordPanel" class="auth-panel hidden">
-            <h3>Recuperar senha</h3>
-            <input id="forgotEmail" type="email" autocomplete="email" placeholder="E-mail cadastrado" />
-            <button id="requestPasswordResetBtn" class="full" type="button" onclick="requestPasswordReset()">Gerar código de recuperação</button>
-            <input id="resetCode" inputmode="numeric" placeholder="Código recebido" />
-            <input id="resetNewPassword" type="password" autocomplete="new-password" placeholder="Nova senha" />
-            <button id="confirmPasswordResetBtn" class="full ok" type="button" onclick="confirmPasswordReset()">Alterar senha</button>
-            <button class="ghost full" type="button" onclick="setAuthMode('login')">Voltar ao login</button>
-          </div>
-
-          <div id="registerPanel" class="auth-panel hidden">
-            <h3>Criar conta de cliente</h3>
-            <label>Foto do cliente</label>
-            <input id="clientPhotoFile" type="file" accept="image/*" capture="user" onchange="handleClientPhoto(event)" />
-            <div class="photo-preview-wrap">
-              <img id="clientPhotoPreview" class="photo-preview hidden" alt="Prévia da foto do cliente" />
-              <span id="clientPhotoStatus">Nenhuma foto selecionada</span>
-            </div>
-            <input id="registerName" autocomplete="name" placeholder="Nome completo" />
-            <input id="registerEmail" type="email" autocomplete="email" placeholder="E-mail" />
-            <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Senha" />
-            <input id="registerPhone" autocomplete="tel" placeholder="Telefone / WhatsApp" />
-            <input id="registerDocument" placeholder="CPF ou documento (opcional)" />
-            <div class="form-grid">
-              <input id="registerStreet" placeholder="Rua" />
-              <input id="registerNumber" placeholder="Número" />
-              <input id="registerNeighborhood" placeholder="Bairro" />
-              <input id="registerCity" placeholder="Cidade" />
-              <input id="registerState" placeholder="Estado" value="RJ" />
-            </div>
-            <textarea id="registerBio" placeholder="Observações de contato, portaria, preferência de horário..."></textarea>
-            <button id="registerBtn" class="full" type="button" onclick="registerClient()">Criar conta</button>
-          </div>
-
-          <div id="verifyPanel" class="auth-panel hidden">
-            <h3>Confirmação</h3>
-            <div class="notice">A confirmação por código não é necessária nesta versão.</div>
-            <button id="verifyBtn" class="full" type="button" onclick="verifyCode()">Continuar</button>
-            <button id="resendCodeBtn" class="ghost full" type="button" onclick="resendCode()">Reenviar código</button>
-          </div>
+          <div id="forgotClientPasswordPanel" class="auth-panel hidden"></div>
+          <div id="registerPanel" class="auth-panel hidden"></div>
+          <div id="verifyPanel" class="auth-panel hidden"></div>
 
           <div id="loggedUser" class="notice">Nenhum cliente conectado.</div>
         </div>
@@ -231,29 +186,6 @@
 
           <label>Quantidade de cães</label>
           <input id="dogsCount" type="number" min="1" value="1" />
-
-          <label>Forma de pagamento</label>
-          <select id="paymentMethod">
-            <option value="PIX">PIX</option>
-            <option value="CREDIT_CARD">Cartão de crédito</option>
-          </select>
-
-          <div id="creditCardBox" class="notice" style="display:none;margin-top:10px;">
-            <strong>Cartão de crédito</strong>
-            <input id="cardHolderName" autocomplete="cc-name" placeholder="Nome impresso no cartão" />
-            <input id="cardNumber" autocomplete="cc-number" inputmode="numeric" placeholder="Número do cartão" />
-            <div class="grid two">
-              <input id="cardExpiryMonth" autocomplete="cc-exp-month" inputmode="numeric" maxlength="2" placeholder="Mês" />
-              <input id="cardExpiryYear" autocomplete="cc-exp-year" inputmode="numeric" maxlength="4" placeholder="Ano" />
-            </div>
-            <input id="cardCcv" autocomplete="cc-csc" inputmode="numeric" maxlength="4" placeholder="CVV" />
-            <input id="cardCpfCnpj" inputmode="numeric" placeholder="CPF/CNPJ do titular" />
-            <input id="cardPostalCode" inputmode="numeric" placeholder="CEP do titular" />
-            <input id="cardAddressNumber" placeholder="Número do endereço do titular" />
-            <input id="cardPhone" inputmode="tel" placeholder="Telefone do titular" />
-            <small>Os dados do cartão são enviados ao Asaas apenas para esta cobrança e não são salvos no AmigoPet.</small>
-          </div>
-
           <button class="full" type="button" onclick="createWalk()">Enviar convite ao passeador</button>
           <div id="inviteStatus" class="notice" style="display:none;margin-top:10px;"></div>
         </div>
@@ -395,7 +327,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script src="/static/config.js?v=env-config-v1"></script>
-  <script src="/static/app.js?v=cliente-session-refresh-v1"></script>
-  <script src="/static/pwa.js?v=cliente-session-refresh-v2"></script>
+  <script src="/static/app.js?v=recovery-3769860-v1"></script>
+  <script src="/static/pwa.js?v=recovery-3769860-v1"></script>
 </body>
 </html>

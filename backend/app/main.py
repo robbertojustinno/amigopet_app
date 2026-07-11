@@ -237,7 +237,6 @@ class WalkRequest(Base):
     distance_km = Column(Float, default=1.8)
     status = Column(String(40), default="pendente")
     payment_status = Column(String(40), default="aguardando")
-    payment_method = Column(String(30), default="PIX")
     pix_code = Column(Text, default="")
     mp_payment_id = Column(String(80), default="")
     mp_status = Column(String(60), default="")
@@ -383,17 +382,6 @@ class PetIn(BaseModel):
     notes: str = ""
     dog_count: int = 1
 
-class CreditCardIn(BaseModel):
-    holder_name: str = ""
-    number: str = ""
-    expiry_month: str = ""
-    expiry_year: str = ""
-    ccv: str = ""
-    cpf_cnpj: str = ""
-    postal_code: str = ""
-    address_number: str = ""
-    phone: str = ""
-
 class WalkIn(BaseModel):
     client_id: int
     walker_id: Optional[int] = None
@@ -404,8 +392,6 @@ class WalkIn(BaseModel):
     duration_minutes: int = 30
     dogs_count: int = 1
     notes: str = ""
-    payment_method: str = "PIX"
-    credit_card: Optional[CreditCardIn] = None
 
 class PricingIn(BaseModel):
     price_30: float = 30.0
@@ -751,15 +737,17 @@ def read_csrf_user_id(token: str) -> Optional[int]:
         return None
 
 
-def csrf_token_belongs_to_user(token: str, user_id: int) -> bool:
-    return read_csrf_user_id(token) == int(user_id)
+def normalize_csrf_token(token: str) -> str:
+    token = str(token or "").strip()
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
+        token = token[1:-1]
+    return token
 
 
-def attach_csrf_cookie(response: Response, user_id: int, existing_token: str = "") -> Response:
-    token = existing_token if csrf_token_belongs_to_user(existing_token, user_id) else make_csrf_token(user_id)
+def attach_csrf_cookie(response: Response, user_id: int) -> Response:
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
-        value=token,
+        value=make_csrf_token(user_id),
         max_age=SESSION_MAX_AGE_SECONDS,
         httponly=False,
         secure=True,
@@ -802,8 +790,8 @@ def session_user_from_request(request: Request, db: Session) -> Optional[User]:
 def validate_csrf_request(request: Request, user_id: int) -> None:
     if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
         return
-    cookie_token = request.cookies.get(CSRF_COOKIE_NAME, "")
-    header_token = request.headers.get(CSRF_HEADER_NAME, "")
+    cookie_token = normalize_csrf_token(request.cookies.get(CSRF_COOKIE_NAME, ""))
+    header_token = normalize_csrf_token(request.headers.get(CSRF_HEADER_NAME, ""))
     if not cookie_token or not header_token:
         raise HTTPException(status_code=403, detail="Token CSRF ausente")
     if not secrets.compare_digest(cookie_token, header_token):
@@ -1176,7 +1164,6 @@ def _asaas_response_data(res: requests.Response) -> dict:
 ASAAS_PIX_TRANSFER_GENERIC_ERROR = "Não foi possível realizar a transferência PIX. Tente novamente mais tarde."
 ASAAS_PIX_TRANSFER_INSUFFICIENT_BALANCE_ERROR = "Transferência PIX não realizada. Saldo insuficiente na conta Asaas."
 ASAAS_PIX_PAYMENT_GENERIC_ERROR = "Não foi possível gerar o PIX Asaas agora. Tente novamente em instantes."
-ASAAS_CARD_PAYMENT_GENERIC_ERROR = "Não foi possível processar o cartão agora. Verifique os dados e tente novamente."
 
 
 class AsaasPayoutError(RuntimeError):
@@ -1209,10 +1196,8 @@ def public_payout_error(error: Exception) -> str:
     return ASAAS_PIX_TRANSFER_GENERIC_ERROR
 
 
-def public_asaas_payment_error(error: Exception, payment_method: str = "PIX") -> str:
+def public_asaas_pix_payment_error(error: Exception) -> str:
     text = str(error or "").strip().lower()
-    if normalize_payment_method(payment_method) == "CREDIT_CARD":
-        return ASAAS_CARD_PAYMENT_GENERIC_ERROR
     if "cpf/cnpj" in text:
         return "Não foi possível gerar o PIX Asaas. Verifique os dados do CPF/CNPJ do cliente."
     return ASAAS_PIX_PAYMENT_GENERIC_ERROR
@@ -1246,7 +1231,7 @@ def sanitize_public_payout_error_text(value: object) -> str:
     return text[:220]
 
 
-def create_asaas_customer(walk: WalkRequest, cpf_cnpj_override: str = "") -> str:
+def create_asaas_customer(walk: WalkRequest) -> str:
     if not walk.client:
         raise RuntimeError("Cliente do pedido não encontrado para criar cobrança no Asaas")
 
@@ -1259,7 +1244,7 @@ def create_asaas_customer(walk: WalkRequest, cpf_cnpj_override: str = "") -> str
     if phone:
         customer_payload["mobilePhone"] = phone
 
-    cpf_cnpj = _only_digits(getattr(walk.client, "document", "") or cpf_cnpj_override)
+    cpf_cnpj = _only_digits(getattr(walk.client, "document", ""))
     if len(cpf_cnpj) not in (11, 14):
         # Produção do Asaas exige CPF/CNPJ para criar cobrança PIX.
         # Use o CPF/CNPJ salvo no cadastro do cliente. Para testes internos,
@@ -1347,94 +1332,6 @@ def create_asaas_pix_payment(walk: WalkRequest) -> dict:
         raise RuntimeError(f"Asaas criou a cobrança, mas não retornou QR Code PIX: {pix}")
 
     payment["pixQrCode"] = pix
-    return payment
-
-
-def normalize_payment_method(value: str) -> str:
-    method = str(value or "PIX").strip().upper().replace("-", "_")
-    if method in {"CARD", "CARTAO", "CARTÃO", "CREDITCARD", "CREDIT_CARD"}:
-        return "CREDIT_CARD"
-    return "PIX"
-
-
-def _card_payload_value(value: str) -> str:
-    return str(value or "").strip()
-
-
-def create_asaas_credit_card_payment(walk: WalkRequest, card: CreditCardIn | None) -> dict:
-    if not ASAAS_API_KEY:
-        raise RuntimeError("ASAAS_API_KEY não configurada no Render")
-    if not card:
-        raise RuntimeError("Dados do cartão não informados")
-
-    customer_id = create_asaas_customer(walk, card.cpf_cnpj)
-    value = float(round(walk.estimated_price or 0, 2))
-    if value <= 0:
-        value = 1.0
-
-    holder_name = _card_payload_value(card.holder_name)
-    number = _only_digits(card.number)
-    expiry_month = _only_digits(card.expiry_month).zfill(2)[-2:]
-    expiry_year = _only_digits(card.expiry_year)
-    ccv = _only_digits(card.ccv)
-    cpf_cnpj = _only_digits(card.cpf_cnpj or getattr(walk.client, "document", ""))
-    postal_code = _only_digits(card.postal_code or getattr(walk.client, "zip_code", ""))
-    address_number = _card_payload_value(card.address_number or getattr(walk.client, "number", ""))
-    phone = _only_digits(card.phone or getattr(walk.client, "phone", ""))
-
-    if not holder_name or len(number) < 13 or len(ccv) < 3 or len(expiry_month) != 2 or len(expiry_year) not in {2, 4}:
-        raise RuntimeError("Dados do cartão incompletos")
-    if len(cpf_cnpj) not in {11, 14}:
-        raise RuntimeError("CPF/CNPJ do titular do cartão inválido")
-    if len(postal_code) < 8:
-        raise RuntimeError("CEP do titular do cartão inválido")
-    if not address_number:
-        raise RuntimeError("Número do endereço do titular do cartão inválido")
-
-    payment_payload = {
-        "customer": customer_id,
-        "billingType": "CREDIT_CARD",
-        "value": value,
-        "dueDate": datetime.utcnow().date().isoformat(),
-        "description": f"AmigoPet - Passeio #{walk.id}",
-        "externalReference": f"walk_{walk.id}",
-        "creditCard": {
-            "holderName": holder_name,
-            "number": number,
-            "expiryMonth": expiry_month,
-            "expiryYear": expiry_year,
-            "ccv": ccv,
-        },
-        "creditCardHolderInfo": {
-            "name": holder_name,
-            "email": getattr(walk.client, "email", "") or f"cliente{walk.client_id}@amigopet.com.br",
-            "cpfCnpj": cpf_cnpj,
-            "postalCode": postal_code,
-            "addressNumber": address_number,
-            "phone": phone,
-        },
-    }
-
-    res = requests.post(
-        f"{ASAAS_BASE_URL}/payments",
-        json=payment_payload,
-        headers=asaas_headers(_asaas_idempotency_key("card", f"walk-{walk.id}-{value}")),
-        timeout=30,
-    )
-    payment = _asaas_response_data(res)
-
-    if res.status_code >= 400:
-        print("[ASAAS CREDIT CARD ERROR]", {
-            "walk_id": walk.id,
-            "status_code": res.status_code,
-            "response": payment,
-        })
-        raise RuntimeError(f"Asaas recusou cobrança no cartão: {payment}")
-
-    payment_id = payment.get("id")
-    if not payment_id:
-        raise RuntimeError(f"Asaas não retornou ID do pagamento no cartão: {payment}")
-
     return payment
 
 
@@ -1536,13 +1433,6 @@ def validate_asaas_payment_for_walk(
     if currency and currency != "BRL":
         raise HTTPException(status_code=409, detail="Moeda do pagamento não confere")
 
-    billing_type = _asaas_str(asaas_payment.get("billingType")).upper()
-    if billing_type and billing_type not in {"PIX", "CREDIT_CARD"}:
-        raise HTTPException(status_code=409, detail="Forma de pagamento Asaas inválida")
-    expected_method = normalize_payment_method(getattr(walk, "payment_method", "") or "PIX")
-    if billing_type and expected_method and billing_type != expected_method:
-        raise HTTPException(status_code=409, detail="Forma de pagamento Asaas não confere")
-
     if isinstance(webhook_payment, dict):
         webhook_customer = _asaas_customer_id(webhook_payment)
         api_customer = _asaas_customer_id(asaas_payment)
@@ -1563,9 +1453,6 @@ def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
     walk.mp_payment_id = str(asaas_payment.get("id") or walk.mp_payment_id or "")
     walk.mp_status = status
     walk.mp_status_detail = str(asaas_payment.get("event") or asaas_payment.get("billingType") or "")[:120]
-    billing_type = str(asaas_payment.get("billingType") or "").upper()
-    if billing_type in {"PIX", "CREDIT_CARD"}:
-        walk.payment_method = billing_type
 
     pix_data = asaas_payment.get("pixQrCode") or {}
     qr_code = pix_data.get("payload") or ""
@@ -1579,10 +1466,6 @@ def apply_asaas_payment_to_walk(walk: WalkRequest, asaas_payment: dict) -> bool:
         walk.mp_qr_code_base64 = qr_code_base64
     if invoice_url:
         walk.mp_ticket_url = invoice_url
-    if walk.payment_method == "CREDIT_CARD":
-        walk.pix_code = ""
-        walk.mp_qr_code = ""
-        walk.mp_qr_code_base64 = ""
 
     if status in ASAAS_PAID_STATUSES:
         walk.payment_status = "pago"
@@ -1810,7 +1693,6 @@ def walk_to_dict(w: WalkRequest, context: str = "admin"):
         "duration_minutes": w.duration_minutes, "dogs_count": w.dogs_count,
         "estimated_price": w.estimated_price, "distance_km": w.distance_km,
         "status": w.status, "payment_status": w.payment_status,
-        "payment_method": getattr(w, "payment_method", "") or "PIX",
         "mp_status": w.mp_status,
         "seconds_left": seconds_left,
         "expires_at": w.expires_at.isoformat() if w.expires_at else None,
@@ -2109,7 +1991,7 @@ def current_session(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Sessão expirada ou não encontrada")
     response = JSONResponse(user_to_dict(user))
-    attach_csrf_cookie(response, user.id, request.cookies.get(CSRF_COOKIE_NAME, ""))
+    attach_csrf_cookie(response, user.id)
     return response
 
 
@@ -2478,12 +2360,7 @@ async def create_walk(data: WalkIn, request: Request, current_user: User = Depen
         if not pet or pet.owner_id != data.client_id:
             raise HTTPException(status_code=400, detail="Pet inválido para este cliente")
 
-    payment_method = normalize_payment_method(data.payment_method)
-    if payment_method == "CREDIT_CARD" and not data.credit_card:
-        raise HTTPException(status_code=400, detail="Informe os dados do cartão.")
-
-    payload_data = pydantic_dump(data, exclude={"credit_card"})
-    payload_data["payment_method"] = payment_method
+    payload_data = pydantic_dump(data)
 
     price = calculate_walk_price(db, data.duration_minutes, data.dogs_count)
 
@@ -2508,13 +2385,9 @@ async def create_walk(data: WalkIn, request: Request, current_user: User = Depen
 
         # Asaas real: cria cobrança PIX e salva QR Code/copia-e-cola no pedido.
         try:
-            if payment_method == "CREDIT_CARD":
-                mp_payment = create_asaas_credit_card_payment(walk, data.credit_card)
-            else:
-                mp_payment = create_mercadopago_pix_payment(walk)
+            mp_payment = create_mercadopago_pix_payment(walk)
             apply_mp_payment_to_walk(walk, mp_payment)
-            payment_label = "Cartão Asaas" if payment_method == "CREDIT_CARD" else "PIX Asaas"
-            add_event_log(db, f"💳 {payment_label} gerado", "payment_created", walk=walk, user_id=walk.client_id, actor_role="system", details=f"Pagamento Asaas vinculado: {walk.mp_payment_id}")
+            add_event_log(db, "💳 PIX Asaas gerado", "pix_created", walk=walk, user_id=walk.client_id, actor_role="system", details=f"Pagamento Asaas vinculado: {walk.mp_payment_id}")
             db.commit()
             db.refresh(walk)
         except Exception as mp_error:
@@ -2527,10 +2400,10 @@ async def create_walk(data: WalkIn, request: Request, current_user: User = Depen
                 walk.mp_qr_code_base64 = ""
                 walk.mp_ticket_url = ""
                 walk.mp_status = "asaas_error"
-                walk.mp_status_detail = public_asaas_payment_error(mp_error, payment_method)
+                walk.mp_status_detail = public_asaas_pix_payment_error(mp_error)
                 db.commit()
                 db.refresh(walk)
-            print("[ASAAS PAYMENT ERROR]", {"walk_id": getattr(walk, "id", None), "payment_method": payment_method, "error": str(mp_error)})
+            print("[ASAAS PIX ERROR]", {"walk_id": getattr(walk, "id", None), "error": str(mp_error)})
     except Exception as e:
         db.rollback()
         msg = str(e)
@@ -2617,8 +2490,7 @@ async def pay_walk(walk_id: int, request: Request, current_user: User = Depends(
 
     changed = False
     if not walk.mp_payment_id:
-        method_label = "cartão" if getattr(walk, "payment_method", "") == "CREDIT_CARD" else "PIX"
-        raise HTTPException(status_code=400, detail=f"Este pedido ainda não tem pagamento Asaas vinculado. Crie um novo pedido para gerar o pagamento por {method_label}.")
+        raise HTTPException(status_code=400, detail="Este pedido ainda não tem pagamento Asaas vinculado. Crie um novo pedido para gerar o PIX real.")
 
     if not ASAAS_API_KEY:
         raise HTTPException(status_code=500, detail="ASAAS_API_KEY não configurada no Render.")
