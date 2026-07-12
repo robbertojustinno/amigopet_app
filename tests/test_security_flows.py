@@ -147,7 +147,7 @@ def test_admin_endpoints_require_real_admin_role(client):
         "extra_dog": 10,
     }, headers=client_headers).status_code == 403
 
-    login(client, "admin@amigopet.com")
+    login(client, "admin@amigopet.com", "1%3R723$Rj")
     admin_headers = csrf_headers(client)
     assert client.get("/api/admin/payout-settings").status_code == 200
     response = client.post("/api/admin/pricing", json={
@@ -272,7 +272,7 @@ def test_pets_are_restricted_by_owner_and_role(client):
     assert own_list.status_code == 200
     assert all(item["owner_id"] == client_b["id"] for item in own_list.json())
 
-    login(client, "admin@amigopet.com")
+    login(client, "admin@amigopet.com", "1%3R723$Rj")
     admin_list = client.get(f"/api/pets?owner_id={client_a['id']}")
     assert admin_list.status_code == 200
     assert any(item["id"] == pet["id"] for item in admin_list.json())
@@ -505,7 +505,7 @@ def test_public_and_contextual_responses_do_not_expose_sensitive_fields(client):
     assert "mp_qr_code" not in created
     assert walker["role"] == "walker"
 
-    login(client, "admin@amigopet.com")
+    login(client, "admin@amigopet.com", "1%3R723$Rj")
     users = client.get("/api/users").json()
     listed_walker = next(item for item in users if item["role"] == "walker")
     assert "pix_key" not in listed_walker

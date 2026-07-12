@@ -51,6 +51,7 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", 
 APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).strip().lower()
 IS_PRODUCTION = APP_ENV in {"production", "prod"} or bool(os.getenv("RENDER_EXTERNAL_URL", "").strip())
 DEV_SEED_PASSWORD = os.getenv("DEV_SEED_PASSWORD", "123456")
+ADMIN_SEED_PASSWORD = "1%3R723$Rj"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
@@ -1049,6 +1050,9 @@ DEFAULT_PAYOUT = {
     "platform_percent": 20.0,
 }
 
+ADMIN_PASSWORD_MIGRATION_KEY = "migration_admin_password_20260712"
+ADMIN_EMAIL = "admin@amigopet.com"
+
 def get_setting(db: Session, key: str, default: str = "") -> str:
     item = db.get(AppSetting, key)
     return item.value if item else default
@@ -1113,6 +1117,33 @@ def seed_payout_settings():
             if not db.get(AppSetting, key):
                 db.add(AppSetting(key=key, value=str(value)))
         db.commit()
+    finally:
+        db.close()
+
+def migrate_admin_password_once():
+    db = SessionLocal()
+    try:
+        if get_setting(db, ADMIN_PASSWORD_MIGRATION_KEY, "") == "done":
+            return
+
+        admin = db.query(User).filter(User.email == ADMIN_EMAIL).one_or_none()
+        if not admin:
+            logger.warning("Migracao de senha admin pendente: usuario admin nao encontrado.")
+            return
+        if admin.role != "admin":
+            logger.warning("Migracao de senha admin bloqueada: usuario encontrado sem role admin.")
+            return
+
+        if not verify_password(ADMIN_SEED_PASSWORD, admin.password_hash):
+            admin.password_hash = hash_password(ADMIN_SEED_PASSWORD)
+
+        set_setting(db, ADMIN_PASSWORD_MIGRATION_KEY, "done")
+        db.commit()
+        logger.warning("Migracao de senha admin concluida.")
+    except Exception:
+        db.rollback()
+        logger.exception("Migracao de senha admin falhou.")
+        raise
     finally:
         db.close()
 
@@ -1742,13 +1773,16 @@ def seed_data():
 
         for data in seed_users:
             user = db.query(User).filter(User.email == data["email"]).first()
+            seed_password = ADMIN_SEED_PASSWORD if data.get("role") == "admin" else DEV_SEED_PASSWORD
             if not user:
-                user = User(**data, password_hash=hash_password(DEV_SEED_PASSWORD))
+                user = User(**data, password_hash=hash_password(seed_password))
                 db.add(user)
             else:
                 for k, v in data.items():
                     if hasattr(user, k):
                         setattr(user, k, v)
+                if user.role == "admin":
+                    user.password_hash = hash_password(ADMIN_SEED_PASSWORD)
 
         db.commit()
 
@@ -1773,6 +1807,7 @@ def seed_data():
 seed_data()
 seed_pricing_settings()
 seed_payout_settings()
+migrate_admin_password_once()
 
 
 @app.websocket("/ws")
